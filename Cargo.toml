@@ -1,7 +1,13 @@
 [package]
 name = "nakadion"
 version = "0.1.0"
-authors = ["cdouven <christian.douven@zalando.de>"]
+authors = ["Christian Douven <chridou@users.noreply.github.com>"]
+readme = "README.md"
+license = "Apache-2.0/MIT"
+documentation = "https://docs.rs/nakadion"
+homepage = "https://github.com/chridou/nakadion"
+repository = "https://github.com/chridou/nakadion"
+keywords = ["event", "broker", "distributed", "message"]
 
 [dependencies]
 uuid = "0.4"
