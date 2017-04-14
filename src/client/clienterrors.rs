@@ -1,8 +1,7 @@
-error_chain! { 
-
+error_chain! {
     types {
         ClientError, ClientErrorKind, ClientResultExt, ClientResult;
-    }  
+    }
 
     links {
         Token(::tokenerrors::TokenError, ::tokenerrors::TokenErrorKind);
@@ -34,8 +33,8 @@ error_chain! {
             display("The response from nakadi made further processing impossible: '{}'", t)
         }
         CursorUnprocessable(t: String) {
-            description("The response from nakadi made further processing impossible")
-            display("The response from nakadi made further processing impossible: '{}'", t)
+            description("The cursor cannot be processed")
+            display("The cursor cannot be processed: '{}'", t)
         }
     }
-  }
+}

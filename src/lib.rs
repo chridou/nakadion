@@ -27,7 +27,7 @@ impl Token {
     pub fn new(bytes: String) -> Token {
         Token(bytes)
     }
- }
+}
 
 pub trait ProvidesToken {
     fn get_token(&self) -> TokenResult<Token>;

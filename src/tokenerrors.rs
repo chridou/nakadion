@@ -1,6 +1,5 @@
-error_chain! { 
-
- types {
+error_chain! {  
+    types {
         TokenError, TokenErrorKind, TokenResultExt, TokenResult;
     }    
- }
+}
