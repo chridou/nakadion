@@ -1,0 +1,10 @@
+[package]
+name = "nakadion"
+version = "0.1.0"
+authors = ["cdouven <christian.douven@zalando.de>"]
+
+[dependencies]
+uuid = "0.4"
+hyper = "0.10"
+derive_builder = "0.4"
+error-chain = "0.10"
