@@ -45,7 +45,7 @@ mod connector {
         fn checkpoint(&self,
                       stream_id: &StreamId,
                       subscription: &SubscriptionId,
-                      cursor: &Cursor)
+                      cursors: &[Cursor])
                       -> ClientResult<()>;
 
         fn settings(&self) -> &ConnectorSettings;
@@ -154,10 +154,10 @@ mod connector {
         fn checkpoint(&self,
                       stream_id: &StreamId,
                       subscription: &SubscriptionId,
-                      cursor: &Cursor)
+                      cursors: &[Cursor])
                       -> ClientResult<()> {
             let token = self.token_provider.get_token()?;
-            let payload: Vec<u8> = serde_json::to_vec(cursor).unwrap();
+            let payload: Vec<u8> = serde_json::to_vec(&CursorContainer{ items: cursors }).unwrap();
 
             let url = format!("{}/subscriptions/{}/cursors",
                               self.settings.nakadi_host,
@@ -197,5 +197,10 @@ mod connector {
         fn settings(&self) -> &ConnectorSettings {
             &self.settings
         }
+    }
+
+    #[derive(Serialize)]
+    struct CursorContainer<'a> {
+        items: &'a [Cursor]
     }
 }
