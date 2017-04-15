@@ -64,7 +64,7 @@ pub trait ProvidesToken: Send + Sync + 'static {
 pub struct EventType(String);
 
 impl EventType {
-    /// Creates a new instance of an `EventType`.
+    /// Creates a new instance of an [`EventType`](https://github.com/zalando/nakadi#creating-event-types).
     pub fn new<T: Into<String>>(value: T) -> EventType {
         EventType(value.into())
     }
