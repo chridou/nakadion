@@ -213,7 +213,7 @@ impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
 }
 
 fn create_hyper_client() -> Client {
- let ssl = NativeTlsClient::new().unwrap();
+    let ssl = NativeTlsClient::new().unwrap();
     let connector = HttpsConnector::new(ssl);
     Client::with_connector(connector)
 }
