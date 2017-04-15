@@ -2,6 +2,13 @@
 
 A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
 
+Nakadion uses the Subscription API of Nakadi.
+
+A producer might be added later.
+
+## Documentation
+
+Documenatation can be found on [docs.rs](https://docs.rs)
 
 ## License
 

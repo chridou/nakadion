@@ -1,12 +1,17 @@
-use uuid::Uuid;
+use std::sync::Arc;
 
-use EventType;
+use uuid::Uuid;
+use serde_json::Value;
+
+use super::EventType;
 
 mod clienterrors;
+mod connector;
+mod worker;
 
-pub use self::connector::HyperClientConnector;
+pub use self::connector::{ClientConnector, HyperClientConnector, ConnectorSettings, ConnectorSettingsBuilder};
 pub use self::clienterrors::*;
-
+pub use self::worker::NakadiWorker;
 
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(Uuid);
@@ -21,186 +26,48 @@ pub struct Cursor {
     pub cursor_token: Uuid,
 }
 
-mod connector {
-    use std::io::Read;
-    use std::time::Duration;
+pub enum AfterBatchAction {
+    /// Checkpoint and get next
+    Continue,
+    /// Checkpoint then stop.
+    Stop,
+    /// Stop without checkpointing
+    Abort
+}
 
-    use url::Url;
-    use hyper::Client;
-    use hyper::header::{Authorization, Bearer, ContentType};
-    use hyper::status::StatusCode;
-    use serde_json;
+pub trait Handler: Send + Sync + 'static {
+    fn handle(&self, batch: Vec<Value>) -> AfterBatchAction;
+}
 
-    use super::*;
-    use ::ProvidesToken;
+pub struct NakadiClient<C: ClientConnector> {
+    worker: NakadiWorker,
+    connector: Arc<C>,
+}
 
-    header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
-
-    pub trait ClientConnector {
-        type StreamingSource: Read;
-
-        fn read(&self,
-                subscription: &SubscriptionId)
-                -> ClientResult<(Self::StreamingSource, StreamId)>;
-        fn checkpoint(&self,
-                      stream_id: &StreamId,
-                      subscription: &SubscriptionId,
-                      cursors: &[Cursor])
-                      -> ClientResult<()>;
-
-        fn settings(&self) -> &ConnectorSettings;
-    }
-
-    #[derive(Builder)]
-    #[builder(pattern="owned")]
-    pub struct ConnectorSettings {
-        #[builder(default="10")]
-        ///
-        pub stream_keep_alive_limit: usize,
-        #[builder(default="5000")]
-        pub stream_limit: usize,
-        #[builder(default="Duration::from_secs(300)")]
-        pub stream_timeout: Duration,
-        #[builder(default="Duration::from_secs(15)")]
-        pub batch_flush_timeout: Duration,
-        #[builder(default="50")]
-        pub batch_limit: usize,
-        pub nakadi_host: Url,
-    }
-
-    pub struct HyperClientConnector<T: ProvidesToken> {
-        client: Client,
-        token_provider: T,
-        settings: ConnectorSettings,
-    }
-
-    impl<T: ProvidesToken> HyperClientConnector<T> {
-        pub fn new(client: Client,
-                   token_provider: T,
-                   settings: ConnectorSettings)
-                   -> HyperClientConnector<T> {
-            HyperClientConnector {
-                client: client,
-                token_provider: token_provider,
-                settings: settings,
-            }
-        }
-
-        pub fn new_with_defaults(client: Client,
-                                 nakadi_host: Url,
-                                 token_provider: T)
-                                 -> HyperClientConnector<T> {
-            let settings =
-                ConnectorSettingsBuilder::default().nakadi_host(nakadi_host).build().unwrap();
-            HyperClientConnector::new(client, token_provider, settings)
+impl<C: ClientConnector> NakadiClient<C> {
+    pub fn new<H: Handler>(subscription_id: SubscriptionId, connector: Arc<C>, handler: H) -> Self {
+        let worker = NakadiWorker::new(connector.clone(), handler, subscription_id);
+        NakadiClient {
+            worker: worker,
+            connector: connector,
         }
     }
 
-    impl<T: ProvidesToken> ClientConnector for HyperClientConnector<T> {
-        type StreamingSource = ::hyper::client::response::Response;
-
-        fn read(&self,
-                subscription: &SubscriptionId)
-                -> ClientResult<(Self::StreamingSource, StreamId)> {
-            let token = self.token_provider.get_token()?;
-            let settings = &self.settings;
-            let url =
-                format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
-                        settings.nakadi_host,
-                        subscription.0,
-                        settings.stream_keep_alive_limit,
-                        settings.stream_limit,
-                        settings.stream_timeout.as_secs(),
-                        settings.batch_flush_timeout.as_secs(),
-                        settings.batch_limit);
-
-            let request = self.client.get(&url).header(Authorization(Bearer { token: token.0 }));
-
-            match request.send() {
-                Ok(rsp) => {
-                    match rsp.status {
-                        StatusCode::Ok => {
-                            let stream_id = if let Some(stream_id) = rsp.headers
-                                .get::<XNakadiStreamId>()
-                                .map(|v| StreamId(v.to_string())) {
-                                stream_id
-                            } else {
-                                bail!(ClientErrorKind::InvalidResponse("The response lacked the \
-                                                                        'X-Nakadi-StreamId' \
-                                                                        header."
-                                    .to_string()))
-                            };
-                            Ok((rsp, stream_id))
-                        }
-                        StatusCode::BadRequest => {
-                            bail!(ClientErrorKind::Request(rsp.status.to_string()))
-                        }
-                        StatusCode::NotFound => {
-                            bail!(ClientErrorKind::NoSubscription(rsp.status.to_string()))
-                        }
-                        StatusCode::Forbidden => {
-                            bail!(ClientErrorKind::Forbidden(rsp.status.to_string()))
-                        }
-                        StatusCode::Conflict => {
-                            bail!(ClientErrorKind::Conflict(rsp.status.to_string()))
-                        }
-                        other_status => bail!(other_status.to_string()),
-                    }
-                }
-                Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
-            }
-        }
-
-        fn checkpoint(&self,
-                      stream_id: &StreamId,
-                      subscription: &SubscriptionId,
-                      cursors: &[Cursor])
-                      -> ClientResult<()> {
-            let token = self.token_provider.get_token()?;
-            let payload: Vec<u8> = serde_json::to_vec(&CursorContainer{ items: cursors }).unwrap();
-
-            let url = format!("{}/subscriptions/{}/cursors",
-                              self.settings.nakadi_host,
-                              subscription.0);
-
-            let request = self.client
-                .post(&url)
-                .header(Authorization(Bearer { token: token.0 }))
-                .header(XNakadiStreamId(stream_id.0.clone()))
-                .header(ContentType::json())
-                .body(payload.as_slice());
-
-            match request.send() {
-                Ok(rsp) => {
-                    match rsp.status {
-                        StatusCode::NoContent => Ok(()),
-                        StatusCode::Ok => Ok(()),
-                        StatusCode::BadRequest => {
-                            bail!(ClientErrorKind::Request(rsp.status.to_string()))
-                        }
-                        StatusCode::NotFound => {
-                            bail!(ClientErrorKind::NoSubscription(rsp.status.to_string()))
-                        }
-                        StatusCode::Forbidden => {
-                            bail!(ClientErrorKind::Forbidden(rsp.status.to_string()))
-                        }
-                        StatusCode::UnprocessableEntity => {
-                            bail!(ClientErrorKind::CursorUnprocessable(rsp.status.to_string()))
-                        }
-                        other_status => bail!(other_status.to_string()),
-                    }
-                }
-                Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
-            }
-        }
-
-        fn settings(&self) -> &ConnectorSettings {
-            &self.settings
-        }
+    pub fn is_running(&self) -> bool {
+        self.worker.is_running()
     }
 
-    #[derive(Serialize)]
-    struct CursorContainer<'a> {
-        items: &'a [Cursor]
+    pub fn stop(&self) {
+        self.worker.stop();
+    }
+
+    pub fn connector(&self) -> &C {
+        &self.connector
+    }
+
+    pub fn subscription_id(&self) -> &SubscriptionId {
+        self.worker.subscription_id()
     }
 }
+
+

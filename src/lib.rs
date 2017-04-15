@@ -1,5 +1,8 @@
 #![recursion_limit = "1024"]
 
+#[macro_use]
+extern crate log;
+
 extern crate uuid;
 extern crate url;
 #[macro_use]
@@ -29,8 +32,8 @@ impl Token {
     }
 }
 
-pub trait ProvidesToken {
-    fn get_token(&self) -> TokenResult<Token>;
+pub trait ProvidesToken: Send + Sync + 'static {
+    fn get_token(&self) -> TokenResult<Option<Token>>;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

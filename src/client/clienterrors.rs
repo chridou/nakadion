@@ -36,5 +36,9 @@ error_chain! {
             description("The cursor cannot be processed")
             display("The cursor cannot be processed: '{}'", t)
         }
+        UnparsableBatch(t: String) {
+            description("The batch could not be parsed.")
+            display("The batch could not be parsed: '{}'", t)
+        }
     }
 }
