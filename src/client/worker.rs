@@ -1,3 +1,7 @@
+//! The components to consume from the stream.
+//!
+//! This is basically the machinery that drives the consumption.
+//! It will consume events and call the `Handler` and react on its commands on how to continue.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, BufRead};
@@ -7,17 +11,18 @@ use std::thread::{self, JoinHandle};
 use serde_json::{self, Value};
 
 use super::*;
-use super::connector::ClientConnector;
+use super::connector::NakadiConnector;
 
 const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000, 600000];
 
+/// The worker runs the consumption of events. It will try to reconnect automatically once the stream breaks.
 pub struct NakadiWorker{
     is_running: Arc<AtomicBool>,
     subscription_id: SubscriptionId,
 }
 
 impl NakadiWorker {
-    pub fn new<C: ClientConnector, H: Handler>(connector: Arc<C>, handler: H, subscription_id: SubscriptionId) -> NakadiWorker {
+    pub fn new<C: NakadiConnector, H: Handler>(connector: Arc<C>, handler: H, subscription_id: SubscriptionId) -> NakadiWorker {
         let is_running = Arc::new(AtomicBool::new(true));
 
         let _ = start_nakadi_worker_loop(connector.clone(), handler, subscription_id.clone(), is_running.clone());
@@ -28,14 +33,17 @@ impl NakadiWorker {
         }
     }
 
+    /// Returns true if the worker is still running.
     pub fn is_running(&self) -> bool {
         self.is_running.load(Ordering::Relaxed)
     }
 
+    /// Stops the worker.
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::Relaxed)
     }
 
+    /// Gets the `SubscriptionId` the worker is listening to.
     pub fn subscription_id(&self) -> &SubscriptionId {
         &self.subscription_id
     }
@@ -55,7 +63,7 @@ struct DeserializedBatch {
     events: Option<Vec<Value>>,
 }
 
-fn start_nakadi_worker_loop<C: ClientConnector, H: Handler>(connector: Arc<C>, handler: H, subscription_id: SubscriptionId, is_running: Arc<AtomicBool>) -> JoinHandle<()> {
+fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: Arc<C>, handler: H, subscription_id: SubscriptionId, is_running: Arc<AtomicBool>) -> JoinHandle<()> {
     info!("Nakadi worker loop starting");
     thread::spawn(move || {
         let connector = connector;
@@ -66,7 +74,7 @@ fn start_nakadi_worker_loop<C: ClientConnector, H: Handler>(connector: Arc<C>, h
     })
 }
 
-fn nakadi_worker_loop<C: ClientConnector, H: Handler>(connector: &C, handler: H, subscription_id: &SubscriptionId, is_running: Arc<AtomicBool>) {
+fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C, handler: H, subscription_id: &SubscriptionId, is_running: Arc<AtomicBool>) {
     while (*is_running).load(Ordering::Relaxed) {
         let (src, stream_id) = if let Some(r) = connect(connector, subscription_id, &is_running){
             r
@@ -105,7 +113,7 @@ fn nakadi_worker_loop<C: ClientConnector, H: Handler>(connector: &C, handler: H,
     (&*is_running).store(false, Ordering::Relaxed);
 }
 
-fn process_bytes<C: ClientConnector>(
+fn process_bytes<C: NakadiConnector>(
     connector: &C, 
     bytes: &[u8], 
     handler: &Handler, 
@@ -114,7 +122,10 @@ fn process_bytes<C: ClientConnector>(
     is_running: &AtomicBool) -> ClientResult<AfterBatchAction> {
     match serde_json::from_slice::<DeserializedBatch>(bytes) {
         Ok(DeserializedBatch{ cursor, events}) => {
-            match handler.handle(events.unwrap_or(Vec::new())) {
+            // This is a hack. We might later want to extract the slice manually.
+            let events_json = events.unwrap_or(Vec::new());
+            let events_bytes = serde_json::to_string(events_json.as_slice()).unwrap();
+            match handler.handle(events_bytes.as_ref()) {
                 AfterBatchAction::Continue => {
                     checkpoint(&*connector, &stream_id, subscription_id, vec!(cursor).as_slice(), &is_running);
                     Ok(AfterBatchAction::Continue)
@@ -135,7 +146,7 @@ fn process_bytes<C: ClientConnector>(
     }
 }
 
-fn connect<C: ClientConnector>(connector: &C, subscription_id: &SubscriptionId, is_running: &AtomicBool) -> Option<(C::StreamingSource, StreamId)> {
+fn connect<C: NakadiConnector>(connector: &C, subscription_id: &SubscriptionId, is_running: &AtomicBool) -> Option<(C::StreamingSource, StreamId)> {
     let mut attempt = 0;
     while is_running.load(Ordering::Relaxed) {
         attempt += 1;
@@ -157,7 +168,7 @@ fn connect<C: ClientConnector>(connector: &C, subscription_id: &SubscriptionId, 
     None
 }
 
-fn checkpoint<C: ClientConnector>(connector: &C, stream_id: &StreamId, subscription_id: &SubscriptionId, cursors: &[Cursor], is_running: &AtomicBool) {
+fn checkpoint<C: NakadiConnector>(connector: &C, stream_id: &StreamId, subscription_id: &SubscriptionId, cursors: &[Cursor], is_running: &AtomicBool) {
     let mut attempt = 0;
     while is_running.load(Ordering::Relaxed) || attempt == 0 {
         if attempt > 0 {

@@ -1,3 +1,20 @@
+//! # Nakadion
+//! 
+//! A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
+//! 
+//! Nakadion uses the [Subscription API](https://github.com/zalando/nakadi#subscriptions) of Nakadi on the consuming side.
+//! 
+//! A producer might be added later.
+//! 
+//! ## Documentation
+//! 
+//! Documenatation can be found on [docs.rs](https://docs.rs)
+//! 
+//! ## License
+//! 
+//! Nakadion is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+//! 
+//! See LICENSE-APACHE and LICENSE-MIT for details.
 #![recursion_limit = "1024"]
 
 #[macro_use]
@@ -23,23 +40,31 @@ mod tokenerrors;
 
 pub use tokenerrors::*;
 
+/// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
 pub struct Token(String);
 
 impl Token {
-    pub fn new(bytes: String) -> Token {
-        Token(bytes)
+    /// Creates a new token.
+    pub fn new<T: Into<String>>(token: T) -> Token {
+        Token(token.into())
     }
 }
 
+/// Provides a `Token`.
+///
+/// Authentication can be disabled by returning `None` on `get_token`.
 pub trait ProvidesToken: Send + Sync + 'static {
+    /// Get a new `Token`. Return `None` to disable authentication.
     fn get_token(&self) -> TokenResult<Option<Token>>;
 }
 
+/// The [`Nakadi Event Type`](https://github.com/zalando/nakadi#creating-event-types). Similiar to a topic.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventType(String);
 
 impl EventType {
+    /// Creates a new instance of an `EventType`.
     pub fn new<T: Into<String>>(value: T) -> EventType {
         EventType(value.into())
     }

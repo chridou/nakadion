@@ -12,12 +12,18 @@ use ::ProvidesToken;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
-pub trait ClientConnector : Send + Sync + 'static {
+/// Connects to `Nakadi` for checkpointing and consuming events.
+pub trait NakadiConnector : Send + Sync + 'static {
     type StreamingSource: Read;
 
+    /// Attempts to get data from the stream. Also returns the `StreamId` which must be used
+    /// for checkpointing.
     fn read(&self,
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)>;
+
+    /// Checkpoint `Cursor`s. Make sure you use the same `StreamId` with which
+    /// you retrieved the cursor. 
     fn checkpoint(&self,
                     stream_id: &StreamId,
                     subscription: &SubscriptionId,
@@ -27,6 +33,7 @@ pub trait ClientConnector : Send + Sync + 'static {
     fn settings(&self) -> &ConnectorSettings;
 }
 
+/// Settings for establishing a connection to `Nakadi`.
 #[derive(Builder)]
 #[builder(pattern="owned")]
 pub struct ConnectorSettings {
@@ -43,6 +50,7 @@ pub struct ConnectorSettings {
     pub nakadi_host: Url,
 }
 
+/// A `NakadiConnector` using `Hyper` for dispatching requests.
 pub struct HyperClientConnector<T: ProvidesToken> {
     client: Client,
     token_provider: T,
@@ -89,7 +97,7 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
     }
 }
 
-impl<T: ProvidesToken> ClientConnector for HyperClientConnector<T> {
+impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
     type StreamingSource = ::hyper::client::response::Response;
 
     fn read(&self,
