@@ -26,6 +26,10 @@ pub struct Cursor {
     pub cursor_token: Uuid,
 }
 
+/// Describes what to do after a batch has been processed.
+///
+/// Use to control what should happen next.
+#[derive(Debug)]
 pub enum AfterBatchAction {
     /// Checkpoint and get next
     Continue,

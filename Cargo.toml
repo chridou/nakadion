@@ -7,7 +7,7 @@ license = "Apache-2.0/MIT"
 documentation = "https://docs.rs/nakadion"
 homepage = "https://github.com/chridou/nakadion"
 repository = "https://github.com/chridou/nakadion"
-keywords = ["event", "broker", "distributed", "message"]
+keywords = ["event", "broker", "distributed", "message", "nakadi"]
 
 [dependencies]
 log = "0.3"

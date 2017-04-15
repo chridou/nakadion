@@ -82,7 +82,11 @@ fn nakadi_worker_loop<C: ClientConnector, H: Handler>(connector: &C, handler: H,
                 Ok(bytes) => {
                     match process_bytes(connector, bytes.as_slice(), &handler, &stream_id, subscription_id, &is_running) {
                         Ok(AfterBatchAction::Continue) => (),
-                        Ok(_) => return,
+                        Ok(leaving_action) => {
+                            info!("Leaving worker loop on user request: {:?}", leaving_action);
+                            is_running.store(false, Ordering::Relaxed);
+                            return;
+                        },
                         Err(err) => {
                             error!("An error occured processing the batch. Reconnecting. Error: {}", err);
                             break;
@@ -120,7 +124,7 @@ fn process_bytes<C: ClientConnector>(
                     Ok(AfterBatchAction::Stop)
                 },
                 AfterBatchAction::Abort => {
-                    warn!("Abort. Stopping consumer without checkpointing.");
+                    warn!("Abort. Skipping checkpointing.");
                     Ok(AfterBatchAction::Abort)
                 }
             }
