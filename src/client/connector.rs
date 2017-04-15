@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use url::Url;
 use hyper::Client;
+use hyper::net::HttpsConnector;
+use hyper_native_tls::NativeTlsClient;
 use hyper::header::{Authorization, Bearer, ContentType, Headers};
 use hyper::status::StatusCode;
 use serde_json;
@@ -61,8 +63,8 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
     pub fn new(token_provider: T,
                 nakadi_host: Url)
                 -> HyperClientConnector<T> {
-                    let client = Client::new();
-      let settings =
+        let client = create_hyper_client();
+        let settings =
             ConnectorSettingsBuilder::default().nakadi_host(nakadi_host).build().unwrap();
         HyperClientConnector::with_client_and_settings(client,token_provider, settings)
       }
@@ -80,7 +82,7 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
                token_provider: T,
                settings: ConnectorSettings)
                                 -> HyperClientConnector<T> {
-        let client = Client::new();
+        let client = create_hyper_client();
         HyperClientConnector::with_client_and_settings(client,token_provider, settings)
     }
 
@@ -208,6 +210,12 @@ impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
     fn settings(&self) -> &ConnectorSettings {
         &self.settings
     }
+}
+
+fn create_hyper_client() -> Client {
+ let ssl = NativeTlsClient::new().unwrap();
+    let connector = HttpsConnector::new(ssl);
+    Client::with_connector(connector)
 }
 
 #[derive(Serialize)]
