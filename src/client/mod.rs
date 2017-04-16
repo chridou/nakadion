@@ -1,6 +1,5 @@
-//! # The Client.
-//!
 //! Use the `NakadiClient` to consume events from `Nakadi`
+//!
 //! The `NakadiClient` the
 //! [`Nakadi Subscription API`](https://github.com/zalando/nakadi#subscriptions).
 use std::sync::Arc;
