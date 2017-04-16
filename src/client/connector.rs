@@ -10,7 +10,7 @@ use hyper::status::StatusCode;
 use serde_json;
 
 use super::*;
-use ::ProvidesToken;
+use ProvidesToken;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
@@ -18,8 +18,8 @@ header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 pub trait ReadsStream {
     type StreamingSource: Read;
 
-    /// Attempts to get data from the stream. Also returns the `StreamId` which must be used
-    /// for checkpointing.
+    /// Attempts to get data from the stream. Also returns the `StreamId`
+    /// which must be used for checkpointing.
     fn read(&self,
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)>;
@@ -27,17 +27,18 @@ pub trait ReadsStream {
 
 /// Checkpoints cursors
 pub trait Checkpoints {
-    /// Checkpoint `Cursor`s. Make sure you use the same `StreamId` with which
-    /// you retrieved the cursor. 
+    /// Checkpoint `Cursor`s.
+    /// Make sure you use the same `StreamId` with which
+    /// you retrieved the cursor.
     fn checkpoint(&self,
-                    stream_id: &StreamId,
-                    subscription: &SubscriptionId,
-                    cursors: &[Cursor])
-                    -> ClientResult<()>;
+                  stream_id: &StreamId,
+                  subscription: &SubscriptionId,
+                  cursors: &[Cursor])
+                  -> ClientResult<()>;
 }
 
 /// Connects to `Nakadi` for checkpointing and consuming events.
-pub trait NakadiConnector : ReadsStream + Checkpoints + Send + Sync + 'static {
+pub trait NakadiConnector: ReadsStream + Checkpoints + Send + Sync + 'static {
     fn settings(&self) -> &ConnectorSettings;
 }
 
@@ -66,37 +67,37 @@ pub struct HyperClientConnector<T: ProvidesToken> {
 }
 
 impl<T: ProvidesToken> HyperClientConnector<T> {
-    pub fn new(token_provider: T,
-                nakadi_host: Url)
-                -> HyperClientConnector<T> {
+    pub fn new(token_provider: T, nakadi_host: Url) -> HyperClientConnector<T> {
         let client = create_hyper_client();
-        let settings =
-            ConnectorSettingsBuilder::default().nakadi_host(nakadi_host).build().unwrap();
-        HyperClientConnector::with_client_and_settings(client,token_provider, settings)
-      }
+        let settings = ConnectorSettingsBuilder::default()
+            .nakadi_host(nakadi_host)
+            .build()
+            .unwrap();
+        HyperClientConnector::with_client_and_settings(client, token_provider, settings)
+    }
 
     pub fn with_client(client: Client,
-               token_provider: T,
-                                 nakadi_host: Url)
-                                -> HyperClientConnector<T> {
-        let settings =
-            ConnectorSettingsBuilder::default().nakadi_host(nakadi_host).build().unwrap();
-        HyperClientConnector::with_client_and_settings(client,token_provider, settings)
+                       token_provider: T,
+                       nakadi_host: Url)
+                       -> HyperClientConnector<T> {
+        let settings = ConnectorSettingsBuilder::default()
+            .nakadi_host(nakadi_host)
+            .build()
+            .unwrap();
+        HyperClientConnector::with_client_and_settings(client, token_provider, settings)
     }
 
-        pub fn with_settings(
-               token_provider: T,
-               settings: ConnectorSettings)
-                                -> HyperClientConnector<T> {
+    pub fn with_settings(token_provider: T,
+                         settings: ConnectorSettings)
+                         -> HyperClientConnector<T> {
         let client = create_hyper_client();
-        HyperClientConnector::with_client_and_settings(client,token_provider, settings)
+        HyperClientConnector::with_client_and_settings(client, token_provider, settings)
     }
 
-       pub fn with_client_and_settings(
-                client: Client,
-                token_provider: T,
-                settings: ConnectorSettings)
-                -> HyperClientConnector<T> {
+    pub fn with_client_and_settings(client: Client,
+                                    token_provider: T,
+                                    settings: ConnectorSettings)
+                                    -> HyperClientConnector<T> {
         HyperClientConnector {
             client: client,
             token_provider: token_provider,
@@ -118,15 +119,15 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)> {
         let settings = &self.settings;
-        let url =
-            format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
-                    settings.nakadi_host,
-                    subscription.0,
-                    settings.stream_keep_alive_limit,
-                    settings.stream_limit,
-                    settings.stream_timeout.as_secs(),
-                    settings.batch_flush_timeout.as_secs(),
-                    settings.batch_limit);
+        let url = format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}\
+                 &stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
+                          settings.nakadi_host,
+                          subscription.0,
+                          settings.stream_keep_alive_limit,
+                          settings.stream_limit,
+                          settings.stream_timeout.as_secs(),
+                          settings.batch_flush_timeout.as_secs(),
+                          settings.batch_limit);
 
         let mut headers = Headers::new();
         if let Some(token) = self.token_provider.get_token()? {
@@ -134,21 +135,22 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
         };
 
         let request = self.client.get(&url).headers(headers);
-        
-  
+
+
         match request.send() {
             Ok(rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let stream_id = if let Some(stream_id) = rsp.headers
-                            .get::<XNakadiStreamId>()
-                            .map(|v| StreamId(v.to_string())) {
+                        let stream_id = if let Some(stream_id) =
+                            rsp.headers
+                                .get::<XNakadiStreamId>()
+                                .map(|v| StreamId(v.to_string())) {
                             stream_id
                         } else {
                             bail!(ClientErrorKind::InvalidResponse("The response lacked the \
                                                                     'X-Nakadi-StreamId' \
                                                                     header."
-                                .to_string()))
+                                                                           .to_string()))
                         };
                         Ok((rsp, stream_id))
                     }
@@ -172,17 +174,17 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
     }
 }
 
-impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> { 
+impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> {
     fn checkpoint(&self,
-                    stream_id: &StreamId,
-                    subscription: &SubscriptionId,
-                    cursors: &[Cursor])
-                    -> ClientResult<()> {
-        let payload: Vec<u8> = serde_json::to_vec(&CursorContainer{ items: cursors }).unwrap();
+                  stream_id: &StreamId,
+                  subscription: &SubscriptionId,
+                  cursors: &[Cursor])
+                  -> ClientResult<()> {
+        let payload: Vec<u8> = serde_json::to_vec(&CursorContainer { items: cursors }).unwrap();
 
         let url = format!("{}/subscriptions/{}/cursors",
-                            self.settings.nakadi_host,
-                            subscription.0);
+                          self.settings.nakadi_host,
+                          subscription.0);
 
 
         let mut headers = Headers::new();
@@ -230,5 +232,5 @@ fn create_hyper_client() -> Client {
 
 #[derive(Serialize)]
 struct CursorContainer<'a> {
-    items: &'a [Cursor]
+    items: &'a [Cursor],
 }

@@ -1,23 +1,26 @@
 //! # Nakadion
-//! 
+//!
 //! A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
-//! 
-//! Nakadion uses the [Subscription API](https://github.com/zalando/nakadi#subscriptions) of Nakadi on the consuming side.
-//! 
+//!
+//! Nakadion uses the [Subscription API](https://github.com/zalando/nakadi#subscriptions)
+//! of Nakadi on the consuming side.
+//!
 //! A producer might be added later.
-//! 
+//!
 //! ## Documentation
-//! 
+//!
 //! Documenatation can be found on [docs.rs](https://docs.rs)
 //!
 //! ## Performance
-//! 
-//! This library is not meant to be used in a high performance scenario. It uses synchronous IO and lacks optimizations.
-//! 
+//!
+//! This library is not meant to be used in a high performance scenario.
+//! It uses synchronous IO and lacks optimizations.
+//!
 //! ## License
-//! 
-//! Nakadion is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
-//! 
+//!
+//! Nakadion is distributed under the terms of both the MIT license
+//! and the Apache License (Version 2.0).
+//!
 //! See LICENSE-APACHE and LICENSE-MIT for details.
 #![recursion_limit = "1024"]
 
@@ -64,12 +67,14 @@ pub trait ProvidesToken: Send + Sync + 'static {
     fn get_token(&self) -> TokenResult<Option<Token>>;
 }
 
-/// The [`Nakadi Event Type`](https://github.com/zalando/nakadi#creating-event-types). Similiar to a topic.
+/// The [`Nakadi Event Type`](https://github.com/zalando/nakadi#creating-event-types).
+/// Similiar to a topic.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventType(String);
 
 impl EventType {
-    /// Creates a new instance of an [`EventType`](https://github.com/zalando/nakadi#creating-event-types).
+    /// Creates a new instance of an
+    /// [`EventType`](https://github.com/zalando/nakadi#creating-event-types).
     pub fn new<T: Into<String>>(value: T) -> EventType {
         EventType(value.into())
     }

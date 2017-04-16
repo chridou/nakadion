@@ -1,7 +1,8 @@
 //! # The Client.
 //!
 //! Use the `NakadiClient` to consume events from `Nakadi`
-//! The `NakadiClient` the [`Nakadi Subscription API`](https://github.com/zalando/nakadi#subscriptions).
+//! The `NakadiClient` the
+//! [`Nakadi Subscription API`](https://github.com/zalando/nakadi#subscriptions).
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -13,11 +14,12 @@ mod clienterrors;
 mod connector;
 mod worker;
 
-pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector, ConnectorSettings, ConnectorSettingsBuilder};
+pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector,
+                          ConnectorSettings, ConnectorSettingsBuilder};
 pub use self::clienterrors::*;
 pub use self::worker::NakadiWorker;
 
-/// A `SubscriptionId` is used to guaratee a continous flow of events for a client. 
+/// A `SubscriptionId` is used to guaratee a continous flow of events for a client.
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(Uuid);
 
@@ -55,13 +57,15 @@ pub enum AfterBatchAction {
     /// Checkpoint then stop.
     Stop,
     /// Stop without checkpointing
-    Abort
+    Abort,
 }
 
 /// Handles batches of events received from `Nakadi`.
 pub trait Handler: Send + Sync + 'static {
-    /// Handle the batch of events. The supplied string contains the whole batch of events as a `JSOS` array.
-    /// Return an `AfterBatchAction` to tell what to do next. The batch array may be empty.
+    /// Handle the batch of events. The supplied string contains
+    /// the whole batch of events as a `JSOS` array.
+    /// Return an `AfterBatchAction` to tell what to do next.
+    /// The batch array may be empty.
     /// You may not panic within the handler.
     fn handle(&self, batch: &str) -> AfterBatchAction;
 }
@@ -73,14 +77,19 @@ pub struct NakadiClient<C: NakadiConnector> {
 }
 
 impl<C: NakadiConnector> NakadiClient<C> {
-    /// Creates a new instance. The returned `JoinHandle` can be used to synchronize with the underlying worker.
+    /// Creates a new instance. The returned `JoinHandle` can
+    /// be used to synchronize with the underlying worker.
     /// The underlying worker will be stopped once the client is dropped.
-    pub fn new<H: Handler>(subscription_id: SubscriptionId, connector: Arc<C>, handler: H) -> (Self, JoinHandle<()>) {
+    pub fn new<H: Handler>(subscription_id: SubscriptionId,
+                           connector: Arc<C>,
+                           handler: H)
+                           -> (Self, JoinHandle<()>) {
         let (worker, handle) = NakadiWorker::new(connector.clone(), handler, subscription_id);
         (NakadiClient {
-            worker: worker,
-            connector: connector,
-        }, handle)
+             worker: worker,
+             connector: connector,
+         },
+         handle)
     }
 
     /// Returns true if the underlying `NakadiWorker` is still running.
@@ -103,5 +112,3 @@ impl<C: NakadiConnector> NakadiClient<C> {
         self.worker.subscription_id()
     }
 }
-
-
