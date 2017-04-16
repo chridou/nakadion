@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
+description = "A connector for the Nakadi Event Broker"
 documentation = "https://docs.rs/nakadion"
 homepage = "https://github.com/chridou/nakadion"
 repository = "https://github.com/chridou/nakadion"
@@ -21,3 +22,6 @@ error-chain = "0.10"
 serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
+
+[dev-dependencies] 
+env_logger = "0.3"

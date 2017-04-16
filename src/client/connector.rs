@@ -14,8 +14,8 @@ use ::ProvidesToken;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
-/// Connects to `Nakadi` for checkpointing and consuming events.
-pub trait NakadiConnector : Send + Sync + 'static {
+/// Connects to `Nakadi` and reads the stream-
+pub trait ReadsStream {
     type StreamingSource: Read;
 
     /// Attempts to get data from the stream. Also returns the `StreamId` which must be used
@@ -23,7 +23,10 @@ pub trait NakadiConnector : Send + Sync + 'static {
     fn read(&self,
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)>;
+}
 
+/// Checkpoints cursors
+pub trait Checkpoints {
     /// Checkpoint `Cursor`s. Make sure you use the same `StreamId` with which
     /// you retrieved the cursor. 
     fn checkpoint(&self,
@@ -31,7 +34,10 @@ pub trait NakadiConnector : Send + Sync + 'static {
                     subscription: &SubscriptionId,
                     cursors: &[Cursor])
                     -> ClientResult<()>;
+}
 
+/// Connects to `Nakadi` for checkpointing and consuming events.
+pub trait NakadiConnector : ReadsStream + Checkpoints + Send + Sync + 'static {
     fn settings(&self) -> &ConnectorSettings;
 }
 
@@ -100,6 +106,12 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
 }
 
 impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
+    fn settings(&self) -> &ConnectorSettings {
+        &self.settings
+    }
+}
+
+impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
     type StreamingSource = ::hyper::client::response::Response;
 
     fn read(&self,
@@ -158,7 +170,9 @@ impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
             Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
         }
     }
+}
 
+impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> { 
     fn checkpoint(&self,
                     stream_id: &StreamId,
                     subscription: &SubscriptionId,
@@ -205,10 +219,6 @@ impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
             }
             Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
         }
-    }
-
-    fn settings(&self) -> &ConnectorSettings {
-        &self.settings
     }
 }
 

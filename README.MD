@@ -6,6 +6,10 @@ Nakadion uses the Subscription API of Nakadi.
 
 A producer might be added later.
 
+## Performance
+
+This library is not meant to be used in a high performance scenario. It uses synchronous IO.
+
 ## Documentation
 
 Documenatation can be found on [docs.rs](https://docs.rs)

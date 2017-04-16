@@ -9,6 +9,10 @@
 //! ## Documentation
 //! 
 //! Documenatation can be found on [docs.rs](https://docs.rs)
+//!
+//! ## Performance
+//! 
+//! This library is not meant to be used in a high performance scenario. It uses synchronous IO and lacks optimizations.
 //! 
 //! ## License
 //! 

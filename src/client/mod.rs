@@ -3,9 +3,9 @@
 //! Use the `NakadiClient` to consume events from `Nakadi`
 //! The `NakadiClient` the [`Nakadi Subscription API`](https://github.com/zalando/nakadi#subscriptions).
 use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use uuid::Uuid;
-use serde_json::Value;
 
 use super::EventType;
 
@@ -13,7 +13,7 @@ mod clienterrors;
 mod connector;
 mod worker;
 
-pub use self::connector::{NakadiConnector, HyperClientConnector, ConnectorSettings, ConnectorSettingsBuilder};
+pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector, ConnectorSettings, ConnectorSettingsBuilder};
 pub use self::clienterrors::*;
 pub use self::worker::NakadiWorker;
 
@@ -21,8 +21,20 @@ pub use self::worker::NakadiWorker;
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(Uuid);
 
+impl SubscriptionId {
+    pub fn nil() -> Self {
+        SubscriptionId(Uuid::nil())
+    }
+}
+
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with a `Cursor`.
 pub struct StreamId(String);
+
+impl StreamId {
+    pub fn new<T: Into<String>>(id: T) -> Self {
+        StreamId(id.into())
+    }
+}
 
 /// A `Cursor` describes a position in the stream. The cursor is used for checkpointing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,7 +48,7 @@ pub struct Cursor {
 /// Describes what to do after a batch has been processed.
 ///
 /// Use to control what should happen next.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AfterBatchAction {
     /// Checkpoint and get next
     Continue,
@@ -50,6 +62,7 @@ pub enum AfterBatchAction {
 pub trait Handler: Send + Sync + 'static {
     /// Handle the batch of events. The supplied string contains the whole batch of events as a `JSOS` array.
     /// Return an `AfterBatchAction` to tell what to do next. The batch array may be empty.
+    /// You may not panic within the handler.
     fn handle(&self, batch: &str) -> AfterBatchAction;
 }
 
@@ -60,12 +73,14 @@ pub struct NakadiClient<C: NakadiConnector> {
 }
 
 impl<C: NakadiConnector> NakadiClient<C> {
-    pub fn new<H: Handler>(subscription_id: SubscriptionId, connector: Arc<C>, handler: H) -> Self {
-        let worker = NakadiWorker::new(connector.clone(), handler, subscription_id);
-        NakadiClient {
+    /// Creates a new instance. The returned `JoinHandle` can be used to synchronize with the underlying worker.
+    /// The underlying worker will be stopped once the client is dropped.
+    pub fn new<H: Handler>(subscription_id: SubscriptionId, connector: Arc<C>, handler: H) -> (Self, JoinHandle<()>) {
+        let (worker, handle) = NakadiWorker::new(connector.clone(), handler, subscription_id);
+        (NakadiClient {
             worker: worker,
             connector: connector,
-        }
+        }, handle)
     }
 
     /// Returns true if the underlying `NakadiWorker` is still running.
