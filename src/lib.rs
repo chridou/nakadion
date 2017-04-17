@@ -50,7 +50,7 @@ pub use tokenerrors::*;
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
-pub struct Token(String);
+pub struct Token(pub String);
 
 impl Token {
     /// Creates a new token.
@@ -70,7 +70,7 @@ pub trait ProvidesToken: Send + Sync + 'static {
 /// The [`Nakadi Event Type`](https://github.com/zalando/nakadi#creating-event-types).
 /// Similiar to a topic.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct EventType(String);
+pub struct EventType(pub String);
 
 impl EventType {
     /// Creates a new instance of an

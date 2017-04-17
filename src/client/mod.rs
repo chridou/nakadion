@@ -20,7 +20,7 @@ pub use self::worker::NakadiWorker;
 
 /// A `SubscriptionId` is used to guaratee a continous flow of events for a client.
 #[derive(Clone, Debug)]
-pub struct SubscriptionId(Uuid);
+pub struct SubscriptionId(pub Uuid);
 
 impl SubscriptionId {
     pub fn nil() -> Self {
@@ -29,7 +29,7 @@ impl SubscriptionId {
 }
 
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with a `Cursor`.
-pub struct StreamId(String);
+pub struct StreamId(pub String);
 
 impl StreamId {
     pub fn new<T: Into<String>>(id: T) -> Self {
@@ -85,9 +85,9 @@ impl<C: NakadiConnector> NakadiClient<C> {
                            -> (Self, JoinHandle<()>) {
         let (worker, handle) = NakadiWorker::new(connector.clone(), handler, subscription_id);
         (NakadiClient {
-             worker: worker,
-             connector: connector,
-         },
+            worker: worker,
+            connector: connector,
+        },
          handle)
     }
 
