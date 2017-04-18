@@ -20,6 +20,17 @@ pub trait ReadsStream {
 
     /// Attempts to get data from the stream. Also returns the `StreamId`
     /// which must be used for checkpointing.
+    ///
+    /// Starts a new stream for reading events from this subscription. The data will be
+    /// automatically rebalanced between streams of one subscription.
+    /// The minimal consumption unit is a partition,
+    /// so it is possible to start as
+    /// many streams as the total number of partitions in event-types of this subscription.
+    /// The rebalance currently
+    /// only operates with the number of partitions so the amount of data in
+    /// event-types/partitions is not considered during autorebalance.
+    /// The position of the consumption is managed by Nakadi. The client is required
+    /// to commit the cursors he gets in a stream.
     fn read(&self,
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)>;
@@ -30,6 +41,18 @@ pub trait Checkpoints {
     /// Checkpoint `Cursor`s.
     /// Make sure you use the same `StreamId` with which
     /// you retrieved the cursor.
+    ///
+    /// Endpoint for committing offsets of the subscription.
+    /// If there is uncommited data, and no commits happen
+    /// for 60 seconds, then Nakadi will consider the client to be gone,
+    /// and will close the connection. As long
+    /// as no events are sent, the client does not need to commit.
+    /// If the connection is closed, the client has 60 seconds to commit the
+    /// events it received, from the moment
+    /// they were sent. After that, the connection will be considered closed,
+    /// and it will not be possible to do commit with that `X-Nakadi-StreamId` anymore.
+    /// When a batch is committed that also automatically commits all previous batches
+    /// that were sent in a stream for this partition.
     fn checkpoint(&self,
                   stream_id: &StreamId,
                   subscription: &SubscriptionId,
@@ -46,14 +69,36 @@ pub trait NakadiConnector: ReadsStream + Checkpoints + Send + Sync + 'static {
 #[derive(Builder)]
 #[builder(pattern="owned")]
 pub struct ConnectorSettings {
-    #[builder(default="10")]
+    /// Maximum number of empty keep alive batches to get in a row before closing the connection.
+    /// If 0 or undefined will send keep alive messages indefinitely.
+    #[builder(default="0")]
     pub stream_keep_alive_limit: usize,
-    #[builder(default="5000")]
+    /// Maximum number of `Event`s in this stream (over all partitions being streamed in this
+    /// connection).
+    ///
+    /// * If 0 or undefined, will stream batches indefinitely.
+    /// * Stream initialization will fail if `stream_limit` is lower than `batch_limit`.
+    #[builder(default="0")]
     pub stream_limit: usize,
-    #[builder(default="Duration::from_secs(300)")]
+    /// Maximum time in seconds a stream will live before connection is closed by the server.
+    ///
+    /// If 0 or unspecified will stream indefinitely.
+    /// If this timeout is reached, any pending messages (in the sense of `stream_limit`) will be flushed
+    /// to the client.
+    /// Stream initialization will fail if `stream_timeout` is lower than `batch_flush_timeout`.
+    #[builder(default="Duration::from_secs(0)")]
     pub stream_timeout: Duration,
-    #[builder(default="Duration::from_secs(15)")]
+    /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
+    ///
+    ///  * If the amount of buffered Events reaches `batch_limit` before this `batch_flush_timeout`
+    ///  is reached, the messages are immediately flushed to the client and batch flush timer is reset.
+    ///  * If 0 or undefined, will assume 30 seconds.
+    #[builder(default="Duration::from_secs(30)")]
     pub batch_flush_timeout: Duration,
+    ///  Maximum number of `Event`s in each chunk (and therefore per partition) of the stream.
+    ///
+    ///  * If 0 or unspecified will buffer Events indefinitely and flush on reaching of
+    ///  `batch_flush_timeout`.
     #[builder(default="50")]
     pub batch_limit: usize,
     pub nakadi_host: Url,
