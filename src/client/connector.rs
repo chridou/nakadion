@@ -141,16 +141,15 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             Ok(rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let stream_id = if let Some(stream_id) =
-                            rsp.headers
-                                .get::<XNakadiStreamId>()
-                                .map(|v| StreamId(v.to_string())) {
+                        let stream_id = if let Some(stream_id) = rsp.headers
+                            .get::<XNakadiStreamId>()
+                            .map(|v| StreamId(v.to_string())) {
                             stream_id
                         } else {
                             bail!(ClientErrorKind::InvalidResponse("The response lacked the \
                                                                     'X-Nakadi-StreamId' \
                                                                     header."
-                                                                           .to_string()))
+                                .to_string()))
                         };
                         Ok((rsp, stream_id))
                     }
@@ -227,7 +226,10 @@ impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> {
 fn create_hyper_client() -> Client {
     let ssl = NativeTlsClient::new().unwrap();
     let connector = HttpsConnector::new(ssl);
-    Client::with_connector(connector)
+    let mut client = Client::with_connector(connector);
+    client.set_read_timeout(None);
+    client.set_write_timeout(None);
+    client
 }
 
 #[derive(Serialize)]
