@@ -29,6 +29,7 @@ impl SubscriptionId {
 }
 
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with a `Cursor`.
+#[derive(Clone, Debug)]
 pub struct StreamId(pub String);
 
 impl StreamId {
@@ -46,6 +47,11 @@ pub struct Cursor {
     pub cursor_token: Uuid,
 }
 
+pub struct BatchInfo {
+    pub stream_id: StreamId,
+    pub cursor: Cursor,
+}
+
 /// Describes what to do after a batch has been processed.
 ///
 /// Use to control what should happen next.
@@ -53,6 +59,8 @@ pub struct Cursor {
 pub enum AfterBatchAction {
     /// Checkpoint and get next
     Continue,
+    /// Get next without checkpointing.
+    ContinueNoCheckpoint,
     /// Checkpoint then stop.
     Stop,
     /// Stop without checkpointing
@@ -66,7 +74,7 @@ pub trait Handler: Send + Sync + 'static {
     /// Return an `AfterBatchAction` to tell what to do next.
     /// The batch array may be empty.
     /// You may not panic within the handler.
-    fn handle(&self, batch: &str) -> AfterBatchAction;
+    fn handle(&self, batch: &str, info: BatchInfo) -> AfterBatchAction;
 }
 
 /// The client to consume events from `Nakadi`

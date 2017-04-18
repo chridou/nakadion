@@ -64,6 +64,7 @@ pub struct HyperClientConnector<T: ProvidesToken> {
     client: Client,
     token_provider: T,
     settings: ConnectorSettings,
+    authenticate_when_checkpointing: bool,
 }
 
 impl<T: ProvidesToken> HyperClientConnector<T> {
@@ -102,6 +103,7 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
             client: client,
             token_provider: token_provider,
             settings: settings,
+            authenticate_when_checkpointing: false,
         }
     }
 }
@@ -187,9 +189,17 @@ impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> {
 
 
         let mut headers = Headers::new();
-        if let Some(token) = self.token_provider.get_token()? {
+
+        let token = if self.authenticate_when_checkpointing {
+            self.token_provider.get_token()?
+        } else {
+            None
+        };
+
+        if let Some(token) = token {
             headers.set(Authorization(Bearer { token: token.0 }));
         };
+
         headers.set(XNakadiStreamId(stream_id.0.clone()));
         headers.set(ContentType::json());
 

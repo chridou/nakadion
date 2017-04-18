@@ -22,10 +22,10 @@ const TEST_EVENTS: &'static [u8] =
 struct DevNullCheckpointer;
 impl Checkpoints for DevNullCheckpointer {
     fn checkpoint(&self,
-                    _stream_id: &StreamId,
-                    _subscription: &SubscriptionId,
-                    _cursors: &[Cursor])
-                    -> ClientResult<()> {
+                  _stream_id: &StreamId,
+                  _subscription: &SubscriptionId,
+                  _cursors: &[Cursor])
+                  -> ClientResult<()> {
         Ok(())
     }
 }
@@ -33,10 +33,10 @@ impl Checkpoints for DevNullCheckpointer {
 struct CollectingCheckpointer(Mutex<Vec<Cursor>>);
 impl Checkpoints for CollectingCheckpointer {
     fn checkpoint(&self,
-                    _stream_id: &StreamId,
-                    _subscription: &SubscriptionId,
-                    cursors: &[Cursor])
-                    -> ClientResult<()> {
+                  _stream_id: &StreamId,
+                  _subscription: &SubscriptionId,
+                  cursors: &[Cursor])
+                  -> ClientResult<()> {
         let collected = &mut self.0.lock().unwrap();
         for c in cursors {
             collected.push(c.clone());
@@ -47,7 +47,7 @@ impl Checkpoints for CollectingCheckpointer {
 
 struct DevNullHandler(AfterBatchAction);
 impl Handler for DevNullHandler {
-    fn handle(&self, _batch: &str) -> AfterBatchAction {
+    fn handle(&self, _batch: &str, _batch_info: BatchInfo) -> AfterBatchAction {
         self.0.clone()
     }
 }
@@ -55,7 +55,7 @@ impl Handler for DevNullHandler {
 struct CollectingHandler(Mutex<Vec<String>>);
 
 impl Handler for CollectingHandler {
-    fn handle(&self, batch: &str) -> AfterBatchAction {
+    fn handle(&self, batch: &str, _batch_info: BatchInfo) -> AfterBatchAction {
         self.0.lock().unwrap().push(batch.to_string());
         AfterBatchAction::Continue
     }
@@ -68,12 +68,12 @@ fn should_send_a_line_with_events_to_the_handler() {
     let handler = CollectingHandler(collected);
 
     process_line(&DevNullCheckpointer,
-                    TEST_LINE_WITH_EVENTS,
-                    &handler,
-                    &StreamId::new(""),
-                    &SubscriptionId::nil(),
-                    &is_running)
-            .unwrap();
+                 TEST_LINE_WITH_EVENTS,
+                 &handler,
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
 
     let collected = handler.0.lock().unwrap();
 
@@ -88,12 +88,12 @@ fn should_send_a_line_without_events_to_the_handler() {
     let handler = CollectingHandler(collected);
 
     process_line(&DevNullCheckpointer,
-                    TEST_LINE_WITHOUT_EVENTS,
-                    &handler,
-                    &StreamId::new(""),
-                    &SubscriptionId::nil(),
-                    &is_running)
-            .unwrap();
+                 TEST_LINE_WITHOUT_EVENTS,
+                 &handler,
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
 
     let collected = handler.0.lock().unwrap();
 
@@ -110,16 +110,37 @@ fn should_checkpoint_a_line_on_continue() {
     let checkpointer = CollectingCheckpointer(collected);
 
     process_line(&checkpointer,
-                    TEST_LINE_WITHOUT_EVENTS,
-                    &DevNullHandler(AfterBatchAction::Continue),
-                    &StreamId::new(""),
-                    &SubscriptionId::nil(),
-                    &is_running)
-            .unwrap();
+                 TEST_LINE_WITHOUT_EVENTS,
+                 &DevNullHandler(AfterBatchAction::Continue),
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
     assert_eq!(1, collected.len());
+    assert_eq!(true, is_running.load(Ordering::Relaxed));
+}
+
+#[test]
+fn should_not_checkpoint_a_line_on_continue() {
+    let is_running = AtomicBool::new(true);
+    let collected = Mutex::new(Vec::new());
+
+    let checkpointer = CollectingCheckpointer(collected);
+
+    process_line(&checkpointer,
+                 TEST_LINE_WITHOUT_EVENTS,
+                 &DevNullHandler(AfterBatchAction::ContinueNoCheckpoint),
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
+
+    let collected = checkpointer.0.lock().unwrap();
+
+    assert_eq!(0, collected.len());
     assert_eq!(true, is_running.load(Ordering::Relaxed));
 }
 
@@ -131,12 +152,12 @@ fn should_checkpoint_a_line_on_stop() {
     let checkpointer = CollectingCheckpointer(collected);
 
     process_line(&checkpointer,
-                    TEST_LINE_WITHOUT_EVENTS,
-                    &DevNullHandler(AfterBatchAction::Stop),
-                    &StreamId::new(""),
-                    &SubscriptionId::nil(),
-                    &is_running)
-            .unwrap();
+                 TEST_LINE_WITHOUT_EVENTS,
+                 &DevNullHandler(AfterBatchAction::Stop),
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -153,12 +174,12 @@ fn should_not_checkpoint_a_line_on_stop() {
     let checkpointer = CollectingCheckpointer(collected);
 
     process_line(&checkpointer,
-                    TEST_LINE_WITHOUT_EVENTS,
-                    &DevNullHandler(AfterBatchAction::Abort),
-                    &StreamId::new(""),
-                    &SubscriptionId::nil(),
-                    &is_running)
-            .unwrap();
+                 TEST_LINE_WITHOUT_EVENTS,
+                 &DevNullHandler(AfterBatchAction::Abort),
+                 &StreamId::new(""),
+                 &SubscriptionId::nil(),
+                 &is_running)
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -179,10 +200,10 @@ impl TestConnector {
 
 impl Checkpoints for TestConnector {
     fn checkpoint(&self,
-                    _stream_id: &StreamId,
-                    _subscription: &SubscriptionId,
-                    cursors: &[Cursor])
-                    -> ClientResult<()> {
+                  _stream_id: &StreamId,
+                  _subscription: &SubscriptionId,
+                  cursors: &[Cursor])
+                  -> ClientResult<()> {
         let collected = &mut self.checkpointed.lock().unwrap();
         for c in cursors {
             collected.push(c.clone());
@@ -210,7 +231,7 @@ impl NakadiConnector for TestConnector {
 struct TestHandler(Arc<Mutex<Vec<String>>>);
 
 impl Handler for TestHandler {
-    fn handle(&self, batch: &str) -> AfterBatchAction {
+    fn handle(&self, batch: &str, _batch_info: BatchInfo) -> AfterBatchAction {
         let collected = &mut self.0.lock().unwrap();
         collected.push(batch.to_string());
         let count = collected.len();

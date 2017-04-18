@@ -40,9 +40,9 @@ impl NakadiWorker {
                                               is_running.clone());
 
         (NakadiWorker {
-             is_running: is_running,
-             subscription_id: subscription_id,
-         },
+            is_running: is_running,
+            subscription_id: subscription_id,
+        },
          handle)
     }
 
@@ -82,12 +82,12 @@ fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: Arc<C>,
                                                             -> JoinHandle<()> {
     info!("Nakadi worker loop starting");
     thread::spawn(move || {
-                      let connector = connector;
-                      let is_running = is_running;
-                      let subscription_id = subscription_id;
-                      let handler = handler;
-                      nakadi_worker_loop(&*connector, handler, &subscription_id, is_running);
-                  })
+        let connector = connector;
+        let is_running = is_running;
+        let subscription_id = subscription_id;
+        let handler = handler;
+        nakadi_worker_loop(&*connector, handler, &subscription_id, is_running);
+    })
 }
 
 fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
@@ -114,13 +114,15 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                        subscription_id,
                                        &is_running) {
                         Ok(AfterBatchAction::Continue) => (),
+                        Ok(AfterBatchAction::ContinueNoCheckpoint) => (),
                         Ok(leaving_action) => {
                             info!("Leaving worker loop on user request: {:?}", leaving_action);
                             is_running.store(false, Ordering::Relaxed);
                             return;
                         }
                         Err(err) => {
-                            error!("An error occured processing the batch. Reconnecting. Error: {}",
+                            error!("An error occured processing the batch. Reconnecting. Error: \
+                                    {}",
                                    err);
                             break;
                         }
@@ -150,7 +152,11 @@ fn process_line<C: Checkpoints>(connector: &C,
             // This is a hack. We might later want to extract the slice manually.
             let events_json = events.unwrap_or(Vec::new());
             let events_str = serde_json::to_string(events_json.as_slice()).unwrap();
-            match handler.handle(events_str.as_ref()) {
+            let batch_info = BatchInfo {
+                stream_id: stream_id.clone(),
+                cursor: cursor.clone(),
+            };
+            match handler.handle(events_str.as_ref(), batch_info) {
                 AfterBatchAction::Continue => {
                     checkpoint(&*connector,
                                &stream_id,
@@ -158,6 +164,9 @@ fn process_line<C: Checkpoints>(connector: &C,
                                vec![cursor].as_slice(),
                                &is_running);
                     Ok(AfterBatchAction::Continue)
+                }
+                AfterBatchAction::ContinueNoCheckpoint => {
+                    Ok(AfterBatchAction::ContinueNoCheckpoint)
                 }
                 AfterBatchAction::Stop => {
                     checkpoint(&*connector,
