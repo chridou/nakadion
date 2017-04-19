@@ -97,54 +97,48 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                                       is_running: Arc<AtomicBool>) {
     while (*is_running).load(Ordering::Relaxed) {
         info!("No connection to Nakadi. Requesting connection...");
-        let (mut src, stream_id) =
-            if let Some(r) = connect(connector, subscription_id, &is_running) {
-                r
-            } else {
-                warn!("Connection attempt aborted. Stopping the worker.");
-                break;
-            };
-
-        let mut buf = String::new();
-        // let mut buffered_reader = BufReader::new(src);
-        src.read_to_string(&mut buf).unwrap();
-        info!(">>>>>> {}", buf);
+        let (src, stream_id) = if let Some(r) = connect(connector, subscription_id, &is_running) {
+            r
+        } else {
+            warn!("Connection attempt aborted. Stopping the worker.");
+            break;
+        };
 
         let mut lines_read: usize = 0;
-        //        for line in buffered_reader.lines() {
-        //            match line {
-        //                Ok(line) => {
-        //                    lines_read += 1;
-        //                    match process_line(connector,
-        //                                       line.as_ref(),
-        //                                       &handler,
-        //                                       &stream_id,
-        //                                       subscription_id,
-        //                                       &is_running) {
-        //                        Ok(AfterBatchAction::Continue) => (),
-        //                        Ok(AfterBatchAction::ContinueNoCheckpoint) => (),
-        //                        Ok(leaving_action) => {
-        //                            info!("Leaving worker loop  for stream {} on user request: {:?}",
-        //                                  stream_id.0,
-        //                                  leaving_action);
-        //                            is_running.store(false, Ordering::Relaxed);
-        //                            return;
-        //                        }
-        //                        Err(err) => {
-        //                            error!("An error occured processing the batch for stream {}. \
-        //                                    Reconnecting. Error: {}",
-        //                                   stream_id.0,
-        //                                   err);
-        //                            break;
-        //                        }
-        //                    }
-        //                }
-        //                Err(err) => {
-        //                    error!("Stream {} was closed unexpectedly: {}", stream_id.0, err);
-        //                    break;
-        //                }
-        //            }
-        //        }
+        for line in buffered_reader.lines() {
+            match line {
+                Ok(line) => {
+                    lines_read += 1;
+                    match process_line(connector,
+                                       line.as_ref(),
+                                       &handler,
+                                       &stream_id,
+                                       subscription_id,
+                                       &is_running) {
+                        Ok(AfterBatchAction::Continue) => (),
+                        Ok(AfterBatchAction::ContinueNoCheckpoint) => (),
+                        Ok(leaving_action) => {
+                            info!("Leaving worker loop  for stream {} on user request: {:?}",
+                                  stream_id.0,
+                                  leaving_action);
+                            is_running.store(false, Ordering::Relaxed);
+                            return;
+                        }
+                        Err(err) => {
+                            error!("An error occured processing the batch for stream {}. \
+                                    Reconnecting. Error: {}",
+                                   stream_id.0,
+                                   err);
+                            break;
+                        }
+                    }
+                }
+                Err(err) => {
+                    error!("Stream {} was closed unexpectedly: {}", stream_id.0, err);
+                    break;
+                }
+            }
+        }
         info!("Stream({}) from Nakadi ended or there was an error. Dropping connection. Read {} \
                lines.",
               stream_id.0,
