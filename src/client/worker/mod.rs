@@ -192,7 +192,9 @@ fn process_line<C: Checkpoints>(connector: &C,
                 }
             }
         }
-        Err(err) => bail!(ClientErrorKind::UnparsableBatch(err.to_string())),
+        Err(err) => {
+            bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}", line, err)))
+        }
     }
 }
 
