@@ -297,7 +297,7 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
                     settings.nakadi_host,
                     subscription.0)
         } else {
-            format!("{}subscriptions/{}/events{}?",
+            format!("{}subscriptions/{}/events?{}",
                     settings.nakadi_host,
                     subscription.0,
                     params_string)
