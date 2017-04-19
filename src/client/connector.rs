@@ -166,14 +166,17 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)> {
         let settings = &self.settings;
-        let url = format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
+        let url = format!("{}/subscriptions/{}/events",
                           settings.nakadi_host,
-                          subscription.0,
-                          settings.stream_keep_alive_limit,
-                          settings.stream_limit,
-                          settings.stream_timeout.as_secs(),
-                          settings.batch_flush_timeout.as_secs(),
-                          settings.batch_limit);
+                          subscription.0);
+        //        let url = format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
+        //                          settings.nakadi_host,
+        //                          subscription.0,
+        //                          settings.stream_keep_alive_limit,
+        //                          settings.stream_limit,
+        //                          settings.stream_timeout.as_secs(),
+        //                          settings.batch_flush_timeout.as_secs(),
+        //                          settings.batch_limit);
 
         let mut headers = Headers::new();
         if let Some(token) = self.token_provider.get_token()? {
