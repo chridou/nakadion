@@ -95,6 +95,7 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                                       subscription_id: &SubscriptionId,
                                                       is_running: Arc<AtomicBool>) {
     while (*is_running).load(Ordering::Relaxed) {
+        info!("No connection to Nakadi. Requesting connection...");
         let (src, stream_id) = if let Some(r) = connect(connector, subscription_id, &is_running) {
             r
         } else {
@@ -104,9 +105,11 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
 
         let buffered_reader = BufReader::new(src);
 
+        let mut lines_read: usize = 0;
         for line in buffered_reader.lines() {
             match line {
                 Ok(line) => {
+                    lines_read += 1;
                     match process_line(connector,
                                        line.as_ref(),
                                        &handler,
@@ -134,6 +137,9 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                 }
             }
         }
+        info!("Stream from Nakadi ended or there was an error. Dropping connection. Read {} \
+               lines.",
+              lines_read);
     }
 
     info!("Nakadi worker loop stopping.");
