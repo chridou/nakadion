@@ -94,17 +94,17 @@ pub struct ConnectorSettings {
     ///  * If the amount of buffered Events reaches `batch_limit` before this `batch_flush_timeout`
     ///  is reached, the messages are immediately flushed to the client and batch flush timer is reset.
     ///  * If 0 or undefined, will assume 30 seconds.
-    #[builder(default="Duration::from_secs(30)")]
+    #[builder(default="Duration::from_secs(0)")]
     pub batch_flush_timeout: Duration,
     ///  Maximum number of `Event`s in each chunk (and therefore per partition) of the stream.
     ///
     ///  * If 0 or unspecified will buffer Events indefinitely and flush on reaching of
     ///  `batch_flush_timeout`.
-    #[builder(default="1")]
+    #[builder(default="0")]
     pub batch_limit: usize,
     /// The amount of uncommitted events Nakadi will stream before pausing the stream. When in paused
     /// state and commit comes - the stream will resume. Minimal value is 1.
-    #[builder(default="10")]
+    #[builder(default="0")]
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: Url,
@@ -267,15 +267,41 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)> {
         let settings = &self.settings;
-        let url = format!("{}subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}&max_uncommitted_events={}",
-                          settings.nakadi_host,
-                          subscription.0,
-                          settings.stream_keep_alive_limit,
-                          settings.stream_limit,
-                          settings.stream_timeout.as_secs(),
-                          settings.batch_flush_timeout.as_secs(),
-                          settings.batch_limit,
-                          settings.max_uncommitted_events);
+
+        let mut params = Vec::new();
+        if settings.stream_keep_alive_limit != 0 {
+            params.push(format!("stream_keep_alive_limit={}",
+                                settings.stream_keep_alive_limit));
+        }
+        if settings.stream_limit != 0 {
+            params.push(format!("stream_limit={}", settings.stream_limit));
+        }
+        if settings.stream_timeout != Duration::from_secs(0) {
+            params.push(format!("stream_timeout={}", settings.stream_timeout.as_secs()));
+        }
+        if settings.batch_flush_timeout != Duration::from_secs(0) {
+            params.push(format!("batch_flush_timeout={}",
+                                settings.batch_flush_timeout.as_secs()));
+        }
+        if settings.batch_limit != 0 {
+            params.push(format!("batch_limit={}", settings.batch_limit));
+        }
+        if settings.max_uncommitted_events != 0 {
+            params.push(format!("max_uncommitted_events={}", settings.max_uncommitted_events));
+        }
+
+        let params_string = params.join("&");
+
+        let url = if params_string.is_empty() {
+            format!("{}subscriptions/{}/events",
+                    settings.nakadi_host,
+                    subscription.0)
+        } else {
+            format!("{}subscriptions/{}/events{}?",
+                    settings.nakadi_host,
+                    subscription.0,
+                    params_string)
+        };
 
         let mut headers = Headers::new();
         if let Some(token) = self.token_provider.get_token()? {
