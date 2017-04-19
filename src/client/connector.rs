@@ -189,17 +189,17 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             Ok(rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let stream_id = if let Some(stream_id) = rsp.headers
-                            .get::<XNakadiStreamId>()
-                            .map(|v| StreamId(v.to_string())) {
-                            stream_id
-                        } else {
-                            bail!(ClientErrorKind::InvalidResponse("The response lacked the \
-                                                                    'X-Nakadi-StreamId' \
-                                                                    header."
-                                .to_string()))
-                        };
-                        Ok((rsp, stream_id))
+                        //                        let stream_id = if let Some(stream_id) = rsp.headers
+                        //                            .get::<XNakadiStreamId>()
+                        //                            .map(|v| StreamId(v.to_string())) {
+                        //                            stream_id
+                        //                        } else {
+                        //                            bail!(ClientErrorKind::InvalidResponse("The response lacked the \
+                        //                                                                    'X-Nakadi-StreamId' \
+                        //                                                                    header."
+                        //                                .to_string()))
+                        //                        };
+                        Ok((rsp, StreamId::new("test")))//stream_id))
                     }
                     StatusCode::BadRequest => {
                         bail!(ClientErrorKind::Request(rsp.status.to_string()))
