@@ -301,13 +301,25 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
                         Ok((rsp, stream_id))
                     }
                     StatusCode::BadRequest => {
-                        bail!(ClientErrorKind::Request(rsp.status.to_string()))
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Request(body))
                     }
                     StatusCode::NotFound => {
-                        bail!(ClientErrorKind::NoSubscription(rsp.status.to_string()))
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::NoSubscription(body))
                     }
                     StatusCode::Forbidden => {
-                        bail!(ClientErrorKind::Forbidden(rsp.status.to_string()))
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Forbidden(body))
                     }
                     StatusCode::Conflict => {
                         let mut buf = String::new();
