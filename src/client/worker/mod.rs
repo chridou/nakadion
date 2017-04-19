@@ -212,9 +212,9 @@ fn connect<C: ReadsStream>(connector: &C,
                 return Some(r);
             }
             Err(ClientError(ClientErrorKind::Conflict(msg), _)) => {
-                warn!("There was a conflict. Maybe there are no shards to read from left: {}",
+                warn!("{}. Maybe there are no shards to read from left. Waiting 10 seconds.",
                       msg);
-                let pause = ::std::cmp::max(retry_pause(attempt - 1), Duration::from_secs(30));
+                let pause = Duration::from_secs(10);
                 thread::sleep(pause);
             }
             Err(err) => {
