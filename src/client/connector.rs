@@ -182,7 +182,7 @@ impl ConnectorSettingsBuilder {
             builder
         };
         let builder = if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
-            builder.max_uncommitted_events(anv_val.parse()
+            builder.nakadi_host(anv_val.parse()
                 .map_err(|err| format!("Could not parse 'NAKADION_NAKADI_HOST': {}", err))?)
         } else {
             warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
