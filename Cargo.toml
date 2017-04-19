@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -22,6 +22,9 @@ error-chain = "0.10"
 serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
+
+metrics = "0.2"
+histogram =  "0.6"
 
 [dev-dependencies] 
 env_logger = "0.4"

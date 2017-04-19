@@ -43,8 +43,12 @@ extern crate serde_json;
 #[macro_use]
 extern crate error_chain;
 
+extern crate metrics as libmetrics;
+extern crate histogram;
+
 pub mod client;
 mod tokenerrors;
+pub mod metrics;
 
 pub use tokenerrors::*;
 

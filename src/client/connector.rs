@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::time::Duration;
+use std::env;
 
 use url::Url;
 use hyper::Client;
@@ -66,7 +67,7 @@ pub trait NakadiConnector: ReadsStream + Checkpoints + Send + Sync + 'static {
 }
 
 /// Settings for establishing a connection to `Nakadi`.
-#[derive(Builder)]
+#[derive(Builder, Debug)]
 #[builder(pattern="owned")]
 pub struct ConnectorSettings {
     /// Maximum number of empty keep alive batches to get in a row before closing the connection.
@@ -101,11 +102,95 @@ pub struct ConnectorSettings {
     ///  `batch_flush_timeout`.
     #[builder(default="1")]
     pub batch_limit: usize,
-    // The amount of uncommitted events Nakadi will stream before pausing the stream. When in paused
-    // state and commit comes - the stream will resume. Minimal value is 1.
+    /// The amount of uncommitted events Nakadi will stream before pausing the stream. When in paused
+    /// state and commit comes - the stream will resume. Minimal value is 1.
     #[builder(default="10")]
     pub max_uncommitted_events: usize,
+    /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: Url,
+}
+
+impl ConnectorSettingsBuilder {
+    /// Create a builder from environment variables.
+    ///
+    /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
+    ///
+    /// Variables:
+    ///
+    /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
+    /// * NAKADION_MAX_UNCOMMITED_EVENTS: See `ConnectorSettings::max_uncommitted_events`
+    /// * NAKADION_BATCH_LIMIT: See `ConnectorSettings::batch_limit`
+    /// * NAKADION_BATCH_FLUSH_TIMEOUT_SECS: See `ConnectorSettings::batch_flush_timeout`
+    /// * NAKADION_STREAM_TIMEOUT_SECS: See `ConnectorSettings::stream_timeout`
+    /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
+    /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See `ConnectorSettings::stream_keep_alive_limit`
+    pub fn from_env() -> Result<ConnectorSettingsBuilder, String> {
+        let builder = ConnectorSettingsBuilder::default();
+        let builder = if let Some(anv_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
+            builder.stream_keep_alive_limit(anv_val.parse()
+                .map_err(|err| {
+                    format!("Could not parse 'NAKADION_STREAM_KEEP_ALIVE_LIMIT': {}",
+                            err)
+                })?)
+        } else {
+            warn!("Environment variable 'NAKADION_STREAM_KEEP_ALIVE_LIMIT' not found. Using \
+                   default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_STREAM_LIMIT").ok() {
+            builder.stream_limit(anv_val.parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_STREAM_LIMIT': {}", err))?)
+        } else {
+            warn!("Environment variable 'NAKADION_STREAM_LIMIT' not found. Using default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_STREAM_TIMEOUT_SECS").ok() {
+            builder.stream_timeout(Duration::from_secs(anv_val.parse()
+                    .map_err(|err| {
+                        format!("Could not parse 'NAKADION_STREAM_TIMEOUT_SECS': {}", err)
+                    })?))
+        } else {
+            warn!("Environment variable 'NAKADION_STREAM_TIMEOUT_SECS' not found. Using default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_BATCH_FLUSH_TIMEOUT_SECS").ok() {
+            builder.batch_flush_timeout(Duration::from_secs(anv_val.parse()
+                .map_err(|err| {
+                    format!("Could not parse 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS': {}",
+                            err)
+                })?))
+        } else {
+            warn!("Environment variable 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS' not found. Using \
+                   default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
+            builder.batch_limit(anv_val.parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err))?)
+        } else {
+            warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_MAX_UNCOMMITED_EVENTS").ok() {
+            builder.max_uncommitted_events(anv_val.parse()
+                    .map_err(|err| {
+                        format!("Could not parse 'NAKADION_MAX_UNCOMMITED_EVENTS': {}", err)
+                    })?)
+        } else {
+            warn!("Environment variable 'NAKADION_MAX_UNCOMMITED_EVENTS' not found. Using \
+                   default.");
+            builder
+        };
+        let builder = if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+            builder.max_uncommitted_events(anv_val.parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_NAKADI_HOST': {}", err))?)
+        } else {
+            warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
+                   manually.");
+            builder
+        };
+        Ok(builder)
+    }
 }
 
 /// A `NakadiConnector` using `Hyper` for dispatching requests.
@@ -155,6 +240,20 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
             authenticate_when_checkpointing: true,
         }
     }
+
+    pub fn from_env(token_provider: T) -> Result<HyperClientConnector<T>, String> {
+        HyperClientConnector::from_env_with_client(create_hyper_client(), token_provider)
+    }
+
+    pub fn from_env_with_client(client: Client,
+                                token_provider: T)
+                                -> Result<HyperClientConnector<T>, String> {
+        let builder = ConnectorSettingsBuilder::from_env().map_err(|err| format!("Could not create settings builder: {}", err))?;
+        let settings = builder.build()
+            .map_err(|err| format!("Could not create settings from builder: {}", err))?;
+        info!("Creating HyperClientConnector from: {:?}", settings);
+        Ok(HyperClientConnector::with_client_and_settings(client, token_provider, settings))
+    }
 }
 
 impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
@@ -179,8 +278,6 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
                           settings.batch_flush_timeout.as_secs(),
                           settings.batch_limit,
                           settings.max_uncommitted_events);
-
-        info!("Connecting wit URL '{}'", url);
 
         let mut headers = Headers::new();
         if let Some(token) = self.token_provider.get_token()? {
