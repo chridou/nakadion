@@ -202,7 +202,7 @@ fn connect<C: ReadsStream>(connector: &C,
         info!("Connecting to Nakadi(attempt {}).", attempt);
         match connector.read(subscription_id) {
             Ok(r) => {
-                info!("Connected.");
+                info!("Connected. Stream id is {}", (r.1).0);
                 return Some(r);
             }
             Err(ClientError(ClientErrorKind::Conflict(msg), _)) => {
