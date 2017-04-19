@@ -286,7 +286,7 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
 
 
         match request.send() {
-            Ok(rsp) => {
+            Ok(mut rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
                         let stream_id = if let Some(stream_id) = rsp.headers
@@ -310,7 +310,11 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
                         bail!(ClientErrorKind::Forbidden(rsp.status.to_string()))
                     }
                     StatusCode::Conflict => {
-                        bail!(ClientErrorKind::Conflict(rsp.status.to_string()))
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Conflict(body))
                     }
                     other_status => bail!(other_status.to_string()),
                 }

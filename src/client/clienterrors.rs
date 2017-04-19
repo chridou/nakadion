@@ -25,8 +25,8 @@ error_chain! {
             display("Access is forbidden for the client or event type: '{}'", t)
         }
         Conflict(t: String) {
-            description("There are no empty slots for this subscriptions")
-            display("There are no empty slots for this subscriptions: '{}'", t)
+            description("There was a conflict.")
+            display("There was a conlict: {}", t)
         }
         InvalidResponse(t: String) {
             description("The response from nakadi made further processing impossible")
