@@ -90,22 +90,24 @@ fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: Arc<C>,
     })
 }
 
+use std::io::Read;
 fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                                       handler: H,
                                                       subscription_id: &SubscriptionId,
                                                       is_running: Arc<AtomicBool>) {
     while (*is_running).load(Ordering::Relaxed) {
         info!("No connection to Nakadi. Requesting connection...");
-        let (src, stream_id) = if let Some(r) = connect(connector, subscription_id, &is_running) {
-            r
-        } else {
-            warn!("Connection attempt aborted. Stopping the worker.");
-            break;
-        };
+        let (mut src, stream_id) =
+            if let Some(r) = connect(connector, subscription_id, &is_running) {
+                r
+            } else {
+                warn!("Connection attempt aborted. Stopping the worker.");
+                break;
+            };
 
         let mut buf = String::new();
-        let mut buffered_reader = BufReader::new(src);
-        buffered_reader.read_line(&mut buf).unwrap();
+        // let mut buffered_reader = BufReader::new(src);
+        src.read_to_string(&mut buf).unwrap();
         info!(">>>>>> {}", buf);
 
         let mut lines_read: usize = 0;
