@@ -119,26 +119,30 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                         Ok(AfterBatchAction::Continue) => (),
                         Ok(AfterBatchAction::ContinueNoCheckpoint) => (),
                         Ok(leaving_action) => {
-                            info!("Leaving worker loop on user request: {:?}", leaving_action);
+                            info!("Leaving worker loop  for stream {} on user request: {:?}",
+                                  stream_id.0,
+                                  leaving_action);
                             is_running.store(false, Ordering::Relaxed);
                             return;
                         }
                         Err(err) => {
-                            error!("An error occured processing the batch. Reconnecting. Error: \
-                                    {}",
+                            error!("An error occured processing the batch for stream {}. \
+                                    Reconnecting. Error: {}",
+                                   stream_id,
                                    err);
                             break;
                         }
                     }
                 }
                 Err(err) => {
-                    error!("Stream was closed unexpectedly: {}", err);
+                    error!("Stream {} was closed unexpectedly: {}", stream_id.0, err);
                     break;
                 }
             }
         }
-        info!("Stream from Nakadi ended or there was an error. Dropping connection. Read {} \
+        info!("Stream({}) from Nakadi ended or there was an error. Dropping connection. Read {} \
                lines.",
+              stream_id.0,
               lines_read);
     }
 
@@ -183,7 +187,7 @@ fn process_line<C: Checkpoints>(connector: &C,
                     Ok(AfterBatchAction::Stop)
                 }
                 AfterBatchAction::Abort => {
-                    warn!("Abort. Skipping checkpointing.");
+                    warn!("Abort. Skipping checkpointing on stream {}.", stream_id.0);
                     Ok(AfterBatchAction::Abort)
                 }
             }
@@ -202,7 +206,7 @@ fn connect<C: ReadsStream>(connector: &C,
         info!("Connecting to Nakadi(attempt {}).", attempt);
         match connector.read(subscription_id) {
             Ok(r) => {
-                info!("Connected. Stream id is {}", (r.1).0);
+                info!("Connected to Nakadi. Stream id is {}", (r.1).0);
                 return Some(r);
             }
             Err(ClientError(ClientErrorKind::Conflict(msg), _)) => {

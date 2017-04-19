@@ -287,6 +287,7 @@ fn create_hyper_client() -> Client {
     client
 }
 
+/// Nedeed to serialize cursors when checkpointing.
 #[derive(Serialize)]
 struct CursorContainer<'a> {
     items: &'a [Cursor],
