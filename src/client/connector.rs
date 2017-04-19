@@ -166,7 +166,7 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)> {
         let settings = &self.settings;
-        let url = format!("www.google.de");
+        let url = format!("https://www.google.de");
         //        let url = format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}\
         //                 &stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
         //                          settings.nakadi_host,
