@@ -128,7 +128,7 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                         Err(err) => {
                             error!("An error occured processing the batch for stream {}. \
                                     Reconnecting. Error: {}",
-                                   stream_id,
+                                   stream_id.0,
                                    err);
                             break;
                         }
