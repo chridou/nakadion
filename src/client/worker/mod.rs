@@ -90,7 +90,6 @@ fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: Arc<C>,
     })
 }
 
-use std::io::Read;
 fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                                       handler: H,
                                                       subscription_id: &SubscriptionId,
@@ -103,6 +102,8 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
             warn!("Connection attempt aborted. Stopping the worker.");
             break;
         };
+
+        let buffered_reader = BufReader::new(src);
 
         let mut lines_read: usize = 0;
         for line in buffered_reader.lines() {
