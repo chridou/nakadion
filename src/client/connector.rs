@@ -178,10 +178,9 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
         //                          settings.batch_limit);
 
         let mut headers = Headers::new();
-        if let Some(token) = None {
-            // self.token_provider.get_token()? {
-            headers.set(Authorization(Bearer { token: token.0 }));
-        };
+        //        if let Some(token) = self.token_provider.get_token()? {
+        //            headers.set(Authorization(Bearer { token: token.0 }));
+        //        };
 
         let request = self.client.get(&url).headers(headers);
 
