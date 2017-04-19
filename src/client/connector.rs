@@ -99,8 +99,12 @@ pub struct ConnectorSettings {
     ///
     ///  * If 0 or unspecified will buffer Events indefinitely and flush on reaching of
     ///  `batch_flush_timeout`.
-    #[builder(default="50")]
+    #[builder(default="1")]
     pub batch_limit: usize,
+    // The amount of uncommitted events Nakadi will stream before pausing the stream. When in paused
+    // state and commit comes - the stream will resume. Minimal value is 1.
+    #[builder(default="10")]
+    pub max_uncommitted_events: usize,
     pub nakadi_host: Url,
 }
 
@@ -166,14 +170,15 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
             subscription: &SubscriptionId)
             -> ClientResult<(Self::StreamingSource, StreamId)> {
         let settings = &self.settings;
-        let url = format!("{}/subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}",
+        let url = format!("{}subscriptions/{}/events?stream_keep_alive_limit={}&stream_limit={}&stream_timeout={}&batch_flush_timeout={}&batch_limit={}&max_uncommitted_events={}",
                           settings.nakadi_host,
                           subscription.0,
                           settings.stream_keep_alive_limit,
                           settings.stream_limit,
                           settings.stream_timeout.as_secs(),
                           settings.batch_flush_timeout.as_secs(),
-                          settings.batch_limit);
+                          settings.batch_limit,
+                          settings.max_uncommitted_events);
 
         info!("Connecting wit URL '{}'", url);
 
