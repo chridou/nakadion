@@ -61,8 +61,13 @@ pub trait Checkpoints {
                   -> ClientResult<()>;
 }
 
+pub trait ProvidesStreamInfo {
+    fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo>;
+}
+
 /// Connects to `Nakadi` for checkpointing and consuming events.
-pub trait NakadiConnector: ReadsStream + Checkpoints + Send + Sync + 'static {
+pub trait NakadiConnector
+    : ReadsStream + Checkpoints + ProvidesStreamInfo + Send + Sync + 'static {
     fn settings(&self) -> &ConnectorSettings;
 }
 
@@ -417,6 +422,61 @@ impl Checkpoints for HyperClientConnector {
         }
     }
 }
+
+impl ProvidesStreamInfo for HyperClientConnector {
+    fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo> {
+        let url = format!("{}subscriptions/{}/stats",
+                          self.settings.nakadi_host,
+                          subscription.0);
+
+        let mut headers = Headers::new();
+        if let Some(token) = self.token_provider.get_token()? {
+            headers.set(Authorization(Bearer { token: token.0 }));
+        };
+
+        let request = self.client.get(&url).headers(headers);
+
+
+        match request.send() {
+            Ok(mut rsp) => {
+                match rsp.status {
+                    StatusCode::Ok => {
+                        let payload: StreamInfo = serde_json::from_reader(rsp).map_err(|err| {
+                                ClientErrorKind::InvalidResponse(format!("Could not parse \
+                                                                          stream stats: {}",
+                                                                         err))
+                            })?;
+                        Ok(payload)
+                    }
+                    StatusCode::BadRequest => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Request(body))
+                    }
+                    StatusCode::NotFound => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::NoSubscription(body))
+                    }
+                    StatusCode::Forbidden => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Forbidden(body))
+                    }
+                    other_status => bail!(other_status.to_string()),
+                }
+            }
+            Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
+        }
+    }
+}
+
 
 fn create_hyper_client() -> Client {
     let ssl = NativeTlsClient::new().unwrap();

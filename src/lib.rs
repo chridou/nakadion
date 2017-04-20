@@ -48,6 +48,8 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use uuid::Uuid;
+use serde::{Deserialize, Deserializer};
+
 
 mod tokenerrors;
 pub mod metrics;
@@ -103,8 +105,47 @@ impl SubscriptionId {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PartitionId(pub usize);
+
+impl Deserialize for PartitionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer
+    {
+        let v = String::deserialize(deserializer)?;
+        match v.parse() {
+            Ok(v) => Ok(PartitionId(v)),
+            Err(err) => {
+                Err(serde::de::Error::custom(format!("{} is not a usize required for \
+                                                      PartitionId.",
+                                                     err)))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PartitionInfo {
+    partition: PartitionId,
+    stream_id: StreamId,
+    unconsumed_events: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EventTypeInfo {
+    event_type: EventType,
+    partitions: Vec<PartitionInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreamInfo {
+    #[serde(rename="items")]
+    event_types: Vec<EventTypeInfo>,
+}
+
+
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with a `Cursor`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct StreamId(pub String);
 
 impl StreamId {
@@ -116,7 +157,7 @@ impl StreamId {
 /// A `Cursor` describes a position in the stream. The cursor is used for checkpointing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursor {
-    pub partition: usize,
+    pub partition: PartitionId,
     pub offset: String,
     pub event_type: EventType,
     pub cursor_token: Uuid,
@@ -143,13 +184,21 @@ pub enum AfterBatchAction {
 }
 
 /// Handles batches of events received from `Nakadi`.
-pub trait Handler: Send + Sync + 'static {
+pub trait Handler: Send + Sync {
     /// Handle the batch of events. The supplied string contains
     /// the whole batch of events as a `JSOS` array.
     /// Return an `AfterBatchAction` to tell what to do next.
     /// The batch array may be empty.
     /// You may not panic within the handler.
-    fn handle(&self, batch: &str, info: BatchInfo) -> AfterBatchAction;
+    fn handle(&self, batch: String, info: BatchInfo) -> AfterBatchAction;
+}
+
+impl<F> Handler for F
+    where F: Send + Sync + 'static + Fn(String, BatchInfo) -> AfterBatchAction
+{
+    fn handle(&self, batch: String, info: BatchInfo) -> AfterBatchAction {
+        (*self)(batch, info)
+    }
 }
 
 /// The client to consume events from `Nakadi`
@@ -162,10 +211,10 @@ impl<C: NakadiConnector> NakadiClient<C> {
     /// Creates a new instance. The returned `JoinHandle` can
     /// be used to synchronize with the underlying worker.
     /// The underlying worker will be stopped once the client is dropped.
-    pub fn new<H: Handler>(subscription_id: SubscriptionId,
-                           connector: Arc<C>,
-                           handler: H)
-                           -> (Self, JoinHandle<()>) {
+    pub fn new<H: Handler + 'static>(subscription_id: SubscriptionId,
+                                     connector: Arc<C>,
+                                     handler: H)
+                                     -> (Self, JoinHandle<()>) {
         let (worker, handle) = NakadiWorker::new(connector.clone(), handler, subscription_id);
         (NakadiClient {
             worker: worker,

@@ -17,6 +17,13 @@ use super::connector::{NakadiConnector, Checkpoints, ReadsStream};
 const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000,
                                        10000, 30000, 60000, 300000, 600000];
 
+mod partitionworker;
+
+pub enum WorkerMessage {
+    Stop,
+    Batch(BatchInfo, String),
+}
+
 /// The worker runs the consumption of events.
 /// It will try to reconnect automatically once the stream breaks.
 pub struct NakadiWorker {
@@ -28,10 +35,10 @@ impl NakadiWorker {
     /// Creates a new instance. The returned `JoinHandle` can
     /// be used to synchronize with the underlying worker thread.
     /// The underlying worker will be stopped once the worker is dropped.
-    pub fn new<C: NakadiConnector, H: Handler>(connector: Arc<C>,
-                                               handler: H,
-                                               subscription_id: SubscriptionId)
-                                               -> (NakadiWorker, JoinHandle<()>) {
+    pub fn new<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>,
+                                                         handler: H,
+                                                         subscription_id: SubscriptionId)
+                                                         -> (NakadiWorker, JoinHandle<()>) {
         let is_running = Arc::new(AtomicBool::new(true));
 
         let handle = start_nakadi_worker_loop(connector.clone(),
@@ -75,7 +82,7 @@ struct DeserializedBatch {
     events: Option<Vec<Value>>,
 }
 
-fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: Arc<C>,
+fn start_nakadi_worker_loop<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>,
                                                             handler: H,
                                                             subscription_id: SubscriptionId,
                                                             is_running: Arc<AtomicBool>)
@@ -166,31 +173,7 @@ fn process_line<C: Checkpoints>(connector: &C,
                 stream_id: stream_id.clone(),
                 cursor: cursor.clone(),
             };
-            match handler.handle(events_str.as_ref(), batch_info) {
-                AfterBatchAction::Continue => {
-                    checkpoint(&*connector,
-                               &stream_id,
-                               subscription_id,
-                               vec![cursor].as_slice(),
-                               &is_running);
-                    Ok(AfterBatchAction::Continue)
-                }
-                AfterBatchAction::ContinueNoCheckpoint => {
-                    Ok(AfterBatchAction::ContinueNoCheckpoint)
-                }
-                AfterBatchAction::Stop => {
-                    checkpoint(&*connector,
-                               &stream_id,
-                               subscription_id,
-                               vec![cursor].as_slice(),
-                               &is_running);
-                    Ok(AfterBatchAction::Stop)
-                }
-                AfterBatchAction::Abort => {
-                    warn!("Abort. Skipping checkpointing on stream {}.", stream_id.0);
-                    Ok(AfterBatchAction::Abort)
-                }
-            }
+            unimplemented!()
         }
         Err(err) => {
             bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}", line, err)))
@@ -225,34 +208,6 @@ fn connect<C: ReadsStream>(connector: &C,
         }
     }
     None
-}
-
-fn checkpoint<C: Checkpoints>(checkpointer: &C,
-                              stream_id: &StreamId,
-                              subscription_id: &SubscriptionId,
-                              cursors: &[Cursor],
-                              is_running: &AtomicBool) {
-    let mut attempt = 0;
-    while is_running.load(Ordering::Relaxed) || attempt == 0 {
-        if attempt > 0 {
-            let pause = retry_pause(attempt - 1);
-            thread::sleep(pause)
-        }
-        attempt += 1;
-        match checkpointer.checkpoint(stream_id, subscription_id, cursors) {
-            Ok(()) => return,
-            Err(err) => {
-                if attempt > 5 {
-                    error!("Finally gave up to checkpoint cursor after {} attempts.",
-                           err);
-                    return;
-                } else {
-                    warn!("Failed to checkpoint to Nakadi: {}", err);
-                }
-            }
-        }
-    }
-    error!("Checkpointing aborted due to worker shutdown.");
 }
 
 fn retry_pause(retry: usize) -> Duration {
