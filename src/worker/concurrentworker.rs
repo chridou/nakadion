@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde_json::{self, Value};
 
 use ::*;
-use super::connector::{NakadiConnector, Checkpoints, ReadsStream};
+use super::connector::{NakadiConnector, Checkpoints};
 
 const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000,
                                        10000, 30000, 60000, 300000, 600000];
