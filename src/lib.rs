@@ -1,27 +1,40 @@
 //! # Nakadion
-//!
+//! 
 //! A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
+//! 
+//! Nakadion uses the Subscription API of Nakadi.
 //!
-//! Nakadion uses the [Subscription API](https://github.com/zalando/nakadi#subscriptions)
-//! of Nakadi on the consuming side.
+//! ## Consuming
+//! 
+//! Nakadion supports two modes of consuming events. A sequuential one and a cuncurrent one.
+//! 
+//! ### Sequential Consumption
+//! 
+//! In this mode Nakadion will read a batch from Nakadi then call a handler on theese 
+//! and afterwards try to commit the batch.
+//! This mode of operation is simple, straight forward and should be sufficient for most scenarios.
+//! 
+//! ### Concurrent Consumption
 //!
-//! ## Documentation
-//!
-//! Documenatation can be found on [docs.rs](https://docs.rs)
-//!
+//! ** DO NOT USE FOR NOW **
+//! 
+//! In this mode Nakadion will spawn a number of worker threads and distribute work among them based on 
+//! the `partion id` of a batch. The workers are not dedidacted to a partition. 
+//! Work is rather distributed based on a hash of the `partition id`. 
+//! 
 //! ## Performance
-//!
-//! This library is not meant to be used in a high performance scenario.
-//! It uses synchronous IO and lacks optimizations.
-//!
+//! 
+//! This library is not meant to be used in a high performance scenario. It uses synchronous IO.
+//! 
+//! ## Documentation
+//! 
+//! Documenatation can be found at [docs.rs](https://docs.rs/nakadion)
+//! 
 //! ## License
-//!
-//! Nakadion is distributed under the terms of both the MIT license
-//! and the Apache License (Version 2.0).
-//!
-//! See LICENSE-APACHE and LICENSE-MIT for details.
-#![recursion_limit = "1024"]
-
+//! 
+//! Nakadion is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+//! 
+//! See LICENSE-APACHE and LICENSE-MIT for details.#![recursion_limit = "1024"]
 #[macro_use]
 extern crate log;
 
@@ -62,7 +75,7 @@ pub mod worker;
 pub use tokenerrors::*;
 pub use clienterrors::*;
 pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector,
-                          ConnectorSettings, ConnectorSettingsBuilder};
+                          ConnectorSettings, ConnectorSettingsBuilder, ProvidesStreamInfo};
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
@@ -106,6 +119,7 @@ impl SubscriptionId {
     }
 }
 
+/// A partition id that comes with a `Cursor`
 #[derive(Debug, Clone, Serialize)]
 pub struct PartitionId(pub usize);
 
@@ -125,6 +139,7 @@ impl Deserialize for PartitionId {
     }
 }
 
+/// Information on a partition
 #[derive(Debug, Deserialize)]
 pub struct PartitionInfo {
     partition: PartitionId,
@@ -132,6 +147,7 @@ pub struct PartitionInfo {
     unconsumed_events: usize,
 }
 
+/// An `EventType` can be published on multiple partitions.
 #[derive(Debug, Deserialize)]
 pub struct EventTypeInfo {
     event_type: EventType,
@@ -139,11 +155,15 @@ pub struct EventTypeInfo {
 }
 
 impl EventTypeInfo {
+    /// Returns the number of partitions this `EventType` is 
+    /// published over.
     pub fn num_partitions(&self) -> usize {
         self.partitions.len()
     }
 }
 
+/// A stream can provide multiple `EventTypes` where each of them can have 
+/// its own partitioning setup.
 #[derive(Debug, Deserialize)]
 pub struct StreamInfo {
     #[serde(rename="items")]
@@ -151,6 +171,8 @@ pub struct StreamInfo {
 }
 
 impl StreamInfo {
+    /// Returns the number of partitions of the `EventType`
+    /// that has the most partitions.
     pub fn max_partitions(&self) -> usize {
         self.event_types.iter().map(|et| et.num_partitions()).max().unwrap_or(0)
     }
@@ -176,6 +198,8 @@ pub struct Cursor {
     pub cursor_token: Uuid,
 }
 
+/// Information on a current batch. This might be
+/// useful for a `Handler` that wants to do checkpointing on its own.
 #[derive(Clone, Debug)]
 pub struct BatchInfo {
     pub stream_id: StreamId,
@@ -238,6 +262,10 @@ impl<C: NakadiConnector> NakadiClient<C> {
          handle))
     }
 
+    /// Configure the client from environment variables. 
+    ///
+    /// The `SubscriptionId` is provided manually. Useful if you want to consume
+    /// multiple subscriptions but want to use the same settings everywhere else.
     pub fn from_env_with_subscription<H: Handler + 'static, T: ProvidesToken>(
         subscription_id: SubscriptionId,
         handler: H,
@@ -254,6 +282,8 @@ impl<C: NakadiConnector> NakadiClient<C> {
 
     }
 
+    /// Configure the client solely from environment variables. 
+    /// Including the `SubscriptionId`.
     pub fn from_env<H: Handler + 'static, T: ProvidesToken>(
         handler: H,
         token_provider: T) -> Result<(NakadiClient<HyperClientConnector>, JoinHandle<()>), String> {

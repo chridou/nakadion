@@ -501,6 +501,12 @@ mod test {
         }
     }
 
+    impl ProvidesStreamInfo for TestConnector {
+        fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo> {
+            unimplemented!()
+        }
+    }
+
     struct TestHandler(Arc<Mutex<Vec<String>>>);
 
     impl Handler for TestHandler {
@@ -549,7 +555,7 @@ mod test {
         let collected = Arc::new(Mutex::new(Vec::new()));
         let handler = TestHandler(collected.clone());
 
-        let (worker, handle) = NakadiWorker::new(connector.clone(), handler, subscription_id);
+        let (worker, handle) = SequentialWorker::new(connector.clone(), handler, subscription_id, SequentialWorkerSettings);
 
         handle.join().unwrap();
 

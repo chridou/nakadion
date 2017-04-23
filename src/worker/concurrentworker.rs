@@ -15,10 +15,19 @@ const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000
                                        10000, 30000, 60000, 300000, 600000];
 
 
+/// The settings for a concurrent worker.
 #[derive(Builder, Debug)]
 pub struct ConcurrentWorkerSettings {
+    /// The maximum number of workers to create.
+    ///
+    /// If not set, the number of workers will be the number of partitions initially consumed.
+    /// If set it must be greater than 0 and will be at max the number of partitions initially read from.
+    /// The default is `None`
     #[builder(default="None")]
     max_workers: Option<usize>,
+    /// The buffer size for each worker. 
+    ///
+    /// The default is 10.
     #[builder(default="10")]
     worker_buffer_size: usize,
 }
@@ -53,22 +62,26 @@ impl ConcurrentWorkerSettingsBuilder {
     }
 }
 
-pub enum LeaderMessage {
+enum LeaderMessage {
     Start,
     Stop,
     Batch(StreamId, String),
 }
 
-pub enum PartitionWorkerMessage {
+enum PartitionWorkerMessage {
     Stopped(PartitionWorkerId),
 }
 
-pub struct Leader {
+
+/// A worker that consumes events concurrently.
+///
+/// ** WORK IN PROGRESS **
+pub struct ConcurrentWorker {
     subscription_id: SubscriptionId,
     is_running: Arc<AtomicBool>,
 }
 
-impl Leader {
+impl ConcurrentWorker {
     pub fn new<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>,
                                                          handler: H,
                                                          subscription_id: SubscriptionId,
@@ -138,11 +151,11 @@ impl Leader {
 
         });
 
-        Ok((Leader{subscription_id: subscription_id.clone(), is_running: is_running }, handle))
+        Ok((ConcurrentWorker{subscription_id: subscription_id.clone(), is_running: is_running }, handle))
     } 
 }
 
-impl Worker for Leader {
+impl Worker for ConcurrentWorker {
     /// Returns true if the worker is still running.
     fn is_running(&self) -> bool {
         self.is_running.load(Ordering::Relaxed)
@@ -268,7 +281,7 @@ struct DeserializedPartitionId {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartitionWorkerId(pub usize);
 
-pub struct PartionWorker;
+struct PartionWorker;
 
 impl PartionWorker {
     pub fn start<C: Checkpoints + Send + Sync + 'static>(checkpointer: Arc<C>,
