@@ -61,8 +61,13 @@ pub trait Checkpoints {
                   -> ClientResult<()>;
 }
 
+pub trait ProvidesStreamInfo {
+    fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo>;
+}
+
 /// Connects to `Nakadi` for checkpointing and consuming events.
-pub trait NakadiConnector: ReadsStream + Checkpoints + Send + Sync + 'static {
+pub trait NakadiConnector
+    : ReadsStream + Checkpoints + ProvidesStreamInfo + Send + Sync + 'static {
     fn settings(&self) -> &ConnectorSettings;
 }
 
@@ -193,15 +198,17 @@ impl ConnectorSettingsBuilder {
     }
 }
 
+type BoxedTokenProvider = Box<ProvidesToken + Send + Sync>;
+
 /// A `NakadiConnector` using `Hyper` for dispatching requests.
-pub struct HyperClientConnector<T: ProvidesToken> {
+pub struct HyperClientConnector {
     client: Client,
-    token_provider: T,
+    token_provider: BoxedTokenProvider,
     settings: ConnectorSettings,
 }
 
-impl<T: ProvidesToken> HyperClientConnector<T> {
-    pub fn new(token_provider: T, nakadi_host: Url) -> HyperClientConnector<T> {
+impl HyperClientConnector {
+    pub fn new(token_provider: BoxedTokenProvider, nakadi_host: Url) -> HyperClientConnector {
         let client = create_hyper_client();
         let settings = ConnectorSettingsBuilder::default()
             .nakadi_host(nakadi_host)
@@ -211,9 +218,9 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
     }
 
     pub fn with_client(client: Client,
-                       token_provider: T,
+                       token_provider: BoxedTokenProvider,
                        nakadi_host: Url)
-                       -> HyperClientConnector<T> {
+                       -> HyperClientConnector {
         let settings = ConnectorSettingsBuilder::default()
             .nakadi_host(nakadi_host)
             .build()
@@ -221,17 +228,17 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
         HyperClientConnector::with_client_and_settings(client, token_provider, settings)
     }
 
-    pub fn with_settings(token_provider: T,
+    pub fn with_settings(token_provider: BoxedTokenProvider,
                          settings: ConnectorSettings)
-                         -> HyperClientConnector<T> {
+                         -> HyperClientConnector {
         let client = create_hyper_client();
         HyperClientConnector::with_client_and_settings(client, token_provider, settings)
     }
 
     pub fn with_client_and_settings(client: Client,
-                                    token_provider: T,
+                                    token_provider: BoxedTokenProvider,
                                     settings: ConnectorSettings)
-                                    -> HyperClientConnector<T> {
+                                    -> HyperClientConnector {
         HyperClientConnector {
             client: client,
             token_provider: token_provider,
@@ -239,13 +246,13 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
         }
     }
 
-    pub fn from_env(token_provider: T) -> Result<HyperClientConnector<T>, String> {
+    pub fn from_env(token_provider: BoxedTokenProvider) -> Result<HyperClientConnector, String> {
         HyperClientConnector::from_env_with_client(create_hyper_client(), token_provider)
     }
 
     pub fn from_env_with_client(client: Client,
-                                token_provider: T)
-                                -> Result<HyperClientConnector<T>, String> {
+                                token_provider: BoxedTokenProvider)
+                                -> Result<HyperClientConnector, String> {
         let builder = ConnectorSettingsBuilder::from_env().map_err(|err| format!("Could not create settings builder: {}", err))?;
         let settings = builder.build()
             .map_err(|err| format!("Could not create settings from builder: {}", err))?;
@@ -254,13 +261,13 @@ impl<T: ProvidesToken> HyperClientConnector<T> {
     }
 }
 
-impl<T: ProvidesToken> NakadiConnector for HyperClientConnector<T> {
+impl NakadiConnector for HyperClientConnector {
     fn settings(&self) -> &ConnectorSettings {
         &self.settings
     }
 }
 
-impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
+impl ReadsStream for HyperClientConnector {
     type StreamingSource = ::hyper::client::response::Response;
 
     fn read(&self,
@@ -362,7 +369,7 @@ impl<T: ProvidesToken> ReadsStream for HyperClientConnector<T> {
     }
 }
 
-impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> {
+impl Checkpoints for HyperClientConnector {
     fn checkpoint(&self,
                   stream_id: &StreamId,
                   subscription: &SubscriptionId,
@@ -415,6 +422,61 @@ impl<T: ProvidesToken> Checkpoints for HyperClientConnector<T> {
         }
     }
 }
+
+impl ProvidesStreamInfo for HyperClientConnector {
+    fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo> {
+        let url = format!("{}subscriptions/{}/stats",
+                          self.settings.nakadi_host,
+                          subscription.0);
+
+        let mut headers = Headers::new();
+        if let Some(token) = self.token_provider.get_token()? {
+            headers.set(Authorization(Bearer { token: token.0 }));
+        };
+
+        let request = self.client.get(&url).headers(headers);
+
+
+        match request.send() {
+            Ok(mut rsp) => {
+                match rsp.status {
+                    StatusCode::Ok => {
+                        let payload: StreamInfo = serde_json::from_reader(rsp).map_err(|err| {
+                                ClientErrorKind::InvalidResponse(format!("Could not parse \
+                                                                          stream stats: {}",
+                                                                         err))
+                            })?;
+                        Ok(payload)
+                    }
+                    StatusCode::BadRequest => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Request(body))
+                    }
+                    StatusCode::NotFound => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::NoSubscription(body))
+                    }
+                    StatusCode::Forbidden => {
+                        let mut buf = String::new();
+                        let body = rsp.read_to_string(&mut buf)
+                            .map(|_| buf)
+                            .unwrap_or("Could not read body".to_string());
+                        bail!(ClientErrorKind::Forbidden(body))
+                    }
+                    other_status => bail!(other_status.to_string()),
+                }
+            }
+            Err(err) => bail!(ClientErrorKind::Connection(err.to_string())),
+        }
+    }
+}
+
 
 fn create_hyper_client() -> Client {
     let ssl = NativeTlsClient::new().unwrap();

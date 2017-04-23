@@ -40,5 +40,9 @@ error_chain! {
             description("The batch could not be parsed.")
             display("The batch could not be parsed: '{}'", t)
         }
+        Internal(t: String) {
+            description("An internal error occured.")
+            display("An internal error occured: '{}'", t)
+        }
     }
 }
