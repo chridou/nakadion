@@ -33,18 +33,36 @@ pub struct ConcurrentWorkerSettings {
 }
 
 impl ConcurrentWorkerSettings {
+    /// Builds the settings from environment variables.
+    ///
+    /// The following environment variables are available:
+    ///
+    /// * `NAKADION_MAX_WORKERS`
+    /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn from_env() -> Result<Self, String> {
         ConcurrentWorkerSettingsBuilder::from_env().and_then(|b| b.build())
    }
 }
 
 impl ConcurrentWorkerSettingsBuilder {
+    /// Creates a `ConcurrentWorkerSettingsBuilder` with values from environment variables.
+    ///
+    /// The following environment variables are available:
+    ///
+    /// * `NAKADION_MAX_WORKERS`
+    /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn from_env() -> Result<ConcurrentWorkerSettingsBuilder, String> {
         let mut builder = ConcurrentWorkerSettingsBuilder::default();
         builder.fill_with_env()?;
         Ok(builder)
     }
 
+    /// Fills the `ConcurrentWorkerSettingsBuilder` with values from environment variables.
+    ///
+    /// The following environment variables are available:
+    ///
+    /// * `NAKADION_MAX_WORKERS`
+    /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn fill_with_env(&mut self) -> Result<(), String> {
         if let Some(env_val) = env::var("NAKADION_MAX_WORKERS").ok() {
             let max_workers = env_val.parse()
