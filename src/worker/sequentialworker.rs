@@ -17,6 +17,9 @@ const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000
 pub struct SequentialWorkerSettings;
 
 impl SequentialWorkerSettings {
+    /// Create the settings from environment variables.
+    ///
+    /// This is a Dummy. Currently there are no settings.
     pub fn from_env() -> Result<SequentialWorkerSettings, String> {
         Ok(SequentialWorkerSettings)
     }

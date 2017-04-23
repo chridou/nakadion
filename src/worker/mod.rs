@@ -13,7 +13,7 @@ use super::connector::NakadiConnector;
 mod concurrentworker;
 mod sequentialworker;
 
-pub use self::concurrentworker::ConcurrentWorkerSettings;
+pub use self::concurrentworker::{ConcurrentWorkerSettings, ConcurrentWorkerSettingsBuilder};
 pub use self::sequentialworker::SequentialWorkerSettings;
 
 /// Settings for the worker.
