@@ -21,11 +21,12 @@ pub struct ConcurrentWorkerSettings {
     /// The maximum number of workers to create.
     ///
     /// If not set, the number of workers will be the number of partitions initially consumed.
-    /// If set it must be greater than 0 and will be at max the number of partitions initially read from.
+    /// If set it must be greater than 0 and will be at max the
+    /// number of partitions initially read from.
     /// The default is `None`
     #[builder(default="None")]
     max_workers: Option<usize>,
-    /// The buffer size for each worker. 
+    /// The buffer size for each worker.
     ///
     /// The default is 10.
     #[builder(default="10")]
@@ -41,7 +42,7 @@ impl ConcurrentWorkerSettings {
     /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn from_env() -> Result<Self, String> {
         ConcurrentWorkerSettingsBuilder::from_env().and_then(|b| b.build())
-   }
+    }
 }
 
 impl ConcurrentWorkerSettingsBuilder {
@@ -65,14 +66,20 @@ impl ConcurrentWorkerSettingsBuilder {
     /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn fill_with_env(&mut self) -> Result<(), String> {
         if let Some(env_val) = env::var("NAKADION_MAX_WORKERS").ok() {
-            let max_workers = env_val.parse()
-                .map_err(|err| format!("Could not parse 'NAKADION_MAX_WORKERS': {}", err))?;
+            let max_workers =
+                env_val
+                    .parse()
+                    .map_err(|err| format!("Could not parse 'NAKADION_MAX_WORKERS': {}", err))?;
             self.max_workers(Some(max_workers));
         };
 
         if let Some(env_val) = env::var("NAKADION_WORKER_BUFFER_SIZE").ok() {
-            let worker_buffer_size = env_val.parse()
-                .map_err(|err| format!("Could not parse 'NAKADION_WORKER_BUFFER_SIZE': {}", err))?;
+            let worker_buffer_size =
+                env_val
+                    .parse()
+                    .map_err(|err| {
+                                 format!("Could not parse 'NAKADION_WORKER_BUFFER_SIZE': {}", err)
+                             })?;
             self.worker_buffer_size(worker_buffer_size);
         };
 
@@ -100,11 +107,14 @@ pub struct ConcurrentWorker {
 }
 
 impl ConcurrentWorker {
-    pub fn new<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>,
-                                                         handler: H,
-                                                         subscription_id: SubscriptionId,
-                                                         settings: ConcurrentWorkerSettings) -> Result<(Self, JoinHandle<()>), String> {
-        let num_partitions = connector.stream_info(&subscription_id)
+    pub fn new<C: NakadiConnector, H: Handler + 'static>
+        (connector: Arc<C>,
+         handler: H,
+         subscription_id: SubscriptionId,
+         settings: ConcurrentWorkerSettings)
+         -> Result<(Self, JoinHandle<()>), String> {
+        let num_partitions = connector
+            .stream_info(&subscription_id)
             .map(|info| info.max_partitions())
             .map_err(|err| format!("Could not get stream info: {}", err))?;
 
@@ -115,11 +125,11 @@ impl ConcurrentWorker {
         };
 
         let num_workers = ::std::cmp::min(num_partitions, max_workers);
-        info!("Subscription {} is has {} partitions. Max workers is {}. Will create {} workers.", 
-            subscription_id.0,
-            num_partitions, 
-            max_workers,
-            num_workers);
+        info!("Subscription {} is has {} partitions. Max workers is {}. Will create {} workers.",
+              subscription_id.0,
+              num_partitions,
+              max_workers,
+              num_workers);
 
         if num_workers == 0 {
             return Err("Number of workers must not result in 0.".to_string());
@@ -129,20 +139,19 @@ impl ConcurrentWorker {
 
         let handler = Arc::new(handler);
         let mut workers = Vec::new();
-        for id in  0..num_workers {
+        for id in 0..num_workers {
             let to_leader_tx = to_leader_tx.clone();
             let (tx, rx) = mpsc::sync_channel::<LeaderMessage>(settings.worker_buffer_size);
 
-            PartionWorker::start(
-                connector.clone(),
-                handler.clone(),
-                rx,
-                to_leader_tx,
-                subscription_id.clone(),
-                PartitionWorkerId(id));
+            PartionWorker::start(connector.clone(),
+                                 handler.clone(),
+                                 rx,
+                                 to_leader_tx,
+                                 subscription_id.clone(),
+                                 PartitionWorkerId(id));
             workers.push((PartitionWorkerId(id), tx));
         }
-    
+
         let is_running = Arc::new(AtomicBool::new(true));
 
 
@@ -156,12 +165,12 @@ impl ConcurrentWorker {
             let leader_rx = leader_rx;
             let leader_is_running = leader_is_running;
             let leader = LeaderInternal {
-                            connector: &*leader_connector,
-                            workers: workers.as_slice(),
-                            subscription_id: &leader_subsrciption_id,
-                            partition_reveiver: &leader_rx,
-                            is_running: &leader_is_running,
-            }; 
+                connector: &*leader_connector,
+                workers: workers.as_slice(),
+                subscription_id: &leader_subsrciption_id,
+                partition_reveiver: &leader_rx,
+                is_running: &leader_is_running,
+            };
 
             leader.run_a_loop();
 
@@ -169,8 +178,12 @@ impl ConcurrentWorker {
 
         });
 
-        Ok((ConcurrentWorker{subscription_id: subscription_id.clone(), is_running: is_running }, handle))
-    } 
+        Ok((ConcurrentWorker {
+                subscription_id: subscription_id.clone(),
+                is_running: is_running,
+            },
+            handle))
+    }
 }
 
 impl Worker for ConcurrentWorker {
@@ -225,8 +238,8 @@ impl<'a, C: NakadiConnector> LeaderInternal<'a, C> {
                             Err(err) => {
                                 error!("An error occured processing the batch for stream {}. \
                                         Reconnecting. Error: {}",
-                                    stream_id.0,
-                                    err);
+                                       stream_id.0,
+                                       err);
                                 break;
                             }
                         }
@@ -253,7 +266,7 @@ impl<'a, C: NakadiConnector> LeaderInternal<'a, C> {
                 }
                 Err(ClientError(ClientErrorKind::Conflict(msg), _)) => {
                     warn!("{}. Maybe there are no shards to read from left. Waiting 10 seconds.",
-                        msg);
+                          msg);
                     let pause = Duration::from_secs(10);
                     thread::sleep(pause);
                 }
@@ -273,17 +286,22 @@ impl<'a, C: NakadiConnector> LeaderInternal<'a, C> {
             Ok(DeserializedCursor { cursor }) => {
                 let partition_id = cursor.partition.0;
                 let idx = partition_id % self.workers.len();
-                if let Err(err) =  self.workers[idx].1.send(LeaderMessage::Batch(stream_id, line)){
-                    bail!(ClientErrorKind::Internal(format!("Could not send batch to worker: {}", err)));
+                if let Err(err) = self.workers[idx]
+                       .1
+                       .send(LeaderMessage::Batch(stream_id, line)) {
+                    bail!(ClientErrorKind::Internal(format!("Could not send batch to worker: {}",
+                                                            err)));
                 } else {
                     Ok(())
                 }
             }
             Err(err) => {
-                bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}", line, err)))
+                bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}",
+                                                               line,
+                                                               err)))
             }
         }
-    }    
+    }
 }
 
 #[derive(Deserialize)]
@@ -293,7 +311,7 @@ struct DeserializedCursor {
 
 #[derive(Deserialize)]
 struct DeserializedPartitionId {
-     partition: PartitionId
+    partition: PartitionId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -302,12 +320,13 @@ pub struct PartitionWorkerId(pub usize);
 struct PartionWorker;
 
 impl PartionWorker {
-    pub fn start<C: Checkpoints + Send + Sync + 'static>(checkpointer: Arc<C>,
-                                                         handler: Arc<Handler + Sync>,
-                                                         batch_receiver: Receiver<LeaderMessage>,
-                                                         send_to_leader: Sender<PartitionWorkerMessage>,
-                                                         subscription_id: SubscriptionId,
-                                                         worker_id: PartitionWorkerId) {
+    pub fn start<C: Checkpoints + Send + Sync + 'static>(
+        checkpointer: Arc<C>,
+        handler: Arc<Handler + Sync>,
+        batch_receiver: Receiver<LeaderMessage>,
+        send_to_leader: Sender<PartitionWorkerMessage>,
+        subscription_id: SubscriptionId,
+worker_id: PartitionWorkerId){
 
         let handler = handler.clone();
         let checkpointer = checkpointer.clone();
@@ -349,11 +368,13 @@ impl<'a> PartitionWorkerInternal<'a> {
             let msg = match self.batch_receiver.recv() {
                 Ok(msg) => msg,
                 Err(err) => {
-                    error!("PartitionWorker {}: Worker disconnected. Sending stop to worker. Error: {}",
+                    error!("PartitionWorker {}: Worker disconnected. \
+                            Sending stop to worker. Error: {}",
                            self.worker_id.0,
                            err);
-                    if let Err(err) = self.send_to_leader
-                        .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                    if let Err(err) =
+                        self.send_to_leader
+                            .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
                         error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
                                 Stopping anyways.",
                                self.worker_id.0);
@@ -364,7 +385,8 @@ impl<'a> PartitionWorkerInternal<'a> {
 
             match msg {
                 LeaderMessage::Start => {
-                    info!("PartitionWorker {}: Received start signal.", self.worker_id.0);
+                    info!("PartitionWorker {}: Received start signal.",
+                          self.worker_id.0);
                 }
                 LeaderMessage::Batch(stream_id, batch) => {
                     if discard_until_stop {
@@ -372,14 +394,19 @@ impl<'a> PartitionWorkerInternal<'a> {
                         continue;
                     }
                     let current_taken = current_stream_id.take();
-                     match current_taken {
+                    match current_taken {
                         None => {
-                            info!("PartitionWorker {}: First stream id {} received.",self.worker_id.0, stream_id.0);
+                            info!("PartitionWorker {}: First stream id {} received.",
+                                  self.worker_id.0,
+                                  stream_id.0);
                             current_stream_id = Some(stream_id.clone());
                         }
                         Some(current) => {
                             if current.0 != stream_id.0 {
-                                 info!("PartitionWorker {}: Stream id changed from {} to {}.",self.worker_id.0, current.0, stream_id.0);
+                                info!("PartitionWorker {}: Stream id changed from {} to {}.",
+                                      self.worker_id.0,
+                                      current.0,
+                                      stream_id.0);
                                 current_stream_id = Some(stream_id.clone());
                             } else {
                                 current_stream_id = Some(current);
@@ -390,32 +417,37 @@ impl<'a> PartitionWorkerInternal<'a> {
                         Ok(action) => {
                             match action {
                                 AfterBatchAction::Stop | AfterBatchAction::Abort => {
-                                    info!("PartitionWorker {}: Request to stop by handler. Forwarding to \
-                                        worker.",
-                                        self.worker_id.0);
-                                        discard_until_stop = true;
-                                    if let Err(err) = self.send_to_leader
-                                        .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
-                                        error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
+                                    info!("PartitionWorker {}: Request to stop by handler. \
+                                           Forwarding to worker.",
+                                          self.worker_id.0);
+                                    discard_until_stop = true;
+                                    if let Err(err) =
+                                        self.send_to_leader
+                                            .send(PartitionWorkerMessage::Stopped(self.worker_id
+                                                                                      .clone())) {
+                                        error!("PartitionWorker {}: Failed to send \
+                                                'Stopped' message to worker. \
                                                 Stopping anyways.",
-                                            self.worker_id.0);
-                                        return
+                                               self.worker_id.0);
+                                        return;
                                     }
                                 }
                                 _ => (),
                             }
                         }
                         Err(err) => {
-                            error!("PartitionWorker {}: Failed to process line. Sending stop to worker. Error: {}",
-                                self.worker_id.0,
-                                err);
+                            error!("PartitionWorker {}: Failed to process line. \
+                                    Sending stop to worker. Error: {}",
+                                   self.worker_id.0,
+                                   err);
                             discard_until_stop = true;
-                            if let Err(err) = self.send_to_leader
-                                .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
-                                error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
-                                        Stopping anyways.",
-                                    self.worker_id.0);
-                                return
+                            if let Err(err) =
+                                self.send_to_leader
+                                    .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                                error!("PartitionWorker {}: Failed to send \
+                                        'Stopped' message to worker. Stopping anyways.",
+                                       self.worker_id.0);
+                                return;
                             }
                             discard_until_stop = true;
                         }
@@ -423,10 +455,14 @@ impl<'a> PartitionWorkerInternal<'a> {
                 }
                 LeaderMessage::Stop => {
                     if num_disarded > 0 {
-                        warn!("PartitionWorker {}: Receive Stop signal. {} messages have been disacrded.", self.worker_id.0, num_disarded);
+                        warn!("PartitionWorker {}: Receive Stop signal. \
+                               {} messages have been disacrded.",
+                              self.worker_id.0,
+                              num_disarded);
                     }
-                    if let Err(err) = self.send_to_leader
-                        .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                    if let Err(err) =
+                        self.send_to_leader
+                            .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
                         error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
                                 Stopping anyways. {} messages have been disacrded.",
                                self.worker_id.0,
@@ -439,7 +475,7 @@ impl<'a> PartitionWorkerInternal<'a> {
     }
 
     fn process_line(&self, stream_id: &StreamId, line: String) -> ClientResult<AfterBatchAction> {
-          match serde_json::from_str::<DeserializedBatch>(line.as_ref()) {
+        match serde_json::from_str::<DeserializedBatch>(line.as_ref()) {
             Ok(DeserializedBatch { cursor, events }) => {
                 // This is a hack. We might later want to extract the slice manually.
                 let events_json = events.unwrap_or(Vec::new());
@@ -451,14 +487,16 @@ impl<'a> PartitionWorkerInternal<'a> {
                 Ok(self.process_batch(batch_info, events_str.as_ref()))
             }
             Err(err) => {
-                bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}", line, err)))
+                bail!(ClientErrorKind::UnparsableBatch(format!("Could not parse '{}': {}",
+                                                               line,
+                                                               err)))
             }
         }
     }
 
     fn process_batch(&self, batch_info: BatchInfo, batch: &str) -> AfterBatchAction {
-         let cloned_info = batch_info.clone();
-          match self.handler.handle(batch, batch_info) {
+        let cloned_info = batch_info.clone();
+        match self.handler.handle(batch, batch_info) {
             AfterBatchAction::Continue => {
                 self.checkpoint(cloned_info);
                 AfterBatchAction::Continue
@@ -475,7 +513,7 @@ impl<'a> PartitionWorkerInternal<'a> {
                 AfterBatchAction::Abort
             }
         }
-  }
+    }
 
 
     fn checkpoint(&self, batch_info: BatchInfo) {
@@ -488,7 +526,8 @@ impl<'a> PartitionWorkerInternal<'a> {
                 thread::sleep(pause)
             }
             attempt += 1;
-            match self.checkpointer.checkpoint(&stream_id, &self.subscription_id, cursors) {
+            match self.checkpointer
+                      .checkpoint(&stream_id, &self.subscription_id, cursors) {
                 Ok(()) => return,
                 Err(err) => {
                     if attempt > 5 {
