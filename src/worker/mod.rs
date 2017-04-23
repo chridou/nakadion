@@ -13,15 +13,15 @@ use super::connector::NakadiConnector;
 mod concurrentworker;
 mod sequentialworker;
 
-pub use self::concurrentworker::ConcurrentWorkerSettings;
+pub use self::concurrentworker::{ConcurrentWorkerSettings, ConcurrentWorkerSettingsBuilder};
 pub use self::sequentialworker::SequentialWorkerSettings;
 
 /// Settings for the worker.
-/// 
+///
 /// Will determine whether the worker is sequential or concurrent.
 pub enum WorkerSettings {
     Sequential(SequentialWorkerSettings),
-    Concurrent(ConcurrentWorkerSettings)
+    Concurrent(ConcurrentWorkerSettings),
 }
 
 impl WorkerSettings {
@@ -35,15 +35,25 @@ impl WorkerSettings {
     /// you want to create.
     pub fn from_env() -> Result<Self, String> {
         let use_concurrent_worker = match env::var("NAKADION_USE_CONCURRENT_WORKER") {
-            Ok(env_val) => match env_val.parse() {
-                Ok(v) => v,
-                Err(err) => return Err(format!("Could not parse env var 'NAKADION_USE_CONCURRENT_WORKER' as a bool: {}", err))
-            },
+            Ok(env_val) => {
+                match env_val.parse() {
+                    Ok(v) => v,
+                    Err(err) => {
+                        return Err(format!("Could not parse env var \
+                                            'NAKADION_USE_CONCURRENT_WORKER' as a bool: {}",
+                                           err))
+                    }
+                }
+            }
             Err(VarError::NotPresent) => {
-                warn!("Env var 'NAKADION_USE_CONCURRENT_WORKER' not found. Default is 'false'.");
+                warn!("Env var 'NAKADION_USE_CONCURRENT_WORKER' \
+                       not found. Default is 'false'.");
                 false
             }
-            Err(err) => return Err(format!("Could not read env var 'NAKADION_USE_CONCURRENT_WORKER': {}", err))
+            Err(err) => {
+                return Err(format!("Could not read env var 'NAKADION_USE_CONCURRENT_WORKER': {}",
+                                   err))
+            }
         };
         let settings = if use_concurrent_worker {
             WorkerSettings::Concurrent(concurrentworker::ConcurrentWorkerSettings::from_env()?)
@@ -56,7 +66,7 @@ impl WorkerSettings {
 
 /// Common fuctionality a worker must provide.
 pub trait Worker {
-     /// Returns true if the worker is still running.
+    /// Returns true if the worker is still running.
     fn is_running(&self) -> bool;
 
     /// Stops the worker.
@@ -64,7 +74,6 @@ pub trait Worker {
 
     /// Gets the `SubscriptionId` the worker is listening to.
     fn subscription_id(&self) -> &SubscriptionId;
-   
 }
 
 /// The `NakadiWorker` runs the consumption of events.
@@ -78,27 +87,31 @@ impl NakadiWorker {
     /// The underlying worker will be stopped once the worker is dropped.
     ///
     /// The `WorkerSettings` will determine what kind of worker is created.
-    pub fn new<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>,
-                                                         handler: H,
-                                                         subscription_id: SubscriptionId,
-                                                         settings: WorkerSettings)
-                                                         -> Result<(NakadiWorker, JoinHandle<()>), String> {
+    pub fn new<C: NakadiConnector, H: Handler + 'static>
+        (connector: Arc<C>,
+         handler: H,
+         subscription_id: SubscriptionId,
+         settings: WorkerSettings)
+         -> Result<(NakadiWorker, JoinHandle<()>), String> {
 
         let (worker, handle) = match settings {
-            WorkerSettings::Sequential(settings) =>  {      
-                let (worker, handle) = sequentialworker::SequentialWorker::new(connector, handler, subscription_id, settings);
+            WorkerSettings::Sequential(settings) => {
+                let (worker, handle) = sequentialworker::SequentialWorker::new(connector,
+                                                                               handler,
+                                                                               subscription_id,
+                                                                               settings);
                 (Box::new(worker) as Box<Worker>, handle)
             }
-            WorkerSettings::Concurrent(settings) =>  {      
-                let (worker, handle) = concurrentworker::ConcurrentWorker::new(connector, handler, subscription_id, settings)?;
+            WorkerSettings::Concurrent(settings) => {
+                let (worker, handle) = concurrentworker::ConcurrentWorker::new(connector,
+                                                                               handler,
+                                                                               subscription_id,
+                                                                               settings)?;
                 (Box::new(worker) as Box<Worker>, handle)
             }
         };
- 
-        Ok((NakadiWorker {
-            worker: worker,
-        },
-         handle))
+
+        Ok((NakadiWorker { worker: worker }, handle))
     }
 }
 
@@ -122,5 +135,3 @@ impl Drop for NakadiWorker {
         self.stop();
     }
 }
-
-
