@@ -16,6 +16,12 @@ const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000
 
 pub struct SequentialWorkerSettings;
 
+impl SequentialWorkerSettings {
+    pub fn from_env() -> Result<SequentialWorkerSettings, String> {
+        Ok(SequentialWorkerSettings)
+    }
+}
+
 /// The worker runs the consumption of events.
 /// It will try to reconnect automatically once the stream breaks.
 /// All work is done sequentially on a single thread.

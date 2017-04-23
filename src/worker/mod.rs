@@ -4,15 +4,11 @@
 //! It will consume events and call the `Handler`
 //! and react on its commands on how to continue.
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::io::{BufReader, BufRead};
-use std::time::Duration;
-use std::thread::{self, JoinHandle};
-
-use serde_json::{self, Value};
+use std::thread::JoinHandle;
+use std::env::{self, VarError};
 
 use super::*;
-use super::connector::{NakadiConnector, Checkpoints, ReadsStream};
+use super::connector::NakadiConnector;
 
 mod concurrentworker;
 mod sequentialworker;
@@ -27,7 +23,23 @@ pub enum WorkerSettings {
 
 impl WorkerSettings {
     pub fn from_env() -> Result<Self, String> {
-        unimplemented!()
+        let use_concurrent_worker = match env::var("NAKADION_USE_CONCURRENT_WORKER") {
+            Ok(env_val) => match env_val.parse() {
+                Ok(v) => v,
+                Err(err) => return Err(format!("Could not parse env var 'NAKADION_USE_CONCURRENT_WORKER' as a bool: {}", err))
+            },
+            Err(VarError::NotPresent) => {
+                warn!("Env var 'NAKADION_USE_CONCURRENT_WORKER' not found. Default is 'false'.");
+                false
+            }
+            Err(err) => return Err(format!("Could not read env var 'NAKADION_USE_CONCURRENT_WORKER': {}", err))
+        };
+        let settings = if use_concurrent_worker {
+            WorkerSettings::Concurrent(concurrentworker::ConcurrentWorkerSettings::from_env()?)
+        } else {
+            WorkerSettings::Sequential(sequentialworker::SequentialWorkerSettings::from_env()?)
+        };
+        Ok(settings)
     }
 }
 
