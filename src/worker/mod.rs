@@ -78,7 +78,7 @@ pub trait Worker {
 
 /// The `NakadiWorker` runs the consumption of events.
 pub struct NakadiWorker {
-    worker: Box<Worker>,
+    worker: Box<Worker + Sync + Send + 'static>,
 }
 
 impl NakadiWorker {
@@ -100,14 +100,14 @@ impl NakadiWorker {
                                                                                handler,
                                                                                subscription_id,
                                                                                settings);
-                (Box::new(worker) as Box<Worker>, handle)
+                (Box::new(worker) as Box<Worker + Send + Sync + 'static>, handle)
             }
             WorkerSettings::Concurrent(settings) => {
                 let (worker, handle) = concurrentworker::ConcurrentWorker::new(connector,
                                                                                handler,
                                                                                subscription_id,
                                                                                settings)?;
-                (Box::new(worker) as Box<Worker>, handle)
+                (Box::new(worker) as Box<Worker + Send + Sync + 'static>, handle)
             }
         };
 
