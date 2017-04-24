@@ -17,7 +17,34 @@
 //!
 //! ### Concurrent Consumption
 //!
-//! ** DO NOT USE FOR NOW **
+//! **DO NOT USE FOR NOW**
+//!
+//! ## Configuration
+//!
+//! Nakadion is configured by environment variables.
+//!
+//! ### Setting up the subscription
+//!
+//! * `NAKADION_NAKADI_HOST`: See `ConnectorSettings::nakadi_host`
+//! * `NAKADION_MAX_UNCOMMITED_EVENTS`: See `ConnectorSettings::max_uncommitted_events`
+//! * `NAKADION_BATCH_LIMIT`: See `ConnectorSettings::batch_limit`
+//! * `NAKADION_BATCH_FLUSH_TIMEOUT_SECS`: See `ConnectorSettings::batch_flush_timeout`
+//! * `NAKADION_STREAM_TIMEOUT_SECS`: See `ConnectorSettings::stream_timeout`
+//! * `NAKADION_STREAM_LIMIT`: See `ConnectorSettings::stream_limit`
+//! * `NAKADION_STREAM_KEEP_ALIVE_LIMIT`: See `ConnectorSettings::stream_keep_alive_limit`
+//!
+//! ### Setting up the Sequential Worker
+//!
+//! Just set `NAKADION_USE_CONCURRENT_WORKER` to `false` which is also the default.
+//!
+//! ### Setting up the Concurent Worker:
+//!
+//! Just set `NAKADION_USE_CONCURRENT_WORKER` to `true`.
+//!
+//! Configure the worker:
+//!
+//! * `NAKADION_MAX_WORKERS`: See `ConcurrentWorkerSettings::max_workers`
+//! * `NAKADION_WORKER_BUFFER_SIZE`: See `ConcurrentWorkerSettings::worker_buffer_size`
 //!
 //! In this mode Nakadion will spawn a number of worker threads
 //! and distribute work among them based on
