@@ -23,7 +23,10 @@
 //!
 //! Nakadion is configured by environment variables.
 //!
-//! ### Setting up the subscription
+//! The environment variable `NAKADION_SUBSCRIPTION_ID` can be used to specify a subscription.
+//! The value can also be passed when creating the `NakadiClient` in case you want to cionsume multiple subscriptions.
+//!
+//! ### Setting up the connector
 //!
 //! * `NAKADION_NAKADI_HOST`: See `ConnectorSettings::nakadi_host`
 //! * `NAKADION_MAX_UNCOMMITED_EVENTS`: See `ConnectorSettings::max_uncommitted_events`
@@ -320,7 +323,8 @@ impl<C: NakadiConnector> NakadiClient<C> {
     }
 
     /// Configure the client solely from environment variables.
-    /// Including the `SubscriptionId`.
+    ///
+    /// Including the `SubscriptionId` set by the environment variable `NAKADION_SUBSCRIPTION_ID`.
     pub fn from_env<H: Handler + 'static, T: ProvidesToken>
         (handler: H,
          token_provider: T)
