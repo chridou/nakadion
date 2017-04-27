@@ -24,6 +24,7 @@ pub struct StreamStats {
     pub bytes_per_line: HistogramSnapshot,
     pub bytes_per_second: MeterSnapshot,
     pub keep_alives_per_second: MeterSnapshot,
+    pub lines_per_connection: HistogramSnapshot,
     pub connection_duration: HistogramSnapshot,
     pub batches_dropped_per_second: MeterSnapshot,
 }

@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, BufRead};
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use std::thread::{self, JoinHandle};
 
 use serde_json::{self, Value};
@@ -63,17 +63,14 @@ impl SequentialWorker {
 }
 
 impl Worker for SequentialWorker {
-    /// Returns true if the worker is still running.
     fn is_running(&self) -> bool {
         self.is_running.load(Ordering::Relaxed)
     }
 
-    /// Stops the worker.
     fn stop(&self) {
         self.is_running.store(false, Ordering::Relaxed)
     }
 
-    /// Gets the `SubscriptionId` the worker is listening to.
     fn subscription_id(&self) -> &SubscriptionId {
         &self.subscription_id
     }
@@ -85,7 +82,7 @@ impl Worker for SequentialWorker {
 
 impl Drop for SequentialWorker {
     fn drop(&mut self) {
-        info!("Cleanup. Nakadi worker stopping.");
+        info!("Cleanup. Sequential worker stopping.");
         self.stop();
     }
 }
@@ -102,7 +99,7 @@ fn start_worker_loop<C: NakadiConnector, H: Handler + 'static>(connector: Arc<C>
                                                                is_running: Arc<AtomicBool>,
                                                                metrics: Arc<WorkerMetrics>)
                                                                -> JoinHandle<()> {
-    info!("Nakadi worker loop starting");
+    info!("Sequential worker loop starting");
     thread::spawn(move || {
         let connector = connector;
         let is_running = is_running;
@@ -128,12 +125,14 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                 break;
             };
 
+        let started_at = Instant::now();
         let buffered_reader = BufReader::new(src);
 
         let mut lines_read: usize = 0;
         for line in buffered_reader.lines() {
             match line {
                 Ok(line) => {
+                    metrics.stream.line_received(line.as_ref());
                     lines_read += 1;
                     match process_line(connector,
                                        line.as_ref(),
@@ -145,7 +144,7 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                         Ok(AfterBatchAction::Continue) => (),
                         Ok(AfterBatchAction::ContinueNoCheckpoint) => (),
                         Ok(leaving_action) => {
-                            info!("Leaving worker loop  for stream {} on user request: {:?}",
+                            info!("Leaving worker loop for stream {} on user request: {:?}",
                                   stream_id.0,
                                   leaving_action);
                             is_running.store(false, Ordering::Relaxed);
@@ -166,6 +165,7 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                 }
             }
         }
+        metrics.stream.connection_ended(started_at, lines_read as u64);
         info!("Stream({}) from Nakadi ended or there was an error. Dropping connection. Read {} \
                lines.",
               stream_id.0,
@@ -184,6 +184,7 @@ fn process_line<C: Checkpoints>(connector: &C,
                                 is_running: &AtomicBool,
                                 metrics: &WorkerMetrics)
                                 -> ClientResult<AfterBatchAction> {
+    let handler_metrics = &metrics.handler;
     match serde_json::from_str::<DeserializedBatch>(line) {
         Ok(DeserializedBatch { cursor, events }) => {
             // This is a hack. We might later want to extract the slice manually.
@@ -193,29 +194,37 @@ fn process_line<C: Checkpoints>(connector: &C,
                 stream_id: stream_id.clone(),
                 cursor: cursor.clone(),
             };
+
+            let started_at = Instant::now();
+            handler_metrics.batch_received(events_str.as_ref());
+
             match handler.handle(events_str.as_ref(), batch_info) {
                 AfterBatchAction::Continue => {
+                    handler_metrics.batch_processed(started_at);
                     checkpoint(&*connector,
                                &stream_id,
                                subscription_id,
                                vec![cursor].as_slice(),
                                &is_running,
-                               metrics);
+                               &metrics.checkpointing);
                     Ok(AfterBatchAction::Continue)
                 }
                 AfterBatchAction::ContinueNoCheckpoint => {
+                    handler_metrics.batch_processed(started_at);
                     Ok(AfterBatchAction::ContinueNoCheckpoint)
                 }
                 AfterBatchAction::Stop => {
+                    handler_metrics.batch_processed(started_at);
                     checkpoint(&*connector,
                                &stream_id,
                                subscription_id,
                                vec![cursor].as_slice(),
                                &is_running,
-                               metrics);
+                               &metrics.checkpointing);
                     Ok(AfterBatchAction::Stop)
                 }
                 AfterBatchAction::Abort => {
+                    handler_metrics.batch_processed(started_at);
                     warn!("Abort. Skipping checkpointing on stream {}.", stream_id.0);
                     Ok(AfterBatchAction::Abort)
                 }
@@ -262,7 +271,8 @@ fn checkpoint<C: Checkpoints>(checkpointer: &C,
                               subscription_id: &SubscriptionId,
                               cursors: &[Cursor],
                               is_running: &AtomicBool,
-                              metrics: &WorkerMetrics) {
+                              metrics: &CheckpointingMetrics) {
+    let started_at = Instant::now();
     let mut attempt = 0;
     while is_running.load(Ordering::Relaxed) || attempt == 0 {
         if attempt > 0 {
@@ -271,13 +281,18 @@ fn checkpoint<C: Checkpoints>(checkpointer: &C,
         }
         attempt += 1;
         match checkpointer.checkpoint(stream_id, subscription_id, cursors) {
-            Ok(()) => return,
+            Ok(()) => {
+                metrics.checkpointed(started_at);
+                return
+                }
             Err(err) => {
                 if attempt > 5 {
+                    metrics.checkpointing_failed(started_at);
                     error!("Finally gave up to checkpoint cursor after {} attempts.",
                            err);
                     return;
                 } else {
+                    metrics.checkpointing_error();
                     warn!("Failed to checkpoint to Nakadi: {}", err);
                 }
             }

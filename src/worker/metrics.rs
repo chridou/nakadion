@@ -85,6 +85,7 @@ pub struct StreamMetrics {
     bytes_per_line: Mutex<Histogram>,
     bytes_per_second: StdMeter,
     keep_alives_per_second: StdMeter,
+    lines_per_connection: Mutex<Histogram>,
     connection_duration: Mutex<Histogram>,
     batches_dropped_per_second: StdMeter,
 }
@@ -97,6 +98,7 @@ impl StreamMetrics {
             bytes_per_second: StdMeter::create(),
             keep_alives_per_second: StdMeter::create(),
             connection_duration: Mutex::new(Histogram::new()),
+            lines_per_connection: Mutex::new(Histogram::new()),
             batches_dropped_per_second: StdMeter::create(),
         }
     }
@@ -105,7 +107,8 @@ impl StreamMetrics {
         self.batches_dropped_per_second.mark(1);
     }
 
-    pub fn connection_ended(&self, start: Instant) {
+    pub fn connection_ended(&self, start: Instant, lines: u64) {
+        update_histogram(lines, &self.lines_per_connection);
         update_histogram((Instant::now() - start).as_secs(),
                          &self.connection_duration);
     }
@@ -134,6 +137,7 @@ impl StreamMetrics {
             bytes_per_line: new_histogram_snapshot_from_mutex(&self.bytes_per_line),
             bytes_per_second: new_meter_snapshot(&self.bytes_per_second),
             keep_alives_per_second: new_meter_snapshot(&self.keep_alives_per_second),
+            lines_per_connection: new_histogram_snapshot_from_mutex(&self.lines_per_connection),
             connection_duration: new_histogram_snapshot_from_mutex(&self.connection_duration),
             batches_dropped_per_second: new_meter_snapshot(&self.batches_dropped_per_second),
         }
