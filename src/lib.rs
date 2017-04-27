@@ -6,7 +6,7 @@
 //!
 //! ## Consuming
 //!
-//! Nakadion supports two modes of consuming events. A sequuential one and a cuncurrent one.
+//! Nakadion supports two modes of consuming events. A sequuential one and a concurrent one.
 //!
 //! ### Sequential Consumption
 //!
@@ -24,7 +24,7 @@
 //! Nakadion is configured by environment variables.
 //!
 //! The environment variable `NAKADION_SUBSCRIPTION_ID` can be used to specify a subscription.
-//! The value can also be passed when creating the `NakadiClient` in case you want to cionsume multiple subscriptions.
+//! The value can also be passed when creating the `NakadiClient` in case you want to consume multiple subscriptions.
 //!
 //! ### Setting up the connector
 //!
@@ -100,15 +100,16 @@ use serde::{Deserialize, Deserializer};
 use worker::{Worker, NakadiWorker, WorkerSettings};
 
 mod tokenerrors;
-pub mod metrics;
+mod stats;
 mod clienterrors;
 mod connector;
-pub mod worker;
+mod worker;
 
 pub use tokenerrors::*;
 pub use clienterrors::*;
 pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector,
                           ConnectorSettings, ConnectorSettingsBuilder, ProvidesStreamInfo};
+pub use stats::*;
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
@@ -294,9 +295,9 @@ impl<C: NakadiConnector> NakadiClient<C> {
         let (worker, handle) =
             NakadiWorker::new(connector.clone(), handler, subscription_id, settings)?;
         Ok((NakadiClient {
-                worker: worker,
-                connector: connector,
-            },
+            worker: worker,
+            connector: connector,
+        },
             handle))
     }
 
@@ -330,12 +331,10 @@ impl<C: NakadiConnector> NakadiClient<C> {
          token_provider: T)
          -> Result<(NakadiClient<HyperClientConnector>, JoinHandle<()>), String> {
         let subscription_id: SubscriptionId = match env::var("NAKADION_SUBSCRIPTION_ID") {
-            Ok(env_val) => SubscriptionId(
-                env_val
-                    .parse()
-                    .map_err(|err| format!(
-                        "Could not parse 'NAKADION_SUBSCRIPTION_ID': {}",
-                        err))?),
+            Ok(env_val) => {
+                SubscriptionId(env_val.parse()
+                    .map_err(|err| format!("Could not parse 'NAKADION_SUBSCRIPTION_ID': {}", err))?)
+            }
             Err(err) => {
                 return Err(format!("Could not get env var 'NAKADION_SUBSCRIPTION_ID': {}", err))
             }
@@ -365,5 +364,9 @@ impl<C: NakadiConnector> Worker for NakadiClient<C> {
     /// Return the `SubscriptionId` this `NakadiClient` is listening to.
     fn subscription_id(&self) -> &SubscriptionId {
         self.worker.subscription_id()
+    }
+
+    fn stats(&self) -> WorkerStats {
+        self.worker.stats()
     }
 }

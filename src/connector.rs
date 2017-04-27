@@ -170,14 +170,13 @@ impl ConnectorSettingsBuilder {
                    default.");
             builder
         };
-        let builder =
-            if let Some(anv_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
-                builder.batch_limit(anv_val.parse()
+        let builder = if let Some(anv_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
+            builder.batch_limit(anv_val.parse()
                 .map_err(|err| format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err))?)
-            } else {
-                warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
-                builder
-            };
+        } else {
+            warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
+            builder
+        };
         let builder = if let Some(anv_val) = env::var("NAKADION_MAX_UNCOMMITED_EVENTS").ok() {
             builder.max_uncommitted_events(anv_val.parse()
                     .map_err(|err| {
@@ -188,15 +187,14 @@ impl ConnectorSettingsBuilder {
                    default.");
             builder
         };
-        let builder =
-            if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
-                builder.nakadi_host(anv_val.parse()
+        let builder = if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+            builder.nakadi_host(anv_val.parse()
                 .map_err(|err| format!("Could not parse 'NAKADION_NAKADI_HOST': {}", err))?)
-            } else {
-                warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. \
-                       It will have to be set manually.");
-                builder
-            };
+        } else {
+            warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
+                   manually.");
+            builder
+        };
         Ok(builder)
     }
 }
@@ -258,10 +256,8 @@ impl HyperClientConnector {
                                 -> Result<HyperClientConnector, String> {
         let builder = ConnectorSettingsBuilder::from_env()
             .map_err(|err| format!("Could not create settings builder: {}", err))?;
-        let settings =
-            builder
-                .build()
-                .map_err(|err| format!("Could not create settings from builder: {}", err))?;
+        let settings = builder.build()
+            .map_err(|err| format!("Could not create settings from builder: {}", err))?;
         info!("Creating HyperClientConnector from: {:?}", settings);
         Ok(HyperClientConnector::with_client_and_settings(client, token_provider, settings))
     }
@@ -328,15 +324,14 @@ impl ReadsStream for HyperClientConnector {
             Ok(mut rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let stream_id = if let Some(stream_id) =
-                            rsp.headers
-                                .get::<XNakadiStreamId>()
-                                .map(|v| StreamId(v.to_string())) {
+                        let stream_id = if let Some(stream_id) = rsp.headers
+                            .get::<XNakadiStreamId>()
+                            .map(|v| StreamId(v.to_string())) {
                             stream_id
                         } else {
                             bail!(ClientErrorKind::InvalidResponse("The response lacked the \
                                                                     'X-Nakadi-StreamId' header."
-                                                                           .to_string()))
+                                .to_string()))
                         };
                         Ok((rsp, stream_id))
                     }
@@ -448,12 +443,11 @@ impl ProvidesStreamInfo for HyperClientConnector {
             Ok(mut rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let payload: StreamInfo = serde_json::from_reader(rsp)
-                            .map_err(|err| {
-                                         ClientErrorKind::InvalidResponse(format!("Could not parse \
-                                                                          stream stats: {}",
-                                                                                  err))
-                                     })?;
+                        let payload: StreamInfo = serde_json::from_reader(rsp).map_err(|err| {
+                                ClientErrorKind::InvalidResponse(format!("Could not parse stream \
+                                                                          stats: {}",
+                                                                         err))
+                            })?;
                         Ok(payload)
                     }
                     StatusCode::BadRequest => {

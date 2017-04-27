@@ -12,6 +12,7 @@ use super::connector::NakadiConnector;
 
 mod concurrentworker;
 mod sequentialworker;
+pub mod metrics;
 
 pub use self::concurrentworker::{ConcurrentWorkerSettings, ConcurrentWorkerSettingsBuilder};
 pub use self::sequentialworker::SequentialWorkerSettings;
@@ -74,6 +75,9 @@ pub trait Worker {
 
     /// Gets the `SubscriptionId` the worker is listening to.
     fn subscription_id(&self) -> &SubscriptionId;
+
+    /// Get the stats
+    fn stats(&self) -> WorkerStats;
 }
 
 /// The `NakadiWorker` runs the consumption of events.
@@ -126,6 +130,10 @@ impl Worker for NakadiWorker {
 
     fn subscription_id(&self) -> &SubscriptionId {
         self.worker.subscription_id()
+    }
+
+    fn stats(&self) -> WorkerStats {
+        self.worker.stats()
     }
 }
 

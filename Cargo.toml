@@ -23,8 +23,9 @@ serde = "0.9"
 serde_derive = "0.9"
 serde_json = "0.9"
 
-metrics = "0.2"
+#metrics = "0.2"
+metrics = { git = "https://github.com/chridou/rust-metrics" }
 histogram =  "0.6"
 
-[dev-dependencies] 
+[dev-dependencies]
 env_logger = "0.4"
