@@ -115,7 +115,7 @@ impl StreamMetrics {
                          &self.connection_duration);
     }
 
-    pub fn connected(&self, no_connection_since: Instant, lines: u64) {
+    pub fn connected(&self, no_connection_since: Instant) {
         let d = duration_to_millis(Instant::now() - no_connection_since);
         update_histogram(d, &self.no_connection_duration);
     }
@@ -146,6 +146,7 @@ impl StreamMetrics {
             keep_alives_per_second: new_meter_snapshot(&self.keep_alives_per_second),
             lines_per_connection: new_histogram_snapshot_from_mutex(&self.lines_per_connection),
             connection_duration: new_histogram_snapshot_from_mutex(&self.connection_duration),
+            no_connection_duration: new_histogram_snapshot_from_mutex(&self.connection_duration),
             batches_dropped_per_second: new_meter_snapshot(&self.batches_dropped_per_second),
         }
     }

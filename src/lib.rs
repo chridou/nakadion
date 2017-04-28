@@ -54,6 +54,45 @@
 //! the `partion id` of a batch. The workers are not dedidacted to a partition.
 //! Work is rather distributed based on a hash of the `partition id`.
 //!
+//! ## Usage
+//!
+//! Configure the environment variables. Check also [dotenv](https://docs.rs/dotenv):
+//!
+//! ```text
+//! export NAKADION_NAKADI_HOST="https://my.nakadi.com"
+//! export NAKADION_SUBSCRIPTION_ID="the_subscription_id"
+//! # false is the default
+//! export NAKADION_USE_CONCURRENT_WORKER=false|true
+//! ```
+//!
+//! Set up the client:
+//!
+//! ```no_run
+//! use nakadion::*;
+//!
+//! struct MyTokenProvider;
+//!
+//! impl ProvidesToken for MyTokenProvider {
+//!     fn get_token(&self) -> TokenResult<Option<Token>> {
+//!         Ok(Some(Token::new("secret")))
+//!     }
+//! }
+//!
+//! struct MyHandler;
+//!
+//! impl Handler for MyHandler {
+//!     fn handle(&self, batch: &str, info: BatchInfo) -> AfterBatchAction {
+//!         println!("{}", batch);
+//!         AfterBatchAction::Continue
+//!     }
+//! }
+//!
+//! let (client, join_handle) = NakadiClient::from_env(MyHandler, MyTokenProvider).unwrap();
+//!
+//! join_handle.join().unwrap();
+//! ```
+//!
+//!
 //! ## Performance
 //!
 //! This library is not meant to be used in a high performance scenario. It uses synchronous IO.
@@ -90,6 +129,12 @@ extern crate error_chain;
 extern crate metrics as libmetrics;
 extern crate histogram;
 
+mod tokenerrors;
+pub mod stats;
+mod clienterrors;
+mod connector;
+mod worker;
+
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::env;
@@ -98,19 +143,12 @@ use uuid::Uuid;
 use serde::{Deserialize, Deserializer};
 
 use worker::{Worker, NakadiWorker, WorkerSettings};
-
-mod tokenerrors;
-mod stats;
-mod clienterrors;
-mod connector;
-mod worker;
+use stats::WorkerStats;
 
 pub use tokenerrors::*;
 pub use clienterrors::*;
 pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector,
                           ConnectorSettings, ConnectorSettingsBuilder, ProvidesStreamInfo};
-pub use stats::*;
-
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
 pub struct Token(pub String);
@@ -253,7 +291,7 @@ pub enum AfterBatchAction {
     Continue,
     /// Get next without checkpointing.
     ContinueNoCheckpoint,
-    /// Checkpoint then stop.
+    /// Do not checkpoint and reconnect
     Stop,
     /// Stop without checkpointing
     Abort,
@@ -300,7 +338,9 @@ impl<C: NakadiConnector> NakadiClient<C> {
         },
             handle))
     }
+}
 
+impl NakadiClient<HyperClientConnector> {
     /// Configure the client from environment variables.
     ///
     /// The `SubscriptionId` is provided manually. Useful if you want to consume
@@ -345,7 +385,7 @@ impl<C: NakadiConnector> NakadiClient<C> {
     }
 
     /// Get access to the underlying `NakadiConnector`.
-    pub fn connector(&self) -> &C {
+    pub fn connector(&self) -> &HyperClientConnector {
         &self.connector
     }
 }

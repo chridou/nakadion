@@ -117,15 +117,17 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                                                       metrics: &WorkerMetrics) {
     while (*is_running).load(Ordering::Relaxed) {
         info!("No connection to Nakadi. Requesting connection...");
+        let unconnected_since = Instant::now();
         let (src, stream_id) =
-            if let Some(r) = connect(connector, subscription_id, &is_running, metrics) {
-                r
+            if let Some(result) = connect(connector, subscription_id, &is_running, metrics) {
+                result
             } else {
                 warn!("Connection attempt aborted. Stopping the worker.");
                 break;
             };
+        metrics.stream.connected(unconnected_since);
 
-        let started_at = Instant::now();
+        let connected_since = Instant::now();
         let buffered_reader = BufReader::new(src);
 
         let mut lines_read: usize = 0;
@@ -165,7 +167,7 @@ fn nakadi_worker_loop<C: NakadiConnector, H: Handler>(connector: &C,
                 }
             }
         }
-        metrics.stream.connection_ended(started_at, lines_read as u64);
+        metrics.stream.connection_ended(connected_since, lines_read as u64);
         info!("Stream({}) from Nakadi ended or there was an error. Dropping connection. Read {} \
                lines.",
               stream_id.0,
