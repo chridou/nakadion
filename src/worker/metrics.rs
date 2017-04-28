@@ -85,8 +85,9 @@ pub struct StreamMetrics {
     bytes_per_line: Mutex<Histogram>,
     bytes_per_second: StdMeter,
     keep_alives_per_second: StdMeter,
-    lines_per_connection: Mutex<Histogram>,
     connection_duration: Mutex<Histogram>,
+    no_connection_duration: Mutex<Histogram>,
+    lines_per_connection: Mutex<Histogram>,
     batches_dropped_per_second: StdMeter,
 }
 
@@ -98,6 +99,7 @@ impl StreamMetrics {
             bytes_per_second: StdMeter::create(),
             keep_alives_per_second: StdMeter::create(),
             connection_duration: Mutex::new(Histogram::new()),
+            no_connection_duration: Mutex::new(Histogram::new()),
             lines_per_connection: Mutex::new(Histogram::new()),
             batches_dropped_per_second: StdMeter::create(),
         }
@@ -111,6 +113,11 @@ impl StreamMetrics {
         update_histogram(lines, &self.lines_per_connection);
         update_histogram((Instant::now() - start).as_secs(),
                          &self.connection_duration);
+    }
+
+    pub fn connected(&self, no_connection_since: Instant, lines: u64) {
+        let d = duration_to_millis(Instant::now() - no_connection_since);
+        update_histogram(d, &self.no_connection_duration);
     }
 
     pub fn keep_alive_received(&self) {
