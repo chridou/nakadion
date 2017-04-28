@@ -1,7 +1,3 @@
-use std::sync::Mutex;
-use libmetrics::metrics::{Meter, StdMeter};
-use histogram::Histogram;
-
 #[derive(Serialize, Default)]
 pub struct WorkerStats {
     /// Statistics regarding the user supplied batch handler
@@ -18,7 +14,7 @@ pub struct HandlerStats {
     pub batches_per_second: MeterSnapshot,
     /// Distribution of bytes over batches
     pub bytes_per_batch: HistogramSnapshot,
-    /// Distribution of processing time for a handler call
+    /// Distribution of processing time for a handler call in microseconds
     pub processing_durations: HistogramSnapshot,
     /// The number of bytes passed to the handler as a batch per second
     pub bytes_per_second: MeterSnapshot,
@@ -37,9 +33,9 @@ pub struct StreamStats {
     pub keep_alives_per_second: MeterSnapshot,
     /// The distribution of the number of lines received via connections
     pub lines_per_connection: HistogramSnapshot,
-    /// The distribution of the time connections were active
+    /// The distribution of the time connections were active in seconds
     pub connection_duration: HistogramSnapshot,
-    /// The distribution of the time when there was no connection
+    /// The distribution of the time when there was no connection in milliseconds
     pub no_connection_duration: HistogramSnapshot,
     /// The number of batches dropped due to a changed `StreamId` or shutdown.
     ///
@@ -52,7 +48,7 @@ pub struct StreamStats {
 pub struct CheckpointingStats {
     /// The number of checkpoints committed per second
     pub checkpoints_per_second: MeterSnapshot,
-    /// The distribution of times it took to checkpoint
+    /// The distribution of times it took to checkpoint in milliseconds
     pub checkpointing_durations: HistogramSnapshot,
     /// The number of failed attempts to checkpoint.
     ///

@@ -81,6 +81,7 @@
 //! struct MyHandler;
 //!
 //! impl Handler for MyHandler {
+//!     // You must not panic within the handler.
 //!     fn handle(&self, batch: &str, info: BatchInfo) -> AfterBatchAction {
 //!         println!("{}", batch);
 //!         AfterBatchAction::Continue
@@ -89,9 +90,9 @@
 //!
 //! let (client, join_handle) = NakadiClient::from_env(MyHandler, MyTokenProvider).unwrap();
 //!
+//! // Wait until the client stopped.
 //! join_handle.join().unwrap();
 //! ```
-//!
 //!
 //! ## Performance
 //!
@@ -222,8 +223,8 @@ pub struct PartitionInfo {
 /// An `EventType` can be published on multiple partitions.
 #[derive(Debug, Deserialize)]
 pub struct EventTypeInfo {
-    event_type: EventType,
-    partitions: Vec<PartitionInfo>,
+    pub event_type: EventType,
+    pub partitions: Vec<PartitionInfo>,
 }
 
 impl EventTypeInfo {
@@ -239,7 +240,7 @@ impl EventTypeInfo {
 #[derive(Debug, Deserialize)]
 pub struct StreamInfo {
     #[serde(rename="items")]
-    event_types: Vec<EventTypeInfo>,
+    pub event_types: Vec<EventTypeInfo>,
 }
 
 impl StreamInfo {

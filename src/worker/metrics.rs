@@ -61,7 +61,7 @@ impl HandlerMetrics {
     }
 
     pub fn batch_processed(&self, start: Instant) {
-        let millis = duration_to_millis(Instant::now() - start);
+        let millis = duration_to_micros(Instant::now() - start);
         update_histogram(millis, &self.processing_durations);
     }
 
