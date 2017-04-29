@@ -4,7 +4,7 @@ use std::sync::mpsc::{self, Sender, SyncSender, Receiver};
 use std::thread::{self, JoinHandle};
 use std::io::{BufRead, BufReader};
 use std::env;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 
 use serde_json::{self, Value};
 
@@ -150,6 +150,24 @@ impl ConcurrentWorker {
         let is_running = Arc::new(AtomicBool::new(true));
         let metrics = Arc::new(WorkerMetrics::new());
 
+
+        let metrics2 = metrics.clone();
+        let is_running2 = is_running.clone();
+
+        thread::spawn(move || {
+            let metrics = metrics2;
+            let is_running = is_running2;
+            let mut last_tick = Instant::now();
+            while is_running.load(Ordering::Relaxed) {
+                let now = Instant::now();
+                if now - last_tick >= Duration::from_secs(5) {
+                    metrics.tick();
+                    last_tick = now;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            info!("Concurrent worker timer stopped.");
+        });
 
         let leader_subsrciption_id = subscription_id.clone();
         let leader_connector = connector.clone();

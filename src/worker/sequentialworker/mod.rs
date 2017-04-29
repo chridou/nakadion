@@ -11,7 +11,7 @@ use super::*;
 use super::metrics::*;
 use super::connector::{NakadiConnector, Checkpoints, ReadsStream};
 
-const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000,
+const RETRY_MILLIS: &'static [u64] = &[10, 15, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000,
                                        10000, 30000, 60000, 300000, 600000];
 
 
@@ -52,6 +52,24 @@ impl SequentialWorker {
                                        subscription_id.clone(),
                                        is_running.clone(),
                                        metrics.clone());
+
+        let metrics2 = metrics.clone();
+        let is_running2 = is_running.clone();
+
+        thread::spawn(move || {
+            let metrics = metrics2;
+            let is_running = is_running2;
+            let mut last_tick = Instant::now();
+            while is_running.load(Ordering::Relaxed) {
+                let now = Instant::now();
+                if now - last_tick >= Duration::from_secs(5) {
+                    metrics.tick();
+                    last_tick = now;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            info!("Sequential worker timer stopped.");
+        });
 
         (SequentialWorker {
             is_running: is_running,
@@ -259,8 +277,8 @@ fn connect<C: ReadsStream>(connector: &C,
                 thread::sleep(pause);
             }
             Err(err) => {
-                error!("Failed to connect to Nakadi: {}", err);
                 let pause = retry_pause(attempt - 1);
+                error!("Failed to connect to Nakadi. Waiting {} ms: {}", duration_to_millis(pause), err);
                 thread::sleep(pause);
             }
         }

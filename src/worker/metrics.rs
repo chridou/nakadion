@@ -240,7 +240,7 @@ fn new_histogram_snapshot_from_mutex(histogram: &Mutex<Histogram>) -> HistogramS
     new_histogram_snapshot(&guard)
 }
 
-fn duration_to_millis(d: Duration) -> u64 {
+pub fn duration_to_millis(d: Duration) -> u64 {
     d.as_secs() * 1000 + d.subsec_nanos() as u64 / 1_000_000
 }
 
