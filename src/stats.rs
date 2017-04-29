@@ -23,7 +23,7 @@ pub struct HandlerStats {
 
 #[derive(Serialize, Default)]
 pub struct StreamStats {
-    /// The number of lines received including keep alives lines
+    /// The number of lines received including keep alive lines
     pub lines_per_second: MeterSnapshot,
     /// The distribution of bytes per line received including keep alive lines
     pub bytes_per_line: HistogramSnapshot,
@@ -32,6 +32,7 @@ pub struct StreamStats {
     /// The number of keep alive lines received per second
     pub keep_alives_per_second: MeterSnapshot,
     /// The distribution of the number of lines received via connections
+    /// including keep alive lines
     pub lines_per_connection: HistogramSnapshot,
     /// The distribution of the time connections were active in seconds
     pub connection_duration: HistogramSnapshot,
@@ -62,10 +63,12 @@ pub struct CheckpointingStats {
 
 #[derive(Serialize, Default)]
 pub struct MeterSnapshot {
+    /// The number of collected values since start.
     pub count: i64,
     pub one_minute_rate: f64,
     pub five_minute_rate: f64,
     pub fifteen_minute_rate: f64,
+    /// The mean of all collected values since start
     pub mean: f64,
 }
 

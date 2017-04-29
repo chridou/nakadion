@@ -252,9 +252,9 @@ fn update_histogram(v: u64, h: &Mutex<Histogram>) {
     match h.lock() {
         Ok(mut h) => {
             if let Err(err) = h.increment(v) {
-                warn!("Could not update histogram: {}", err);
+                warn!("Could not update histogram with value {}: {}", v, err);
             }
         }
-        Err(err) => warn!("Could not update histogram: {}", err),
+        Err(err) => warn!("Could not update histogram with value {}: {}", v, err),
     }
 }
