@@ -46,10 +46,10 @@ pub struct HandlerMetrics {
 impl HandlerMetrics {
     pub fn new() -> HandlerMetrics {
         HandlerMetrics {
-            batches_per_second: StdMeter::create(),
+            batches_per_second: StdMeter::default(),
             bytes_per_batch: Mutex::new(Histogram::new()),
             processing_durations: Mutex::new(Histogram::new()),
-            bytes_per_second: StdMeter::create(),
+            bytes_per_second: StdMeter::default(),
         }
     }
 
@@ -94,14 +94,14 @@ pub struct StreamMetrics {
 impl StreamMetrics {
     pub fn new() -> StreamMetrics {
         StreamMetrics {
-            lines_per_second: StdMeter::create(),
+            lines_per_second: StdMeter::default(),
             bytes_per_line: Mutex::new(Histogram::new()),
-            bytes_per_second: StdMeter::create(),
-            keep_alives_per_second: StdMeter::create(),
+            bytes_per_second: StdMeter::default(),
+            keep_alives_per_second: StdMeter::default(),
             connection_duration: Mutex::new(Histogram::new()),
             no_connection_duration: Mutex::new(Histogram::new()),
             lines_per_connection: Mutex::new(Histogram::new()),
-            batches_dropped_per_second: StdMeter::create(),
+            batches_dropped_per_second: StdMeter::default(),
         }
     }
 
@@ -163,10 +163,10 @@ pub struct CheckpointingMetrics {
 impl CheckpointingMetrics {
     pub fn new() -> CheckpointingMetrics {
         CheckpointingMetrics {
-            checkpoints_per_second: StdMeter::create(),
+            checkpoints_per_second: StdMeter::default(),
             checkpointing_durations: Mutex::new(Histogram::new()),
-            checkpointing_errors_per_second: StdMeter::create(),
-            checkpointing_failures_per_second: StdMeter::create(),
+            checkpointing_errors_per_second: StdMeter::default(),
+            checkpointing_failures_per_second: StdMeter::default(),
             checkpointing_failures_durations: Mutex::new(Histogram::new()),
         }
     }
