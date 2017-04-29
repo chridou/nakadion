@@ -237,7 +237,7 @@ impl NakadiConnector for TestConnector {
 
 impl ProvidesStreamInfo for TestConnector {
     fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo> {
-        unimplemented!()
+        Ok(StreamInfo::default())
     }
 }
 
@@ -296,7 +296,7 @@ fn the_worker_should_work() {
     let (worker, handle) = SequentialWorker::new(connector.clone(),
                                                  handler,
                                                  subscription_id,
-                                                 SequentialWorkerSettings);
+                                                 SequentialWorkerSettings).unwrap();
 
     handle.join().unwrap();
 

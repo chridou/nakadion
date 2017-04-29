@@ -103,7 +103,7 @@ impl NakadiWorker {
                 let (worker, handle) = sequentialworker::SequentialWorker::new(connector,
                                                                                handler,
                                                                                subscription_id,
-                                                                               settings);
+                                                                               settings)?;
                 (Box::new(worker) as Box<Worker + Send + Sync + 'static>, handle)
             }
             WorkerSettings::Concurrent(settings) => {

@@ -40,6 +40,9 @@ pub trait ReadsStream {
 /// Checkpoints cursors
 pub trait Checkpoints {
     /// Checkpoint `Cursor`s.
+    ///
+    /// # Usage
+    ///
     /// Make sure you use the same `StreamId` with which
     /// you retrieved the cursor.
     ///

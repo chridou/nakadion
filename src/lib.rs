@@ -237,7 +237,7 @@ impl EventTypeInfo {
 
 /// A stream can provide multiple `EventTypes` where each of them can have
 /// its own partitioning setup.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct StreamInfo {
     #[serde(rename="items")]
     pub event_types: Vec<EventTypeInfo>,

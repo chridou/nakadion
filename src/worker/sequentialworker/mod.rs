@@ -43,7 +43,14 @@ impl SequentialWorker {
                                                          handler: H,
                                                          subscription_id: SubscriptionId,
                                                          _settings: SequentialWorkerSettings)
-                                                         -> (SequentialWorker, JoinHandle<()>) {
+                                                         -> Result<(SequentialWorker, JoinHandle<()>), String> {
+
+        let subscription_info = 
+            connector.stream_info(&subscription_id)
+            .map_err(|err| format!("Could not get stream info for sucbscription {}: {}", subscription_id.0, err))?;
+
+        info!("Working on subscription {}: {:?}", subscription_id.0, subscription_info);
+
         let is_running = Arc::new(AtomicBool::new(true));
         let metrics = Arc::new(WorkerMetrics::new());
 
@@ -71,12 +78,12 @@ impl SequentialWorker {
             info!("Sequential worker timer stopped.");
         });
 
-        (SequentialWorker {
+        Ok((SequentialWorker {
             is_running: is_running,
             subscription_id: subscription_id,
             metrics: metrics,
         },
-         handle)
+         handle))
     }
 }
 
