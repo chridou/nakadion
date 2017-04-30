@@ -128,7 +128,7 @@ extern crate serde_json;
 extern crate error_chain;
 
 extern crate metrics as libmetrics;
-extern crate histogram;
+extern crate hdrsample;
 
 mod tokenerrors;
 pub mod stats;

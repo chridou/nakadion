@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use libmetrics::metrics::{Meter, StdMeter};
-use histogram::Histogram;
+use hdrsample::Histogram;
 
 use stats::*;
 
@@ -38,8 +38,8 @@ impl WorkerMetrics {
 
 pub struct HandlerMetrics {
     batches_per_second: StdMeter,
-    bytes_per_batch: Mutex<Histogram>,
-    processing_durations: Mutex<Histogram>,
+    bytes_per_batch: Mutex<Histogram<u64>>,
+    processing_durations: Mutex<Histogram<u64>>,
     bytes_per_second: StdMeter,
 }
 
@@ -47,8 +47,8 @@ impl HandlerMetrics {
     pub fn new() -> HandlerMetrics {
         HandlerMetrics {
             batches_per_second: StdMeter::default(),
-            bytes_per_batch: Mutex::new(Histogram::new()),
-            processing_durations: Mutex::new(Histogram::new()),
+            bytes_per_batch: Mutex::new(Histogram::new_with_max(1_000_000, 3).unwrap()),
+            processing_durations: Mutex::new(Histogram::new_with_max(10*60*1_000_000, 3).unwrap()),
             bytes_per_second: StdMeter::default(),
         }
     }
@@ -61,8 +61,8 @@ impl HandlerMetrics {
     }
 
     pub fn batch_processed(&self, start: Instant) {
-        let millis = duration_to_micros(Instant::now() - start);
-        update_histogram(millis, &self.processing_durations);
+        let micros = duration_to_micros(Instant::now() - start);
+        update_histogram(micros, &self.processing_durations);
     }
 
     pub fn tick(&self) {
@@ -82,12 +82,12 @@ impl HandlerMetrics {
 
 pub struct StreamMetrics {
     lines_per_second: StdMeter,
-    bytes_per_line: Mutex<Histogram>,
+    bytes_per_line: Mutex<Histogram<u64>>,
     bytes_per_second: StdMeter,
     keep_alives_per_second: StdMeter,
-    connection_duration: Mutex<Histogram>,
-    no_connection_duration: Mutex<Histogram>,
-    lines_per_connection: Mutex<Histogram>,
+    connection_duration: Mutex<Histogram<u64>>,
+    no_connection_duration: Mutex<Histogram<u64>>,
+    lines_per_connection: Mutex<Histogram<u64>>,
     batches_dropped_per_second: StdMeter,
 }
 
@@ -95,12 +95,12 @@ impl StreamMetrics {
     pub fn new() -> StreamMetrics {
         StreamMetrics {
             lines_per_second: StdMeter::default(),
-            bytes_per_line: Mutex::new(Histogram::new()),
+            bytes_per_line: Mutex::new(Histogram::new_with_max(1_000_000, 3).unwrap()),
             bytes_per_second: StdMeter::default(),
             keep_alives_per_second: StdMeter::default(),
-            connection_duration: Mutex::new(Histogram::new()),
-            no_connection_duration: Mutex::new(Histogram::new()),
-            lines_per_connection: Mutex::new(Histogram::new()),
+            connection_duration: Mutex::new(Histogram::new_with_max(2*24*60*60, 3).unwrap()),
+            no_connection_duration: Mutex::new(Histogram::new_with_max(10*60*60*1_000, 3).unwrap()),
+            lines_per_connection: Mutex::new(Histogram::new_with_max(10_000_000, 3).unwrap()),
             batches_dropped_per_second: StdMeter::default(),
         }
     }
@@ -154,20 +154,20 @@ impl StreamMetrics {
 
 pub struct CheckpointingMetrics {
     checkpoints_per_second: StdMeter,
-    checkpointing_durations: Mutex<Histogram>,
+    checkpointing_durations: Mutex<Histogram<u64>>,
     checkpointing_errors_per_second: StdMeter,
     checkpointing_failures_per_second: StdMeter,
-    checkpointing_failures_durations: Mutex<Histogram>,
+    checkpointing_failures_durations: Mutex<Histogram<u64>>,
 }
 
 impl CheckpointingMetrics {
     pub fn new() -> CheckpointingMetrics {
         CheckpointingMetrics {
             checkpoints_per_second: StdMeter::default(),
-            checkpointing_durations: Mutex::new(Histogram::new()),
+            checkpointing_durations: Mutex::new(Histogram::new_with_max(61*60*1_000, 3).unwrap()),
             checkpointing_errors_per_second: StdMeter::default(),
             checkpointing_failures_per_second: StdMeter::default(),
-            checkpointing_failures_durations: Mutex::new(Histogram::new()),
+            checkpointing_failures_durations: Mutex::new(Histogram::new_with_max(61*60*1_000, 3).unwrap()),
         }
     }
 
@@ -219,23 +219,29 @@ fn new_meter_snapshot(meter: &Meter) -> MeterSnapshot {
     }
 }
 
-fn new_histogram_snapshot(histogram: &Histogram) -> HistogramSnapshot {
+fn new_histogram_snapshot(histogram: &Histogram<u64>) -> HistogramSnapshot {
     HistogramSnapshot {
-        min: histogram.minimum().ok(),
-        max: histogram.maximum().ok(),
-        mean: histogram.mean().ok(),
-        std_var: histogram.stdvar().ok(),
-        std_dev: histogram.stddev(),
-        p75: histogram.percentile(75.0).ok(),
-        p95: histogram.percentile(95.0).ok(),
-        p98: histogram.percentile(98.0).ok(),
-        p99: histogram.percentile(99.0).ok(),
-        p999: histogram.percentile(99.9).ok(),
-        p9999: histogram.percentile(99.99).ok(),
+        count: histogram.count(),
+        min: histogram.min(),
+        max: histogram.max(),
+        mean: histogram.mean(),
+        std_dev: histogram.stdev(),
+        low: histogram.low(),
+        high: histogram.high(),
+        sigfig: histogram.sigfig(),
+        len: histogram.len(),
+        percentiles: HistogramPercentiles {
+            p75: histogram.value_at_percentile(0.75),
+            p95: histogram.value_at_percentile(95.0),
+            p98: histogram.value_at_percentile(98.0),
+            p99: histogram.value_at_percentile(99.0),
+            p999: histogram.value_at_percentile(99.9),
+            p9999: histogram.value_at_percentile(99.99),
+        }
     }
 }
 
-fn new_histogram_snapshot_from_mutex(histogram: &Mutex<Histogram>) -> HistogramSnapshot {
+fn new_histogram_snapshot_from_mutex(histogram: &Mutex<Histogram<u64>>) -> HistogramSnapshot {
     let guard = histogram.lock().unwrap();
     new_histogram_snapshot(&guard)
 }
@@ -248,11 +254,16 @@ fn duration_to_micros(d: Duration) -> u64 {
     d.as_secs() * 1_000_000 + d.subsec_nanos() as u64 / 1000
 }
 
-fn update_histogram(v: u64, h: &Mutex<Histogram>) {
+fn update_histogram(v: u64, h: &Mutex<Histogram<u64>>) {
     match h.lock() {
         Ok(mut h) => {
-            if let Err(err) = h.increment(v) {
-                warn!("Could not update histogram with value {}: {}", v, err);
+           let high = h.high();
+           if let Err(()) = h.record(v) {
+                info!("Could not update histogram with value {} because it is \
+                       higher than {}. Recording the highest possible value {}.", v, high, high);
+                if let Err(()) = h.record(high) {
+                    warn!("Could not record the highest possible value of {}. Skipping value.", high);
+                }
             }
         }
         Err(err) => warn!("Could not update histogram with value {}: {}", v, err),
