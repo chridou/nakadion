@@ -40,6 +40,9 @@ pub trait ReadsStream {
 /// Checkpoints cursors
 pub trait Checkpoints {
     /// Checkpoint `Cursor`s.
+    ///
+    /// # Usage
+    ///
     /// Make sure you use the same `StreamId` with which
     /// you retrieved the cursor.
     ///
@@ -110,6 +113,9 @@ pub struct ConnectorSettings {
     pub batch_limit: usize,
     /// The amount of uncommitted events Nakadi will stream before pausing the stream.
     /// When in paused state and commit comes - the stream will resume. Minimal value is 1.
+    ///
+    /// When using the concurrent worker you should adjust this value to safe your
+    /// workers from running dry.
     #[builder(default="0")]
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
@@ -170,14 +176,13 @@ impl ConnectorSettingsBuilder {
                    default.");
             builder
         };
-        let builder =
-            if let Some(anv_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
-                builder.batch_limit(anv_val.parse()
+        let builder = if let Some(anv_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
+            builder.batch_limit(anv_val.parse()
                 .map_err(|err| format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err))?)
-            } else {
-                warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
-                builder
-            };
+        } else {
+            warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
+            builder
+        };
         let builder = if let Some(anv_val) = env::var("NAKADION_MAX_UNCOMMITED_EVENTS").ok() {
             builder.max_uncommitted_events(anv_val.parse()
                     .map_err(|err| {
@@ -188,15 +193,14 @@ impl ConnectorSettingsBuilder {
                    default.");
             builder
         };
-        let builder =
-            if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
-                builder.nakadi_host(anv_val.parse()
+        let builder = if let Some(anv_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+            builder.nakadi_host(anv_val.parse()
                 .map_err(|err| format!("Could not parse 'NAKADION_NAKADI_HOST': {}", err))?)
-            } else {
-                warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. \
-                       It will have to be set manually.");
-                builder
-            };
+        } else {
+            warn!("Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
+                   manually.");
+            builder
+        };
         Ok(builder)
     }
 }
@@ -258,10 +262,8 @@ impl HyperClientConnector {
                                 -> Result<HyperClientConnector, String> {
         let builder = ConnectorSettingsBuilder::from_env()
             .map_err(|err| format!("Could not create settings builder: {}", err))?;
-        let settings =
-            builder
-                .build()
-                .map_err(|err| format!("Could not create settings from builder: {}", err))?;
+        let settings = builder.build()
+            .map_err(|err| format!("Could not create settings from builder: {}", err))?;
         info!("Creating HyperClientConnector from: {:?}", settings);
         Ok(HyperClientConnector::with_client_and_settings(client, token_provider, settings))
     }
@@ -328,15 +330,14 @@ impl ReadsStream for HyperClientConnector {
             Ok(mut rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let stream_id = if let Some(stream_id) =
-                            rsp.headers
-                                .get::<XNakadiStreamId>()
-                                .map(|v| StreamId(v.to_string())) {
+                        let stream_id = if let Some(stream_id) = rsp.headers
+                            .get::<XNakadiStreamId>()
+                            .map(|v| StreamId(v.to_string())) {
                             stream_id
                         } else {
                             bail!(ClientErrorKind::InvalidResponse("The response lacked the \
                                                                     'X-Nakadi-StreamId' header."
-                                                                           .to_string()))
+                                .to_string()))
                         };
                         Ok((rsp, stream_id))
                     }
@@ -448,12 +449,11 @@ impl ProvidesStreamInfo for HyperClientConnector {
             Ok(mut rsp) => {
                 match rsp.status {
                     StatusCode::Ok => {
-                        let payload: StreamInfo = serde_json::from_reader(rsp)
-                            .map_err(|err| {
-                                         ClientErrorKind::InvalidResponse(format!("Could not parse \
-                                                                          stream stats: {}",
-                                                                                  err))
-                                     })?;
+                        let payload: StreamInfo = serde_json::from_reader(rsp).map_err(|err| {
+                                ClientErrorKind::InvalidResponse(format!("Could not parse stream \
+                                                                          stats: {}",
+                                                                         err))
+                            })?;
                         Ok(payload)
                     }
                     StatusCode::BadRequest => {

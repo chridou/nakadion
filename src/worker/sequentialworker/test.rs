@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use super::*;
 use super::process_line;
+use super::metrics::*;
 
 const TEST_LINE_WITH_EVENTS: &'static str =
     r#"{"cursor":{"partition":"5","offset":"543","event_type":"order.ORDER_RECEIVED","cursor_token":"b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"data_op":"C","data":{"order_number":"abc","id":"111"},"data_type":"blah"}]}"#;
@@ -72,8 +73,9 @@ fn should_send_a_line_with_events_to_the_handler() {
                  &handler,
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = handler.0.lock().unwrap();
 
@@ -92,8 +94,9 @@ fn should_send_a_line_without_events_to_the_handler() {
                  &handler,
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = handler.0.lock().unwrap();
 
@@ -114,8 +117,9 @@ fn should_checkpoint_a_line_on_continue() {
                  &DevNullHandler(AfterBatchAction::Continue),
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -135,8 +139,9 @@ fn should_not_checkpoint_a_line_on_continue() {
                  &DevNullHandler(AfterBatchAction::ContinueNoCheckpoint),
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -156,8 +161,9 @@ fn should_checkpoint_a_line_on_stop() {
                  &DevNullHandler(AfterBatchAction::Stop),
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -178,8 +184,9 @@ fn should_not_checkpoint_a_line_on_stop() {
                  &DevNullHandler(AfterBatchAction::Abort),
                  &StreamId::new(""),
                  &SubscriptionId::nil(),
-                 &is_running)
-            .unwrap();
+                 &is_running,
+                 &WorkerMetrics::new())
+        .unwrap();
 
     let collected = checkpointer.0.lock().unwrap();
 
@@ -230,7 +237,7 @@ impl NakadiConnector for TestConnector {
 
 impl ProvidesStreamInfo for TestConnector {
     fn stream_info(&self, subscription: &SubscriptionId) -> ClientResult<StreamInfo> {
-        unimplemented!()
+        Ok(StreamInfo::default())
     }
 }
 
@@ -265,7 +272,11 @@ fn the_worker_loop_should_work() {
     let collected = Arc::new(Mutex::new(Vec::new()));
     let handler = TestHandler(collected.clone());
 
-    nakadi_worker_loop(&connector, handler, &subscription_id, is_running.clone());
+    nakadi_worker_loop(&connector,
+                       handler,
+                       &subscription_id,
+                       is_running.clone(),
+                       &WorkerMetrics::new());
 
     assert_eq!(42, collected.lock().unwrap().len());
     assert_eq!(42, connector.checkpointed.lock().unwrap().len());
@@ -285,7 +296,7 @@ fn the_worker_should_work() {
     let (worker, handle) = SequentialWorker::new(connector.clone(),
                                                  handler,
                                                  subscription_id,
-                                                 SequentialWorkerSettings);
+                                                 SequentialWorkerSettings).unwrap();
 
     handle.join().unwrap();
 

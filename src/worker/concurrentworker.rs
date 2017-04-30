@@ -4,11 +4,12 @@ use std::sync::mpsc::{self, Sender, SyncSender, Receiver};
 use std::thread::{self, JoinHandle};
 use std::io::{BufRead, BufReader};
 use std::env;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 
 use serde_json::{self, Value};
 
-use ::*;
+use super::super::*;
+use super::metrics::*;
 use super::connector::{NakadiConnector, Checkpoints};
 
 const RETRY_MILLIS: &'static [u64] = &[10, 20, 50, 100, 200, 300, 400, 500, 1000, 2000, 5000,
@@ -66,20 +67,14 @@ impl ConcurrentWorkerSettingsBuilder {
     /// * `NAKADION_WORKER_BUFFER_SIZE`
     pub fn fill_with_env(&mut self) -> Result<(), String> {
         if let Some(env_val) = env::var("NAKADION_MAX_WORKERS").ok() {
-            let max_workers =
-                env_val
-                    .parse()
-                    .map_err(|err| format!("Could not parse 'NAKADION_MAX_WORKERS': {}", err))?;
+            let max_workers = env_val.parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_MAX_WORKERS': {}", err))?;
             self.max_workers(Some(max_workers));
         };
 
         if let Some(env_val) = env::var("NAKADION_WORKER_BUFFER_SIZE").ok() {
-            let worker_buffer_size =
-                env_val
-                    .parse()
-                    .map_err(|err| {
-                                 format!("Could not parse 'NAKADION_WORKER_BUFFER_SIZE': {}", err)
-                             })?;
+            let worker_buffer_size = env_val.parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_WORKER_BUFFER_SIZE': {}", err))?;
             self.worker_buffer_size(worker_buffer_size);
         };
 
@@ -104,6 +99,7 @@ enum PartitionWorkerMessage {
 pub struct ConcurrentWorker {
     subscription_id: SubscriptionId,
     is_running: Arc<AtomicBool>,
+    metrics: Arc<WorkerMetrics>,
 }
 
 impl ConcurrentWorker {
@@ -113,8 +109,7 @@ impl ConcurrentWorker {
          subscription_id: SubscriptionId,
          settings: ConcurrentWorkerSettings)
          -> Result<(Self, JoinHandle<()>), String> {
-        let num_partitions = connector
-            .stream_info(&subscription_id)
+        let num_partitions = connector.stream_info(&subscription_id)
             .map(|info| info.max_partitions())
             .map_err(|err| format!("Could not get stream info: {}", err))?;
 
@@ -153,7 +148,26 @@ impl ConcurrentWorker {
         }
 
         let is_running = Arc::new(AtomicBool::new(true));
+        let metrics = Arc::new(WorkerMetrics::new());
 
+
+        let metrics2 = metrics.clone();
+        let is_running2 = is_running.clone();
+
+        thread::spawn(move || {
+            let metrics = metrics2;
+            let is_running = is_running2;
+            let mut last_tick = Instant::now();
+            while is_running.load(Ordering::Relaxed) {
+                let now = Instant::now();
+                if now - last_tick >= Duration::from_secs(5) {
+                    metrics.tick();
+                    last_tick = now;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+            info!("Concurrent worker timer stopped.");
+        });
 
         let leader_subsrciption_id = subscription_id.clone();
         let leader_connector = connector.clone();
@@ -179,9 +193,10 @@ impl ConcurrentWorker {
         });
 
         Ok((ConcurrentWorker {
-                subscription_id: subscription_id.clone(),
-                is_running: is_running,
-            },
+            subscription_id: subscription_id.clone(),
+            is_running: is_running,
+            metrics: metrics,
+        },
             handle))
     }
 }
@@ -200,6 +215,10 @@ impl Worker for ConcurrentWorker {
     /// Gets the `SubscriptionId` the worker is listening to.
     fn subscription_id(&self) -> &SubscriptionId {
         &self.subscription_id
+    }
+
+    fn stats(&self) -> WorkerStats {
+        self.metrics.stats()
     }
 }
 
@@ -287,8 +306,8 @@ impl<'a, C: NakadiConnector> LeaderInternal<'a, C> {
                 let partition_id = cursor.partition.0;
                 let idx = partition_id % self.workers.len();
                 if let Err(err) = self.workers[idx]
-                       .1
-                       .send(LeaderMessage::Batch(stream_id, line)) {
+                    .1
+                    .send(LeaderMessage::Batch(stream_id, line)) {
                     bail!(ClientErrorKind::Internal(format!("Could not send batch to worker: {}",
                                                             err)));
                 } else {
@@ -372,9 +391,8 @@ impl<'a> PartitionWorkerInternal<'a> {
                             Sending stop to worker. Error: {}",
                            self.worker_id.0,
                            err);
-                    if let Err(err) =
-                        self.send_to_leader
-                            .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                    if let Err(err) = self.send_to_leader
+                        .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
                         error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
                                 Stopping anyways.",
                                self.worker_id.0);
@@ -421,10 +439,9 @@ impl<'a> PartitionWorkerInternal<'a> {
                                            Forwarding to worker.",
                                           self.worker_id.0);
                                     discard_until_stop = true;
-                                    if let Err(err) =
-                                        self.send_to_leader
-                                            .send(PartitionWorkerMessage::Stopped(self.worker_id
-                                                                                      .clone())) {
+                                    if let Err(err) = self.send_to_leader
+                                        .send(PartitionWorkerMessage::Stopped(self.worker_id
+                                            .clone())) {
                                         error!("PartitionWorker {}: Failed to send \
                                                 'Stopped' message to worker. \
                                                 Stopping anyways.",
@@ -441,9 +458,8 @@ impl<'a> PartitionWorkerInternal<'a> {
                                    self.worker_id.0,
                                    err);
                             discard_until_stop = true;
-                            if let Err(err) =
-                                self.send_to_leader
-                                    .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                            if let Err(err) = self.send_to_leader
+                                .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
                                 error!("PartitionWorker {}: Failed to send \
                                         'Stopped' message to worker. Stopping anyways.",
                                        self.worker_id.0);
@@ -460,9 +476,8 @@ impl<'a> PartitionWorkerInternal<'a> {
                               self.worker_id.0,
                               num_disarded);
                     }
-                    if let Err(err) =
-                        self.send_to_leader
-                            .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
+                    if let Err(err) = self.send_to_leader
+                        .send(PartitionWorkerMessage::Stopped(self.worker_id.clone())) {
                         error!("PartitionWorker {}: Failed to send 'Stopped' message to worker. \
                                 Stopping anyways. {} messages have been disacrded.",
                                self.worker_id.0,
@@ -527,12 +542,12 @@ impl<'a> PartitionWorkerInternal<'a> {
             }
             attempt += 1;
             match self.checkpointer
-                      .checkpoint(&stream_id, &self.subscription_id, cursors) {
+                .checkpoint(&stream_id, &self.subscription_id, cursors) {
                 Ok(()) => return,
                 Err(err) => {
                     if attempt > 5 {
-                        error!("PartitionWorker {}: Finally gave up to checkpoint cursor after {} \
-                                attempts.",
+                        error!("PartitionWorker {}: Finally gave up to checkpoint cursor after \
+                                {} attempts.",
                                self.worker_id.0,
                                err);
                         return;

@@ -6,7 +6,7 @@
 //!
 //! ## Consuming
 //!
-//! Nakadion supports two modes of consuming events. A sequuential one and a cuncurrent one.
+//! Nakadion supports two modes of consuming events. A sequuential one and a concurrent one.
 //!
 //! ### Sequential Consumption
 //!
@@ -24,7 +24,7 @@
 //! Nakadion is configured by environment variables.
 //!
 //! The environment variable `NAKADION_SUBSCRIPTION_ID` can be used to specify a subscription.
-//! The value can also be passed when creating the `NakadiClient` in case you want to cionsume multiple subscriptions.
+//! The value can also be passed when creating the `NakadiClient` in case you want to consume multiple subscriptions.
 //!
 //! ### Setting up the connector
 //!
@@ -53,6 +53,46 @@
 //! and distribute work among them based on
 //! the `partion id` of a batch. The workers are not dedidacted to a partition.
 //! Work is rather distributed based on a hash of the `partition id`.
+//!
+//! ## Usage
+//!
+//! Configure the environment variables. Check also [dotenv](https://docs.rs/dotenv):
+//!
+//! ```text
+//! export NAKADION_NAKADI_HOST="https://my.nakadi.com"
+//! export NAKADION_SUBSCRIPTION_ID="the_subscription_id"
+//! # false is the default
+//! export NAKADION_USE_CONCURRENT_WORKER=false|true
+//! ```
+//!
+//! Set up the client:
+//!
+//! ```no_run
+//! use nakadion::*;
+//!
+//! struct MyTokenProvider;
+//!
+//! impl ProvidesToken for MyTokenProvider {
+//!     fn get_token(&self) -> TokenResult<Option<Token>> {
+//!         Ok(Some(Token::new("secret")))
+//!     }
+//! }
+//!
+//! struct MyHandler;
+//!
+//! impl Handler for MyHandler {
+//!     // You must not panic within the handler.
+//!     fn handle(&self, batch: &str, info: BatchInfo) -> AfterBatchAction {
+//!         println!("{}", batch);
+//!         AfterBatchAction::Continue
+//!     }
+//! }
+//!
+//! let (client, join_handle) = NakadiClient::from_env(MyHandler, MyTokenProvider).unwrap();
+//!
+//! // Wait until the client stopped.
+//! join_handle.join().unwrap();
+//! ```
 //!
 //! ## Performance
 //!
@@ -88,7 +128,13 @@ extern crate serde_json;
 extern crate error_chain;
 
 extern crate metrics as libmetrics;
-extern crate histogram;
+extern crate hdrsample;
+
+mod tokenerrors;
+pub mod stats;
+mod clienterrors;
+mod connector;
+mod worker;
 
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -98,18 +144,12 @@ use uuid::Uuid;
 use serde::{Deserialize, Deserializer};
 
 use worker::{Worker, NakadiWorker, WorkerSettings};
-
-mod tokenerrors;
-pub mod metrics;
-mod clienterrors;
-mod connector;
-pub mod worker;
+use stats::WorkerStats;
 
 pub use tokenerrors::*;
 pub use clienterrors::*;
 pub use self::connector::{NakadiConnector, Checkpoints, ReadsStream, HyperClientConnector,
                           ConnectorSettings, ConnectorSettingsBuilder, ProvidesStreamInfo};
-
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
 pub struct Token(pub String);
@@ -183,8 +223,8 @@ pub struct PartitionInfo {
 /// An `EventType` can be published on multiple partitions.
 #[derive(Debug, Deserialize)]
 pub struct EventTypeInfo {
-    event_type: EventType,
-    partitions: Vec<PartitionInfo>,
+    pub event_type: EventType,
+    pub partitions: Vec<PartitionInfo>,
 }
 
 impl EventTypeInfo {
@@ -197,10 +237,10 @@ impl EventTypeInfo {
 
 /// A stream can provide multiple `EventTypes` where each of them can have
 /// its own partitioning setup.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct StreamInfo {
     #[serde(rename="items")]
-    event_types: Vec<EventTypeInfo>,
+    pub event_types: Vec<EventTypeInfo>,
 }
 
 impl StreamInfo {
@@ -252,7 +292,7 @@ pub enum AfterBatchAction {
     Continue,
     /// Get next without checkpointing.
     ContinueNoCheckpoint,
-    /// Checkpoint then stop.
+    /// Do not checkpoint and reconnect
     Stop,
     /// Stop without checkpointing
     Abort,
@@ -294,12 +334,14 @@ impl<C: NakadiConnector> NakadiClient<C> {
         let (worker, handle) =
             NakadiWorker::new(connector.clone(), handler, subscription_id, settings)?;
         Ok((NakadiClient {
-                worker: worker,
-                connector: connector,
-            },
+            worker: worker,
+            connector: connector,
+        },
             handle))
     }
+}
 
+impl NakadiClient<HyperClientConnector> {
     /// Configure the client from environment variables.
     ///
     /// The `SubscriptionId` is provided manually. Useful if you want to consume
@@ -330,12 +372,10 @@ impl<C: NakadiConnector> NakadiClient<C> {
          token_provider: T)
          -> Result<(NakadiClient<HyperClientConnector>, JoinHandle<()>), String> {
         let subscription_id: SubscriptionId = match env::var("NAKADION_SUBSCRIPTION_ID") {
-            Ok(env_val) => SubscriptionId(
-                env_val
-                    .parse()
-                    .map_err(|err| format!(
-                        "Could not parse 'NAKADION_SUBSCRIPTION_ID': {}",
-                        err))?),
+            Ok(env_val) => {
+                SubscriptionId(env_val.parse()
+                    .map_err(|err| format!("Could not parse 'NAKADION_SUBSCRIPTION_ID': {}", err))?)
+            }
             Err(err) => {
                 return Err(format!("Could not get env var 'NAKADION_SUBSCRIPTION_ID': {}", err))
             }
@@ -346,7 +386,7 @@ impl<C: NakadiConnector> NakadiClient<C> {
     }
 
     /// Get access to the underlying `NakadiConnector`.
-    pub fn connector(&self) -> &C {
+    pub fn connector(&self) -> &HyperClientConnector {
         &self.connector
     }
 }
@@ -365,5 +405,9 @@ impl<C: NakadiConnector> Worker for NakadiClient<C> {
     /// Return the `SubscriptionId` this `NakadiClient` is listening to.
     fn subscription_id(&self) -> &SubscriptionId {
         self.worker.subscription_id()
+    }
+
+    fn stats(&self) -> WorkerStats {
+        self.worker.stats()
     }
 }
