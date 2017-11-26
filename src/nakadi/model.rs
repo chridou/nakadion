@@ -1,6 +1,6 @@
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with
 /// a `Cursor`.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct StreamId(pub String);
 
 impl StreamId {
