@@ -1,3 +1,5 @@
+use std::fmt;
+
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
 pub struct AccessToken(pub String);
@@ -14,13 +16,22 @@ impl AccessToken {
 /// Authentication can be disabled by returning `None` on `get_token`.
 pub trait ProvidesAccessToken {
     /// Get a new `Token`. Return `None` to disable authentication.
-    fn get_token(&self) -> error::Result<Option<AccessToken>>;
+    fn get_token(&self) -> Result<Option<AccessToken>, TokenError>;
 }
 
-pub mod error {
-    error_chain! {
-        types {
-            Error, ErrorKind, ResultExt, Result;
+#[derive(Debug, Clone)]
+pub enum TokenError {
+    Client { message: String },
+    Server { message: String },
+    Other { message: String },
+}
+
+impl fmt::Display for TokenError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            TokenError::Client { ref message } => write!(f, "TokenError::Client({})", message),
+            TokenError::Server { ref message } => write!(f, "TokenError::Server({})", message),
+            TokenError::Other { ref message } => write!(f, "TokenError::Other({})", message),
         }
     }
 }
