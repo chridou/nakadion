@@ -45,7 +45,7 @@ pub mod lineparsing {
     /// Tries to find the outer braces of a json obj given
     /// that begin and end are outside(or on) these boundaries
     /// while begin < end
-    fn shrink_to_obj(json_bytes: &[u8], begin: usize, end: usize) -> Result<(usize, usize), String> {
+    fn find_obj_bounds(json_bytes: &[u8], begin: usize, end: usize) -> Result<(usize, usize), String> {
         let mut idx_begin = begin;
         while idx_begin < end {
             if json_bytes[idx_begin] == OBJ_OPEN {
@@ -82,93 +82,93 @@ pub mod lineparsing {
     }
 
     #[test]
-    fn test_trim_shrink_to_obj_fail_1() {
+    fn test_find_obj_bounds_fail_1() {
         let sample = b"";
-        let r = shrink_to_obj(sample, 0, 0);
+        let r = find_obj_bounds(sample, 0, 0);
         assert!(r.is_err());
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_fail_2() {
+    fn test_find_obj_bounds_fail_2() {
         let sample = b" ";
-        let r = shrink_to_obj(sample, 0, 0);
+        let r = find_obj_bounds(sample, 0, 0);
         assert!(r.is_err());
     }
 
     #[test]
-    fn test_trim_shrink_to_obj_fail_3() {
+    fn test_find_obj_bounds_fail_3() {
         let sample = b"  ";
-        let r = shrink_to_obj(sample, 0, 1);
+        let r = find_obj_bounds(sample, 0, 1);
         assert!(r.is_err());
     } 
      
     #[test]
-    fn test_trim_shrink_to_obj_fail_4() {
+    fn test_find_obj_bounds_fail_4() {
         let sample = b"}{";
-        let r = shrink_to_obj(sample, 0, 1);
+        let r = find_obj_bounds(sample, 0, 1);
         assert!(r.is_err());
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_fail_5() {
+    fn test_find_obj_bounds_fail_5() {
         let sample = b" }";
-        let r = shrink_to_obj(sample, 0, 1);
+        let r = find_obj_bounds(sample, 0, 1);
         assert!(r.is_err());
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_fail_6() {
+    fn test_find_obj_bounds_fail_6() {
         let sample = b"{ ";
-        let r = shrink_to_obj(sample, 0, 1);
+        let r = find_obj_bounds(sample, 0, 1);
         assert!(r.is_err());
     } 
     
     #[test]
-    fn test_trim_shrink_to_obj_fail_7() {
+    fn test_find_obj_bounds_fail_7() {
         let sample = b"{";
-        let r = shrink_to_obj(sample, 0, 0);
+        let r = find_obj_bounds(sample, 0, 0);
         assert!(r.is_err());
     } 
     
     #[test]
-    fn test_trim_shrink_to_obj_fail_8() {
+    fn test_find_obj_bounds_fail_8() {
         let sample = b"}";
-        let r = shrink_to_obj(sample, 0, 0);
+        let r = find_obj_bounds(sample, 0, 0);
         assert!(r.is_err());
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_1() {
+    fn test_find_obj_bounds_1() {
         let sample = b"{}";
-        let r = shrink_to_obj(sample, 0, 1).unwrap();
+        let r = find_obj_bounds(sample, 0, 1).unwrap();
         assert_eq!(r, (0,1));
     } 
    
     #[test]
-    fn test_trim_shrink_to_obj_2() {
+    fn test_find_obj_bounds_2() {
         let sample = b"{ }";
-        let r = shrink_to_obj(sample, 0, 2).unwrap();
+        let r = find_obj_bounds(sample, 0, 2).unwrap();
         assert_eq!(r, (0,2));
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_3() {
+    fn test_find_obj_bounds_3() {
         let sample = b"aa{ }aa";
-        let r = shrink_to_obj(sample, 0, 6).unwrap();
+        let r = find_obj_bounds(sample, 0, 6).unwrap();
         assert_eq!(r, (2,4));
     } 
    
     #[test]
-    fn test_trim_shrink_to_obj_4() {
+    fn test_find_obj_bounds_4() {
         let sample = b"aa{}aa";
-        let r = shrink_to_obj(sample, 0, 5).unwrap();
+        let r = find_obj_bounds(sample, 0, 5).unwrap();
         assert_eq!(r, (2,3));
     } 
 
     #[test]
-    fn test_trim_shrink_to_obj_5() {
+    fn test_find_obj_bounds_5() {
         let sample = b"aa{{{}}{}}aa";
-        let r = shrink_to_obj(sample, 0, 11).unwrap();
+        let r = find_obj_bounds(sample, 0, 11).unwrap();
         assert_eq!(r, (2,9));
     } 
    
