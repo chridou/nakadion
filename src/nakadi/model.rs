@@ -42,6 +42,17 @@ pub mod lineparsing {
     const DOUBLE_QUOTE: u8 = b'"';
     const ESCAPE: u8 = b'\\';
 
+
+    fn find_obj_content(json_bytes: &[u8], begin: usize, end: usize) -> Result<(usize, usize), String> {
+        let (start, end) = find_obj_bounds(json_bytes, begin, end)?;
+
+        if end - start < 5 { // {"":X}
+            Err("JSON obj is empty".into())
+        } else {
+            Ok((start+1, end-1))
+        }
+    }
+
     /// Tries to find the outer braces of a json obj given
     /// that begin and end are outside(or on) these boundaries
     /// while begin < end
