@@ -342,7 +342,7 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 Ok((stream_id, NakadiLineIterator::new(response)))
             }
             StatusCode::Forbidden => {
-                return Err(ConnectError::Client {
+                Err(ConnectError::Client {
                     message: format!(
                         "{}: {}",
                         StatusCode::Forbidden,
@@ -351,40 +351,28 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 })
             }
             StatusCode::Conflict => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body>".to_string(),
-                );
-                return Err(ConnectError::Client {
-                    message: format!("{}: {}", StatusCode::Conflict, msg),
-                });
+                Err(ConnectError::Client {
+                    message: format!(
+                        "{}: {}",
+                        StatusCode::Conflict,
+                        read_response_body(&mut response)
+                    ),
+                })
             }
             other_status if other_status.is_client_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body>".to_string(),
-                );
-                return Err(ConnectError::Client {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(ConnectError::Client {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status if other_status.is_server_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body>".to_string(),
-                );
-                return Err(ConnectError::Server {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(ConnectError::Server {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body>".to_string(),
-                );
-                return Err(ConnectError::Other {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(ConnectError::Other {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
         }
     }
@@ -405,7 +393,7 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 Ok(parsed)
             }
             StatusCode::Forbidden => {
-                return Err(StatsError::Client {
+                Err(StatsError::Client {
                     message: format!(
                         "{}: {}",
                         StatusCode::Forbidden,
@@ -414,35 +402,22 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 })
             }
             other_status if other_status.is_client_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(StatsError::Client {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(StatsError::Client {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status if other_status.is_server_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(StatsError::Server {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(StatsError::Server {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(StatsError::Other {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(StatsError::Other {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
         }
     }
-
 
     fn commit(
         &self,
@@ -469,7 +444,7 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
             StatusCode::Ok => Ok(()),
             StatusCode::NoContent => Ok(()),
             StatusCode::Forbidden => {
-                return Err(CommitError::Client {
+                Err(CommitError::Client {
                     message: format!(
                         "{}: {}",
                         StatusCode::Forbidden,
@@ -478,39 +453,36 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 })
             }
             other_status if other_status.is_client_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(CommitError::Client {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(CommitError::Client {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status if other_status.is_server_error() => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(CommitError::Server {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(CommitError::Server {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
             other_status => {
-                let mut buf = String::new();
-                let msg = response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-                    "<Nakdion: Could not read body.>".to_string(),
-                );
-                return Err(CommitError::Other {
-                    message: format!("{}: {}", other_status, msg),
-                });
+                Err(CommitError::Other {
+                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
+                })
             }
         }
     }
 }
 
+
+fn read_response_body(response: &mut Response) -> String {
+    let mut buf = String::new();
+    response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
+        "<Nakadion: Could not read body.>".to_string(),
+    )
+}
+
+
 fn make_cursors_body(cursors: &[&[u8]]) -> Vec<u8> {
     let bytes_required: usize = cursors.iter().map(|c| c.len()).sum();
-    let mut body = Vec::with_capacity(bytes_required + 100);
+    let mut body = Vec::with_capacity(bytes_required + 20);
     body.extend(b"{items=[");
     for i in 0..cursors.len() {
         body.extend(cursors[i].iter().cloned());
