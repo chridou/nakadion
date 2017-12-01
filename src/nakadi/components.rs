@@ -68,9 +68,9 @@ pub mod lineparsing {
         Ok((idx_begin, idx_end))
     }
 
-    fn next_string(json_bytes: &[u8], start: usize) -> Result<(usize, usize), String> {
+    fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, String> {
         if start == json_bytes.len() {
-            return Err("Reached end".into());
+            return Ok(None);
         }
 
         let mut idx_begin = start;
@@ -79,6 +79,10 @@ pub mod lineparsing {
                 break;
             }
             idx_begin += 1;
+        }
+
+        if idx_begin == json_bytes.len() {
+            return Ok(None);
         }
 
         if idx_begin >= json_bytes.len() - 1 {
@@ -108,7 +112,7 @@ pub mod lineparsing {
             return Err("Not a string. Missing ending `\"`.".into());
         }
 
-        Ok((idx_begin, idx_end))
+        Ok(Some((idx_begin, idx_end)))
     }
 
     fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), String> {
@@ -133,7 +137,7 @@ pub mod lineparsing {
         while idx_end < json_bytes.len() {
             let c = json_bytes[idx_end];
             if c == DOUBLE_QUOTE {
-                let (_, end) = next_string(json_bytes, idx_end)?;
+                let (_, end) = next_string(json_bytes, idx_end)?.unwrap();
                 idx_end = end + 1;
                 continue;
             } else if c == OBJ_OPEN {
@@ -182,7 +186,7 @@ pub mod lineparsing {
         while idx_end < json_bytes.len() {
             let c = json_bytes[idx_end];
             if c == DOUBLE_QUOTE {
-                let (_, end) = next_string(json_bytes, idx_end)?;
+                let (_, end) = next_string(json_bytes, idx_end)?.unwrap();
                 idx_end = end + 1;
                 continue;
             } else if c == ARRAY_OPEN {
@@ -303,43 +307,43 @@ pub mod lineparsing {
     #[test]
     fn test_next_string_1() {
         let sample = b"\"\"";
-        let r = next_string(sample, 0).unwrap();
+        let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (0, 1));
     }
 
     #[test]
     fn test_next_string_2() {
         let sample = b"xxx\"\"yyy";
-        let r = next_string(sample, 0).unwrap();
+        let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (3, 4));
     }
 
     #[test]
     fn test_next_string_3() {
         let sample = b"xxx\"abc\"yyy";
-        let r = next_string(sample, 0).unwrap();
+        let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (3, 7));
     }
 
     #[test]
     fn test_next_string_4() {
         let sample = b"xxx\"a\\\"bc\"yyy";
-        let r = next_string(sample, 0).unwrap();
+        let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (3, 9));
     }
 
     #[test]
     fn test_next_string_5() {
         let sample = b"xxx\"a\\\nb\\\"c\"yyy";
-        let r = next_string(sample, 0).unwrap();
+        let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (3, 11));
     }
 
     #[test]
-    fn test_next_string_fail_1() {
+    fn test_next_string_none_1() {
         let sample = b"";
-        let r = next_string(sample, 0);
-        assert!(r.is_err());
+        let r = next_string(sample, 0).unwrap();
+        assert!(r.is_none());
     }
 
     #[test]
@@ -356,4 +360,73 @@ pub mod lineparsing {
         assert!(r.is_err());
     }
 
+    #[test]
+    fn test_find_next_obj_1() {
+        let sample = b"\"field\":{\"number\": 1}, more...";
+        let r = find_next_obj(sample, 0).unwrap();
+        assert_eq!(r, (8, 20));
+    }
+
+    #[test]
+    fn test_find_next_obj_2() {
+        let sample = b"\"field\":{\"number\": 1}, more...";
+        let r = find_next_obj(sample, 7).unwrap();
+        assert_eq!(r, (8, 20));
+    }
+
+    #[test]
+    fn test_find_next_obj_3() {
+        let sample = b"\"field\":{\"number\": 1}, more...";
+        let r = find_next_obj(sample, 8).unwrap();
+        assert_eq!(r, (8, 20));
+    }
+
+    #[test]
+    fn test_find_next_obj_fail_1() {
+        let sample = b"\"field\":{\"number\": 1}, more...";
+        let r = find_next_obj(sample, 9);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_find_next_obj_fail_2() {
+        let sample = b"\"field\":{\"number\": 1}, more...";
+        let r = find_next_obj(sample, 12);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_find_next_array_1() {
+        let sample = b"\"field\":[\"number\", 1, {}], more...";
+        let r = find_next_array(sample, 0).unwrap();
+        assert_eq!(r, (8, 24));
+    }
+
+    #[test]
+    fn test_find_next_array_2() {
+        let sample = b"\"field\":[\"number\", 1, {}], more...";
+        let r = find_next_array(sample, 7).unwrap();
+        assert_eq!(r, (8, 24));
+    }
+
+    #[test]
+    fn test_find_next_array_3() {
+        let sample = b"\"field\":[\"number\", 1, {}], more...";
+        let r = find_next_array(sample, 8).unwrap();
+        assert_eq!(r, (8, 24));
+    }
+
+    #[test]
+    fn test_find_next_array_fail_1() {
+        let sample = b"\"field\":[\"number\", 1, {}], more...";
+        let r = find_next_array(sample, 9);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_find_next_array_fail_2() {
+        let sample = b"\"field\":[\"number\", 1, {}], more...";
+        let r = find_next_array(sample, 12);
+        assert!(r.is_err());
+    }
 }
