@@ -14,6 +14,40 @@ pub mod lineparsing {
     const ESCAPE: u8 = b'\\';
 
 
+    pub struct LineItems {
+        pub cursor: (usize, usize),
+        pub data: (usize, usize),
+        pub info: Option<(usize, usize)>,
+    }
+
+    pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, String> {
+        let mut line_items = LineItems {
+            cursor: (0, 0),
+            data: (0, 0),
+            info: None,
+        };
+
+        let next = parse_next_item(json_bytes, 0, &mut line_items)?;
+        let next = parse_next_item(json_bytes, next, &mut line_items)?;
+        let _ = parse_next_item(json_bytes, next, &mut line_items)?;
+
+        Ok(line_items)
+    }
+
+    fn parse_next_item(
+        json_bytes: &[u8],
+        start: usize,
+        line_items: &mut LineItems,
+    ) -> Result<usize, String> {
+        if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
+            unimplemented!()
+        } else {
+            Err(
+                "No string found that could be the label for the next item.".into(),
+            )
+        }
+    }
+
     fn find_obj_content(
         json_bytes: &[u8],
         begin: usize,
