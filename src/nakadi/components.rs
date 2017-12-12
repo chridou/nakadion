@@ -13,17 +13,21 @@ pub mod lineparsing {
     const DOUBLE_QUOTE: u8 = b'"';
     const ESCAPE: u8 = b'\\';
 
+    const CURSOR_LABEL: &'static [u8] = b"cursor";
+    const EVENTS_LABEL: &'static [u8] = b"events";
+    const INFO_LABEL: &'static [u8] = b"info";
 
+    #[derive(Debug, PartialEq, Eq)]
     pub struct LineItems {
         pub cursor: (usize, usize),
-        pub data: (usize, usize),
+        pub events: Option<(usize, usize)>,
         pub info: Option<(usize, usize)>,
     }
 
     pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, String> {
         let mut line_items = LineItems {
             cursor: (0, 0),
-            data: (0, 0),
+            events: None,
             info: None,
         };
 
@@ -31,7 +35,11 @@ pub mod lineparsing {
         let next = parse_next_item(json_bytes, next, &mut line_items)?;
         let _ = parse_next_item(json_bytes, next, &mut line_items)?;
 
-        Ok(line_items)
+        if line_items.cursor.1 == 0 {
+            Err("No cursor".into())
+        } else {
+            Ok(line_items)
+        }
     }
 
     fn parse_next_item(
@@ -40,67 +48,35 @@ pub mod lineparsing {
         line_items: &mut LineItems,
     ) -> Result<usize, String> {
         if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
-            unimplemented!()
-        } else {
-            Err(
-                "No string found that could be the label for the next item.".into(),
-            )
-        }
-    }
-
-    fn find_obj_content(
-        json_bytes: &[u8],
-        begin: usize,
-        end: usize,
-    ) -> Result<(usize, usize), String> {
-        let (start, end) = find_obj_bounds(json_bytes, begin, end)?;
-
-        if end - start < 5 {
-            // {"":X}
-            Err("JSON obj is empty".into())
-        } else {
-            Ok((start + 1, end - 1))
-        }
-    }
-
-    /// Tries to find the outer braces of a json obj given
-    /// that begin and end are outside(or on) these boundaries
-    /// while begin < end
-    fn find_obj_bounds(
-        json_bytes: &[u8],
-        begin: usize,
-        end: usize,
-    ) -> Result<(usize, usize), String> {
-        let mut idx_begin = begin;
-        while idx_begin < end {
-            if json_bytes[idx_begin] == OBJ_OPEN {
-                break;
+            if end - begin < 3 {
+                return Err("String can not be a label if len<3".into());
             }
-            idx_begin += 1;
-        }
 
-        if end <= idx_begin {
-            return Err(
-                "No JSON object. Opening brace not found or last char.".into(),
-            );
+            let label = &json_bytes[begin + 1..end];
+            let last = match label {
+                CURSOR_LABEL => {
+                    let (a, b) = find_next_obj(json_bytes, end)?;
+                    line_items.cursor = (a, b);
+                    b
+                }
+                EVENTS_LABEL => {
+                    let (a, b) = find_next_array(json_bytes, end)?;
+                    line_items.events = Some((a, b));
+                    b
+                }
+                INFO_LABEL => {
+                    let (a, b) = find_next_obj(json_bytes, end)?;
+                    line_items.info = Some((a, b));
+                    b
+                }
+                _ => end,
+            };
+            Ok(last)
+        } else {
+            Err("No string found that could be the label for the next item.".into())
         }
-
-        let mut idx_end = end;
-        while idx_end > idx_begin {
-            if json_bytes[idx_end] == OBJ_CLOSE {
-                break;
-            }
-            idx_end -= 1;
-        }
-
-        if idx_end == idx_begin {
-            return Err(
-                "No JSON object. No closing brace after opening brace.".into(),
-            );
-        }
-
-        Ok((idx_begin, idx_end))
     }
+
 
     fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, String> {
         if start == json_bytes.len() {
@@ -248,97 +224,6 @@ pub mod lineparsing {
     }
 
     #[test]
-    fn test_find_obj_bounds_fail_1() {
-        let sample = b"";
-        let r = find_obj_bounds(sample, 0, 0);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_2() {
-        let sample = b" ";
-        let r = find_obj_bounds(sample, 0, 0);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_3() {
-        let sample = b"  ";
-        let r = find_obj_bounds(sample, 0, 1);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_4() {
-        let sample = b"}{";
-        let r = find_obj_bounds(sample, 0, 1);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_5() {
-        let sample = b" }";
-        let r = find_obj_bounds(sample, 0, 1);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_6() {
-        let sample = b"{ ";
-        let r = find_obj_bounds(sample, 0, 1);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_7() {
-        let sample = b"{";
-        let r = find_obj_bounds(sample, 0, 0);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_fail_8() {
-        let sample = b"}";
-        let r = find_obj_bounds(sample, 0, 0);
-        assert!(r.is_err());
-    }
-
-    #[test]
-    fn test_find_obj_bounds_1() {
-        let sample = b"{}";
-        let r = find_obj_bounds(sample, 0, 1).unwrap();
-        assert_eq!(r, (0, 1));
-    }
-
-    #[test]
-    fn test_find_obj_bounds_2() {
-        let sample = b"{ }";
-        let r = find_obj_bounds(sample, 0, 2).unwrap();
-        assert_eq!(r, (0, 2));
-    }
-
-    #[test]
-    fn test_find_obj_bounds_3() {
-        let sample = b"aa{ }aa";
-        let r = find_obj_bounds(sample, 0, 6).unwrap();
-        assert_eq!(r, (2, 4));
-    }
-
-    #[test]
-    fn test_find_obj_bounds_4() {
-        let sample = b"aa{}aa";
-        let r = find_obj_bounds(sample, 0, 5).unwrap();
-        assert_eq!(r, (2, 3));
-    }
-
-    #[test]
-    fn test_find_obj_bounds_5() {
-        let sample = b"aa{{{}}{}}aa";
-        let r = find_obj_bounds(sample, 0, 11).unwrap();
-        assert_eq!(r, (2, 9));
-    }
-
-    #[test]
     fn test_next_string_1() {
         let sample = b"\"\"";
         let r = next_string(sample, 0).unwrap().unwrap();
@@ -463,4 +348,70 @@ pub mod lineparsing {
         let r = find_next_array(sample, 12);
         assert!(r.is_err());
     }
+
+    #[test]
+    fn parse_line_1() {
+        let sample = br#"{"cursor":{"partition":"5"},"events":[{"metadata":"blah"}],"info":{"debug":"Stream started"}}"#;
+        let r = parse_line(sample).unwrap();
+
+        let expected = LineItems {
+            cursor: (10, 26),
+            events: Some((37, 57)),
+            info: Some((66, 91)),
+        };
+
+        assert_eq!(r, expected);
+        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
+        assert_eq!(&sample[37..58], br#"[{"metadata":"blah"}]"#);
+        assert_eq!(&sample[66..92], br#"{"debug":"Stream started"}"#);
+    }
+
+    #[test]
+    fn parse_line_2() {
+        let sample = br#"{"cursor":{"partition":"5"},"events":[{"metadata":"blah"}]"#;
+        let r = parse_line(sample).unwrap();
+
+        let expected = LineItems {
+            cursor: (10, 26),
+            events: Some((37, 57)),
+            info: None,
+        };
+
+        assert_eq!(r, expected);
+        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
+        assert_eq!(&sample[37..58], br#"[{"metadata":"blah"}]"#);
+    }
+
+
+    #[test]
+    fn parse_line_3() {
+        let sample = br#"{"cursor":{"partition":"5"}"#;
+        let r = parse_line(sample).unwrap();
+
+        let expected = LineItems {
+            cursor: (10, 26),
+            events: None,
+            info: None,
+        };
+
+        assert_eq!(r, expected);
+        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
+    }
+
+    #[test]
+    fn parse_line_4() {
+        let sample = br#"{"cursor":{"partition":"5"},"info":{"debug":"Stream started"}}"#;
+        let r = parse_line(sample).unwrap();
+
+        let expected = LineItems {
+            cursor: (10, 26),
+            events: None,
+            info: Some((35, 60)),
+        };
+
+        assert_eq!(r, expected);
+        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
+        assert_eq!(&sample[35..60], br#"{"debug":"Stream started"}"#);
+    }
+
 }
