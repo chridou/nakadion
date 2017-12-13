@@ -89,7 +89,7 @@ mod lineparsing {
                 CURSOR_LABEL => {
                     let (a, b) = find_next_obj(json_bytes, end)?;
                     line_items.cursor.line_position = (a, b);
-                    let _ = parse_cursor_fields(&mut line_items.cursor, a);
+                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a);
                     b
                 }
                 EVENTS_LABEL => {
