@@ -6,6 +6,68 @@ pub trait BatchProcessor {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct BatchLine {
+    bytes: Vec<u8>,
+    items: LineItems,
+}
+
+impl BatchLine {
+    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, String> {
+        let items = lineparsing::parse_line(&bytes)?;
+
+        Ok(BatchLine { bytes, items })
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, String> {
+        let bytes: Vec<_> = bytes.iter().cloned().collect();
+        BatchLine::new((bytes))
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn cursor(&self) -> &[u8] {
+        let (a, b) = self.items.cursor.line_position;
+        &self.bytes[a..b + 1]
+    }
+
+    pub fn partition(&self) -> &[u8] {
+        let (a, b) = self.items.cursor.partition;
+        &self.bytes[a..b + 1]
+    }
+
+    pub fn partition_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.partition()).map_err(|err| {
+            format!("Partition is not UTF-8: {}", err)
+        })
+    }
+
+    pub fn event_type(&self) -> &[u8] {
+        let (a, b) = self.items.cursor.event_type;
+        &self.bytes[a..b + 1]
+    }
+
+    pub fn event_type_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.event_type()).map_err(|err| {
+            format!("Event type is not UTF-8: {}", err)
+        })
+    }
+
+    pub fn events(&self) -> Option<&[u8]> {
+        self.items.events.map(|e| &self.bytes[e.0..e.1 + 1])
+    }
+
+    pub fn info(&self) -> Option<&[u8]> {
+        self.items.info.map(|e| &self.bytes[e.0..e.1 + 1])
+    }
+
+    pub fn is_keep_alive(&self) -> bool {
+        self.items.events.is_none()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct LineItems {
     pub cursor: Cursor,
     pub events: Option<(usize, usize)>,
@@ -39,6 +101,43 @@ impl Default for Cursor {
         }
     }
 }
+
+#[test]
+fn batch_line_1() {
+    let line_sample = r#"{"cursor":{"partition":"5","offset":"543","#.to_owned() +
+        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
+        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"# +
+        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
+        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
+        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
+        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
+        r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
+
+    let cursor_sample = r#"{"partition":"5","offset":"543","#.to_owned() +
+        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
+        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+
+    let events_sample = r#"[{"metadata":"#.to_owned() +
+        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
+        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
+        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
+        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
+        r#""data_type":"blah"}]"#;
+
+    let info_sample = br#"{"debug":"Stream started"}"#;
+
+    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample.as_bytes());
+    assert_eq!(line.partition_str().unwrap(), "5");
+    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.events(), Some(events_sample.as_bytes()));
+    assert_eq!(line.info(), Some(&info_sample[..]));
+    assert_eq!(line.is_keep_alive(), false);
+
+}
+
 
 mod lineparsing {
     use nakadi::components::{Cursor, LineItems};
@@ -90,6 +189,12 @@ mod lineparsing {
                     let (a, b) = find_next_obj(json_bytes, end)?;
                     line_items.cursor.line_position = (a, b);
                     let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a);
+                    if line_items.cursor.partition.0 == 0 {
+                        return Err("Partition missing in cursor".into())
+                    } else if line_items.cursor.event_type.0 == 0 {
+                        return Err("Event type missing in cursor".into())
+                        
+                    }
                     b
                 }
                 EVENTS_LABEL => {
@@ -128,7 +233,10 @@ mod lineparsing {
         }
 
         if idx_begin >= json_bytes.len() - 1 {
-            return Err("Not a string. Missing starting `\"`.".into());
+            return Err(format!(
+                "Not a string. Missing starting `\"` after pos {}",
+                start
+            ));
         }
 
         let mut idx_end = idx_begin + 1;
@@ -151,7 +259,13 @@ mod lineparsing {
         }
 
         if idx_end == json_bytes.len() {
-            return Err("Not a string. Missing ending `\"`.".into());
+            let start_seq = ::std::str::from_utf8(&json_bytes[start..idx_end]).unwrap_or("???");
+            return Err(format!(
+                "Not a string. Missing ending `\"` after pos {} but before {} in {}",
+                start,
+                idx_end,
+                start_seq
+            ));
         }
 
         Ok(Some((idx_begin, idx_end)))
@@ -200,7 +314,7 @@ mod lineparsing {
         }
 
         if idx_end == json_bytes.len() {
-            return Err("Not an oject. Missing ending `}`.".into());
+            return Err("Not an object. Missing ending `}`.".into());
         }
 
         Ok((idx_begin, idx_end))
@@ -261,9 +375,11 @@ mod lineparsing {
         start: usize,
     ) -> Result<(), String> {
         let mut next_byte = start;
-        while cursor.partition.1 == 0 || cursor.event_type.0 == 0 {
+        while cursor.partition.0 == 0 || cursor.event_type.0 == 0 {
             if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
                 next_byte = end + 1
+            } else {
+                break
             }
         }
         Ok(())
@@ -438,70 +554,4 @@ mod lineparsing {
         let r = find_next_array(sample, 12);
         assert!(r.is_err());
     }
-
-    #[test]
-    fn parse_line_1() {
-        let sample = br#"{"cursor":{"partition":"5"},"events":[{"metadata":"blah"}],"info":{"debug":"Stream started"}}"#;
-        let r = parse_line(sample).unwrap();
-
-        let expected = LineItems {
-            cursor: (10, 26),
-            events: Some((37, 57)),
-            info: Some((66, 91)),
-        };
-
-        assert_eq!(r, expected);
-        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
-        assert_eq!(&sample[37..58], br#"[{"metadata":"blah"}]"#);
-        assert_eq!(&sample[66..92], br#"{"debug":"Stream started"}"#);
-    }
-
-    #[test]
-    fn parse_line_2() {
-        let sample = br#"{"cursor":{"partition":"5"},"events":[{"metadata":"blah"}]"#;
-        let r = parse_line(sample).unwrap();
-
-        let expected = LineItems {
-            cursor: (10, 26),
-            events: Some((37, 57)),
-            info: None,
-        };
-
-        assert_eq!(r, expected);
-        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
-        assert_eq!(&sample[37..58], br#"[{"metadata":"blah"}]"#);
-    }
-
-
-    #[test]
-    fn parse_line_3() {
-        let sample = br#"{"cursor":{"partition":"5"}"#;
-        let r = parse_line(sample).unwrap();
-
-        let expected = LineItems {
-            cursor: (10, 26),
-            events: None,
-            info: None,
-        };
-
-        assert_eq!(r, expected);
-        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
-    }
-
-    #[test]
-    fn parse_line_4() {
-        let sample = br#"{"cursor":{"partition":"5"},"info":{"debug":"Stream started"}}"#;
-        let r = parse_line(sample).unwrap();
-
-        let expected = LineItems {
-            cursor: (10, 26),
-            events: None,
-            info: Some((35, 60)),
-        };
-
-        assert_eq!(r, expected);
-        assert_eq!(&sample[10..27], br#"{"partition":"5"}"#);
-        assert_eq!(&sample[35..61], br#"{"debug":"Stream started"}"#);
-    }
-
 }
