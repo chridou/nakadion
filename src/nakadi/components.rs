@@ -188,12 +188,21 @@ mod lineparsing {
                 CURSOR_LABEL => {
                     let (a, b) = find_next_obj(json_bytes, end)?;
                     line_items.cursor.line_position = (a, b);
-                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a);
+                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a)?;
                     if line_items.cursor.partition.0 == 0 {
-                        return Err("Partition missing in cursor".into())
+                        let cursor_str = ::std::str::from_utf8(&json_bytes[a..b + 1]).map_err(
+                            |err| {
+                                format!("{}", err)
+                            },
+                        )?;
+                        return Err(format!("Partition missing in cursor {}", cursor_str));
                     } else if line_items.cursor.event_type.0 == 0 {
-                        return Err("Event type missing in cursor".into())
-                        
+                        let cursor_str = ::std::str::from_utf8(&json_bytes[a..b + 1]).map_err(
+                            |err| {
+                                format!("{}", err)
+                            },
+                        )?;
+                        return Err(format!("Event type missing in cursor {}", cursor_str));
                     }
                     b
                 }
@@ -379,7 +388,7 @@ mod lineparsing {
             if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
                 next_byte = end + 1
             } else {
-                break
+                break;
             }
         }
         Ok(())
@@ -391,15 +400,15 @@ mod lineparsing {
         cursor: &mut Cursor,
     ) -> Result<Option<usize>, String> {
         if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
-            if end - begin < 3 {
-                return Err("String can not be a label if len<3".into());
+            if end - begin < 2 {
+                return Err("String can not be a label if len<2".into());
             }
 
             let label = &json_bytes[begin + 1..end];
             let last = match label {
                 CURSOR_PARTITION_LABEL => {
                     if let Some((a, b)) = next_string(json_bytes, end)? {
-                        if b - a < 3 {
+                        if b - a < 2 {
                             return Err("Empty String for partition".into());
                         } else {
                             cursor.partition = (a + 1, b - 1);
@@ -411,7 +420,7 @@ mod lineparsing {
                 }
                 CURSOR_EVENT_TYPE_LABEL => {
                     if let Some((a, b)) = next_string(json_bytes, end)? {
-                        if b - a < 3 {
+                        if b - a < 2 {
                             return Err("Empty String for event_type".into());
                         } else {
                             cursor.event_type = (a + 1, b - 1);
@@ -434,6 +443,13 @@ mod lineparsing {
         let sample = b"\"\"";
         let r = next_string(sample, 0).unwrap().unwrap();
         assert_eq!(r, (0, 1));
+    }
+
+    #[test]
+    fn test_next_string_len1() {
+        let sample = b"\"a\"";
+        let r = next_string(sample, 0).unwrap().unwrap();
+        assert_eq!(r, (0, 2));
     }
 
     #[test]
