@@ -4,4 +4,3 @@ pub trait BatchProcessor {
 
     fn stop(&self);
 }
-

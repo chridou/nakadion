@@ -1,6 +1,6 @@
 
 trait BatchLine {
-     fn cursor(&self) -> &[u8];
+    fn cursor(&self) -> &[u8];
 
     fn partition(&self) -> &[u8];
 
@@ -48,7 +48,6 @@ impl NakadiBatchLine {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
-
 }
 
 impl BatchLine for NakadiBatchLine {
