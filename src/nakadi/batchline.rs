@@ -1,5 +1,5 @@
 
-trait BatchLine {
+pub trait BatchLine {
     fn cursor(&self) -> &[u8];
 
     fn partition(&self) -> &[u8];

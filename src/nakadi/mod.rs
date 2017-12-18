@@ -1,4 +1,4 @@
 mod model;
-mod components;
+mod batchprocessor;
 mod stream;
 mod batchline;
