@@ -1,61 +1,81 @@
+
+trait BatchLine {
+     fn cursor(&self) -> &[u8];
+
+    fn partition(&self) -> &[u8];
+
+    fn partition_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.partition()).map_err(|err| {
+            format!("Partition is not UTF-8: {}", err)
+        })
+    }
+
+    fn event_type(&self) -> &[u8];
+
+    fn event_type_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.event_type()).map_err(|err| {
+            format!("Event type is not UTF-8: {}", err)
+        })
+    }
+
+    fn events(&self) -> Option<&[u8]>;
+
+    fn info(&self) -> Option<&[u8]>;
+
+    fn is_keep_alive(&self) -> bool {
+        self.events().is_none()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct BatchLine {
+pub struct NakadiBatchLine {
     bytes: Vec<u8>,
     items: LineItems,
 }
 
-impl BatchLine {
-    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, String> {
+impl NakadiBatchLine {
+    pub fn new(bytes: Vec<u8>) -> Result<NakadiBatchLine, String> {
         let items = lineparsing::parse_line(&bytes)?;
 
-        Ok(BatchLine { bytes, items })
+        Ok(NakadiBatchLine { bytes, items })
     }
 
-    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, String> {
+    pub fn from_slice(bytes: &[u8]) -> Result<NakadiBatchLine, String> {
         let bytes: Vec<_> = bytes.iter().cloned().collect();
-        BatchLine::new((bytes))
+        NakadiBatchLine::new((bytes))
     }
 
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 
-    pub fn cursor(&self) -> &[u8] {
+}
+
+impl BatchLine for NakadiBatchLine {
+    fn cursor(&self) -> &[u8] {
         let (a, b) = self.items.cursor.line_position;
         &self.bytes[a..b + 1]
     }
 
-    pub fn partition(&self) -> &[u8] {
+    fn partition(&self) -> &[u8] {
         let (a, b) = self.items.cursor.partition;
         &self.bytes[a..b + 1]
     }
 
-    pub fn partition_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.partition()).map_err(|err| {
-            format!("Partition is not UTF-8: {}", err)
-        })
-    }
-
-    pub fn event_type(&self) -> &[u8] {
+    fn event_type(&self) -> &[u8] {
         let (a, b) = self.items.cursor.event_type;
         &self.bytes[a..b + 1]
     }
 
-    pub fn event_type_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.event_type()).map_err(|err| {
-            format!("Event type is not UTF-8: {}", err)
-        })
-    }
-
-    pub fn events(&self) -> Option<&[u8]> {
+    fn events(&self) -> Option<&[u8]> {
         self.items.events.map(|e| &self.bytes[e.0..e.1 + 1])
     }
 
-    pub fn info(&self) -> Option<&[u8]> {
+    fn info(&self) -> Option<&[u8]> {
         self.items.info.map(|e| &self.bytes[e.0..e.1 + 1])
     }
 
-    pub fn is_keep_alive(&self) -> bool {
+    fn is_keep_alive(&self) -> bool {
         self.items.events.is_none()
     }
 }
@@ -119,7 +139,7 @@ fn parse_batch_line_1() {
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
@@ -152,7 +172,7 @@ fn parse_batch_line_2() {
         r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
         r#""data_type":"blah"}]"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
@@ -175,7 +195,7 @@ fn parse_batch_line_keep_alive_1() {
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
@@ -196,7 +216,7 @@ fn parse_batch_line_keep_alive_2() {
         r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
         r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
