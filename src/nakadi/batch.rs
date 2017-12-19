@@ -1,3 +1,9 @@
+use std::time::Instant;
+
+pub struct Batch<T: BatchLine> {
+    batch_line: T,
+    commit_deadline: Instant,
+}
 
 pub trait BatchLine {
     fn cursor(&self) -> &[u8];
@@ -5,17 +11,15 @@ pub trait BatchLine {
     fn partition(&self) -> &[u8];
 
     fn partition_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.partition()).map_err(|err| {
-            format!("Partition is not UTF-8: {}", err)
-        })
+        ::std::str::from_utf8(self.partition())
+            .map_err(|err| format!("Partition is not UTF-8: {}", err))
     }
 
     fn event_type(&self) -> &[u8];
 
     fn event_type_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.event_type()).map_err(|err| {
-            format!("Event type is not UTF-8: {}", err)
-        })
+        ::std::str::from_utf8(self.event_type())
+            .map_err(|err| format!("Event type is not UTF-8: {}", err))
     }
 
     fn events(&self) -> Option<&[u8]>;
@@ -96,7 +100,6 @@ impl Default for LineItems {
     }
 }
 
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Cursor {
     pub line_position: (usize, usize),
@@ -116,25 +119,25 @@ impl Default for Cursor {
 
 #[test]
 fn parse_batch_line_1() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"# +
-        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
-        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
-        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
-        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
-        r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
 
-    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let events_sample = r#"[{"metadata":"#.to_owned() +
-        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
-        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
-        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
-        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
-        r#""data_type":"blah"}]"#;
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
@@ -151,25 +154,25 @@ fn parse_batch_line_1() {
 
 #[test]
 fn parse_batch_line_2() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"# +
-        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
-        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
-        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
-        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
-        r#""data_type":"blah"}]}"#;
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]}"#;
 
-    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let events_sample = r#"[{"metadata":"#.to_owned() +
-        r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"# +
-        r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","# +
-        r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"# +
-        r#""data_op":"C","data":{"order_number":"abc","id":"111"},"# +
-        r#""data_type":"blah"}]"#;
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
 
     let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
@@ -184,13 +187,13 @@ fn parse_batch_line_2() {
 
 #[test]
 fn parse_batch_line_keep_alive_1() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"info":{"debug":"Stream started"}}"#;
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"info":{"debug":"Stream started"}}"#;
 
-    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
@@ -202,18 +205,17 @@ fn parse_batch_line_keep_alive_1() {
     assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.info(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive(), true);
-
 }
 
 #[test]
 fn parse_batch_line_keep_alive_2() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;
 
-    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned() +
-        r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-        r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
     let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
@@ -223,7 +225,6 @@ fn parse_batch_line_keep_alive_2() {
     assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive(), true);
-
 }
 
 mod lineparsing {
@@ -242,7 +243,6 @@ mod lineparsing {
 
     const CURSOR_PARTITION_LABEL: &'static [u8] = b"partition";
     const CURSOR_EVENT_TYPE_LABEL: &'static [u8] = b"event_type";
-
 
     pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, String> {
         let mut line_items = LineItems::default();
@@ -346,9 +346,7 @@ mod lineparsing {
             let start_seq = ::std::str::from_utf8(&json_bytes[start..idx_end]).unwrap_or("???");
             return Err(format!(
                 "Not a string. Missing ending `\"` after pos {} but before {} in {}",
-                start,
-                idx_end,
-                start_seq
+                start, idx_end, start_seq
             ));
         }
 
@@ -655,9 +653,9 @@ mod lineparsing {
 
     #[test]
     fn parse_cursor() {
-        let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned() +
-            r#""event_type":"order.ORDER_RECEIVED","cursor_token":"# +
-            r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+        let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+            + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+            + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
         let mut cursor: Cursor = Default::default();
 

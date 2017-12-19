@@ -1,11 +1,11 @@
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate derive_builder;
 #[macro_use]
-extern crate log;
+extern crate error_chain;
 #[macro_use]
 extern crate hyper;
+#[macro_use]
+extern crate log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -19,7 +19,6 @@ extern crate url;
 mod model;
 mod auth;
 mod nakadi;
-
 
 /// A `SubscriptionId` is used to guaratee a continous flow of events for a client.
 #[derive(Clone, Debug)]

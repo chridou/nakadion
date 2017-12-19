@@ -3,11 +3,11 @@ use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::StreamId;
 use reqwest::{Client, Response};
 use reqwest::StatusCode;
-use reqwest::header::{Authorization, Bearer, Headers, ContentType};
+use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use serde_json;
 use std::env;
 use std::time::{Duration, Instant};
-use std::io::{Read, BufRead, BufReader, Error as IoError, Split};
+use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 use self::stats::*;
 
 const LINE_SPLIT_BYTE: u8 = b'\n';
@@ -112,14 +112,14 @@ impl NakadiConnectorSettingsBuilder {
         } else {
             warn!(
                 "Environment variable 'NAKADION_STREAM_KEEP_ALIVE_LIMIT' not found. Using \
-                     default."
+                 default."
             );
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_LIMIT").ok() {
-            builder.stream_limit(env_val.parse().map_err(|err| {
-                format!("Could not parse 'NAKADION_STREAM_LIMIT': {}", err)
-            })?)
+            builder.stream_limit(env_val
+                .parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_STREAM_LIMIT': {}", err))?)
         } else {
             warn!("Environment variable 'NAKADION_STREAM_LIMIT' not found. Using default.");
             builder
@@ -142,14 +142,14 @@ impl NakadiConnectorSettingsBuilder {
         } else {
             warn!(
                 "Environment variable 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS' not found. Using \
-                     default."
+                 default."
             );
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
-            builder.batch_limit(env_val.parse().map_err(|err| {
-                format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err)
-            })?)
+            builder.batch_limit(env_val
+                .parse()
+                .map_err(|err| format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err))?)
         } else {
             warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
             builder
@@ -161,7 +161,7 @@ impl NakadiConnectorSettingsBuilder {
         } else {
             warn!(
                 "Environment variable 'NAKADION_MAX_UNCOMMITED_EVENTS' not found. Using \
-                     default."
+                 default."
             );
             builder
         };
@@ -170,7 +170,7 @@ impl NakadiConnectorSettingsBuilder {
         } else {
             warn!(
                 "Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
-                     manually."
+                 manually."
             );
             builder
         };
@@ -179,7 +179,7 @@ impl NakadiConnectorSettingsBuilder {
         } else {
             warn!(
                 "Environment variable 'NAKADION_SUBSCRIPTION_ID' not found. It will have \
-                     to be set manually."
+                 to be set manually."
             );
             builder
         };
@@ -194,7 +194,9 @@ pub struct NakadiLineIterator {
 impl NakadiLineIterator {
     pub fn new(response: Response) -> Self {
         let reader = BufReader::new(response);
-        NakadiLineIterator { lines: reader.split(LINE_SPLIT_BYTE) }
+        NakadiLineIterator {
+            lines: reader.split(LINE_SPLIT_BYTE),
+        }
     }
 }
 
@@ -220,7 +222,6 @@ impl NakadiStreamConnector {
         settings: NakadiConnectorSettings,
         token_provider: Box<ProvidesAccessToken>,
     ) -> NakadiStreamConnector {
-
         let connect_url = create_connect_url(&settings);
         let stats_url = create_stats_url(&settings);
         let commit_url = create_commit_url(&settings);
@@ -335,45 +336,35 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 } else {
                     return Err(ConnectError::Server {
                         message: "The response lacked the \
-                                'X-Nakadi-StreamId' header."
+                                  'X-Nakadi-StreamId' header."
                             .to_string(),
                     });
                 };
                 Ok((stream_id, NakadiLineIterator::new(response)))
             }
-            StatusCode::Forbidden => {
-                Err(ConnectError::Client {
-                    message: format!(
-                        "{}: {}",
-                        StatusCode::Forbidden,
-                        "Nakdion: Nakadi said forbidden."
-                    ),
-                })
-            }
-            StatusCode::Conflict => {
-                Err(ConnectError::Client {
-                    message: format!(
-                        "{}: {}",
-                        StatusCode::Conflict,
-                        read_response_body(&mut response)
-                    ),
-                })
-            }
-            other_status if other_status.is_client_error() => {
-                Err(ConnectError::Client {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status if other_status.is_server_error() => {
-                Err(ConnectError::Server {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status => {
-                Err(ConnectError::Other {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
+            StatusCode::Forbidden => Err(ConnectError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "Nakdion: Nakadi said forbidden."
+                ),
+            }),
+            StatusCode::Conflict => Err(ConnectError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Conflict,
+                    read_response_body(&mut response)
+                ),
+            }),
+            other_status if other_status.is_client_error() => Err(ConnectError::Client {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status if other_status.is_server_error() => Err(ConnectError::Server {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status => Err(ConnectError::Other {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
         }
     }
 
@@ -392,30 +383,22 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
                 let parsed = serde_json::from_reader(response)?;
                 Ok(parsed)
             }
-            StatusCode::Forbidden => {
-                Err(StatsError::Client {
-                    message: format!(
-                        "{}: {}",
-                        StatusCode::Forbidden,
-                        "<Nakdion: Nakadi said forbidden.>"
-                    ),
-                })
-            }
-            other_status if other_status.is_client_error() => {
-                Err(StatsError::Client {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status if other_status.is_server_error() => {
-                Err(StatsError::Server {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status => {
-                Err(StatsError::Other {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
+            StatusCode::Forbidden => Err(StatsError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakdion: Nakadi said forbidden.>"
+                ),
+            }),
+            other_status if other_status.is_client_error() => Err(StatsError::Client {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status if other_status.is_server_error() => Err(StatsError::Server {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status => Err(StatsError::Other {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
         }
     }
 
@@ -443,42 +426,33 @@ impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
         match response.status() {
             StatusCode::Ok => Ok(()),
             StatusCode::NoContent => Ok(()),
-            StatusCode::Forbidden => {
-                Err(CommitError::Client {
-                    message: format!(
-                        "{}: {}",
-                        StatusCode::Forbidden,
-                        "<Nakdion: Nakadi said forbidden.>"
-                    ),
-                })
-            }
-            other_status if other_status.is_client_error() => {
-                Err(CommitError::Client {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status if other_status.is_server_error() => {
-                Err(CommitError::Server {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
-            other_status => {
-                Err(CommitError::Other {
-                    message: format!("{}: {}", other_status, read_response_body(&mut response)),
-                })
-            }
+            StatusCode::Forbidden => Err(CommitError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakdion: Nakadi said forbidden.>"
+                ),
+            }),
+            other_status if other_status.is_client_error() => Err(CommitError::Client {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status if other_status.is_server_error() => Err(CommitError::Server {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status => Err(CommitError::Other {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
         }
     }
 }
 
-
 fn read_response_body(response: &mut Response) -> String {
     let mut buf = String::new();
-    response.read_to_string(&mut buf).map(|_| buf).unwrap_or(
-        "<Nakadion: Could not read body.>".to_string(),
-    )
+    response
+        .read_to_string(&mut buf)
+        .map(|_| buf)
+        .unwrap_or("<Nakadion: Could not read body.>".to_string())
 }
-
 
 fn make_cursors_body(cursors: &[&[u8]]) -> Vec<u8> {
     let bytes_required: usize = cursors.iter().map(|c| c.len()).sum();
@@ -519,7 +493,6 @@ pub enum StatsError {
     Other { message: String },
 }
 
-
 impl From<TokenError> for ConnectError {
     fn from(cause: TokenError) -> ConnectError {
         ConnectError::TokenError { cause }
@@ -528,7 +501,9 @@ impl From<TokenError> for ConnectError {
 
 impl From<::reqwest::Error> for ConnectError {
     fn from(e: ::reqwest::Error) -> ConnectError {
-        ConnectError::Connection { message: format!("Connection Error: {}", e) }
+        ConnectError::Connection {
+            message: format!("Connection Error: {}", e),
+        }
     }
 }
 
@@ -540,7 +515,9 @@ impl From<TokenError> for CommitError {
 
 impl From<::reqwest::Error> for CommitError {
     fn from(e: ::reqwest::Error) -> CommitError {
-        CommitError::Connection { message: format!("Connection Error: {}", e) }
+        CommitError::Connection {
+            message: format!("Connection Error: {}", e),
+        }
     }
 }
 
@@ -552,14 +529,17 @@ impl From<TokenError> for StatsError {
 
 impl From<serde_json::error::Error> for StatsError {
     fn from(cause: serde_json::error::Error) -> StatsError {
-        StatsError::Parse { message: format!("Could not parse stats response: {}", cause) }
+        StatsError::Parse {
+            message: format!("Could not parse stats response: {}", cause),
+        }
     }
 }
 
-
 impl From<::reqwest::Error> for StatsError {
     fn from(e: ::reqwest::Error) -> StatsError {
-        StatsError::Connection { message: format!("Connection Error: {}", e) }
+        StatsError::Connection {
+            message: format!("Connection Error: {}", e),
+        }
     }
 }
 
@@ -591,8 +571,7 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")]
-        pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {
