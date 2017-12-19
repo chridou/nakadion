@@ -1,4 +1,4 @@
-use nakadi::batchline::{Batch, BatchLine};
+use nakadi::batch::{Batch, BatchLine};
 
 pub trait BatchProcessor<T: BatchLine> {
     fn more_batches_requested(&self) -> bool;

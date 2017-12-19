@@ -484,7 +484,6 @@ mod lineparsing {
             }
 
             let label = &json_bytes[begin + 1..end];
-            let xx: String = String::from_utf8_lossy(label).into();
             let last = match label {
                 CURSOR_PARTITION_LABEL => {
                     if let Some((a, b)) = next_string(json_bytes, end + 1)? {
