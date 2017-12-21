@@ -236,6 +236,107 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
     assert_eq!(line.is_subscription_line(), true);
 }
 
+#[test]
+fn parse_low_level_batch_line_with_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
+
+    let info_sample = br#"{"debug":"Stream started"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample, "cursor");
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.events(), Some(events_sample.as_bytes()));
+    assert_eq!(line.info(), Some(&info_sample[..]));
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_without_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.events(), Some(events_sample.as_bytes()));
+    assert_eq!(line.info(), None);
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_keep_alive_with_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","info":{"debug":"Stream started"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let info_sample = br#"{"debug":"Stream started"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.info(), Some(&info_sample[..]));
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_keep_alive_without_info() {
+    let line_sample = br#"{"cursor":{"partition":"6","offset":"543"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample).unwrap();
+
+    assert_eq!(line.bytes(), &line_sample[..]);
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.info(), None);
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
 mod lineparsing {
     use super::{Cursor, LineItems};
 
