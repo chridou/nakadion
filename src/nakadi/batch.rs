@@ -15,20 +15,25 @@ pub trait BatchLine {
             .map_err(|err| format!("Partition is not UTF-8: {}", err))
     }
 
-    fn event_type(&self) -> &[u8];
+    fn event_type(&self) -> Option<&[u8]>;
 
-    fn event_type_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.event_type())
-            .map_err(|err| format!("Event type is not UTF-8: {}", err))
+    fn event_type_str(&self) -> Option<Result<&str, String>> {
+        self.event_type().map(|et| ::std::str::from_utf8(et)
+            .map_err(|err| format!("Event type is not UTF-8: {}", err)))
     }
 
     fn events(&self) -> Option<&[u8]>;
 
     fn info(&self) -> Option<&[u8]>;
 
-    fn is_keep_alive(&self) -> bool {
+    fn is_keep_alive_line(&self) -> bool {
         self.events().is_none()
     }
+
+    fn is_subscription_line(&self) -> bool {
+        self.event_type().is_some()
+    }
+
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -65,9 +70,9 @@ impl BatchLine for NakadiBatchLine {
         &self.bytes[a..b + 1]
     }
 
-    fn event_type(&self) -> &[u8] {
-        let (a, b) = self.items.cursor.event_type;
-        &self.bytes[a..b + 1]
+    fn event_type(&self) -> Option<&[u8]> {
+        self.items.cursor.event_type.map(|(a, b)|
+        &self.bytes[a..b + 1])
     }
 
     fn events(&self) -> Option<&[u8]> {
@@ -78,7 +83,7 @@ impl BatchLine for NakadiBatchLine {
         self.items.info.map(|e| &self.bytes[e.0..e.1 + 1])
     }
 
-    fn is_keep_alive(&self) -> bool {
+    fn is_keep_alive_line(&self) -> bool {
         self.items.events.is_none()
     }
 }
@@ -104,7 +109,7 @@ impl Default for LineItems {
 pub struct Cursor {
     pub line_position: (usize, usize),
     pub partition: (usize, usize),
-    pub event_type: (usize, usize),
+    pub event_type: Option<(usize, usize)>,
 }
 
 impl Default for Cursor {
@@ -112,13 +117,13 @@ impl Default for Cursor {
         Cursor {
             line_position: (0, 0),
             partition: (0, 0),
-            event_type: (0, 0),
+            event_type: None,
         }
     }
 }
 
 #[test]
-fn parse_batch_line_1() {
+fn parse_subscription_batch_line_with_info() {
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"#
@@ -145,15 +150,16 @@ fn parse_batch_line_1() {
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), Some(&info_sample[..]));
-    assert_eq!(line.is_keep_alive(), false);
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
-fn parse_batch_line_2() {
+fn parse_subscription_batch_line_without_info() {
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"events":[{"metadata":"#
@@ -178,15 +184,16 @@ fn parse_batch_line_2() {
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), None);
-    assert_eq!(line.is_keep_alive(), false);
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
-fn parse_batch_line_keep_alive_1() {
+fn parse_subscription_batch_line_keep_alive_with_info() {
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"},"info":{"debug":"Stream started"}}"#;
@@ -202,13 +209,14 @@ fn parse_batch_line_keep_alive_1() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
     assert_eq!(line.info(), Some(&info_sample[..]));
-    assert_eq!(line.is_keep_alive(), true);
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
-fn parse_batch_line_keep_alive_2() {
+fn parse_subscription_batch_line_keep_alive_without_info() {
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;
@@ -222,9 +230,10 @@ fn parse_batch_line_keep_alive_2() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
     assert_eq!(line.info(), None);
-    assert_eq!(line.is_keep_alive(), true);
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), true);
 }
 
 mod lineparsing {
@@ -278,7 +287,7 @@ mod lineparsing {
                 CURSOR_LABEL => {
                     let (a, b) = find_next_obj(json_bytes, end)?;
                     line_items.cursor.line_position = (a, b);
-                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a)?;
+                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a, b)?;
                     b
                 }
                 EVENTS_LABEL => {
@@ -455,9 +464,10 @@ mod lineparsing {
         json_bytes: &[u8],
         cursor: &mut Cursor,
         start: usize,
+        end: usize,
     ) -> Result<(), String> {
         let mut next_byte = start;
-        while cursor.partition.0 == 0 || cursor.event_type.0 == 0 {
+        while next_byte <= end {
             if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
                 next_byte = end + 1
             } else {
@@ -466,8 +476,6 @@ mod lineparsing {
         }
         if cursor.partition.0 == 0 {
             Err(format!("Partition missing in cursor @ {}", next_byte))
-        } else if cursor.event_type.0 == 0 {
-            Err(format!("Event type missing in cursor @ {}", next_byte))
         } else {
             Ok(())
         }
@@ -502,7 +510,7 @@ mod lineparsing {
                         if b - a < 2 {
                             return Err("Empty String for event_type".into());
                         } else {
-                            cursor.event_type = (a + 1, b - 1);
+                            cursor.event_type = Some((a + 1, b - 1));
                             b
                         }
                     } else {
@@ -658,7 +666,7 @@ mod lineparsing {
 
         let mut cursor: Cursor = Default::default();
 
-        parse_cursor_fields(cursor_sample.as_bytes(), &mut cursor, 0).unwrap();
+        parse_cursor_fields(cursor_sample.as_bytes(), &mut cursor, 0, cursor_sample.len()).unwrap();
         assert!(true);
     }
 }
