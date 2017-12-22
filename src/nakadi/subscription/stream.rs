@@ -1,6 +1,5 @@
-use SubscriptionId;
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::StreamId;
+use nakadi::subscription::model::{StreamId, SubscriptionId};
 use reqwest::{Client, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
@@ -16,8 +15,9 @@ pub type LineResult = ::std::result::Result<(Vec<u8>, Instant), IoError>;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
-pub trait StreamConnector<T: Iterator<Item = LineResult>> {
-    fn connect(&self) -> ::std::result::Result<(StreamId, T), ConnectError>;
+pub trait StreamConnector {
+    type LineIterator: Iterator<Item = LineResult>;
+    fn connect(&self) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
     fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError>;
     fn commit(
         &self,
@@ -313,7 +313,8 @@ fn create_stats_url(settings: &NakadiConnectorSettings) -> String {
     commit_url
 }
 
-impl StreamConnector<NakadiLineIterator> for NakadiStreamConnector {
+impl StreamConnector for NakadiStreamConnector {
+    type LineIterator = NakadiLineIterator;
     fn connect(&self) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
         let mut headers = Headers::new();
         if let Some(AccessToken(token)) = self.token_provider.get_token()? {

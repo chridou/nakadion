@@ -1,4 +1,3 @@
-mod model;
-mod processor;
-mod stream;
-mod batch;
+pub mod subscription;
+pub mod model;
+pub mod batch;
