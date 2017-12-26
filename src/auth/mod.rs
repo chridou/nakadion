@@ -19,19 +19,13 @@ pub trait ProvidesAccessToken {
     fn get_token(&self) -> Result<Option<AccessToken>, TokenError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Fail, Debug, Clone)]
 pub enum TokenError {
+    #[fail(display = "Client Error: {}", message)]
     Client { message: String },
+    #[fail(display = "Server Error: {}", message)]
     Server { message: String },
+    #[fail(display = "Other Error: {}", message)]
     Other { message: String },
 }
 
-impl fmt::Display for TokenError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            TokenError::Client { ref message } => write!(f, "TokenError::Client({})", message),
-            TokenError::Server { ref message } => write!(f, "TokenError::Server({})", message),
-            TokenError::Other { ref message } => write!(f, "TokenError::Other({})", message),
-        }
-    }
-}

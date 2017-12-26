@@ -9,11 +9,32 @@ use std::time::{Duration, Instant};
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 use self::stats::*;
 
+header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
+
 const LINE_SPLIT_BYTE: u8 = b'\n';
 
 pub type LineResult = ::std::result::Result<(Vec<u8>, Instant), IoError>;
 
-header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
+pub struct NakadiLineIterator {
+    lines: Split<BufReader<Response>>,
+}
+
+impl NakadiLineIterator {
+    pub fn new(response: Response) -> Self {
+        let reader = BufReader::new(response);
+        NakadiLineIterator {
+            lines: reader.split(LINE_SPLIT_BYTE),
+        }
+    }
+}
+
+impl Iterator for NakadiLineIterator {
+    type Item = LineResult;
+
+    fn next(&mut self) -> Option<LineResult> {
+        self.lines.next().map(|r| r.map(|l| (l, Instant::now())))
+    }
+}
 
 pub trait StreamConnector {
     type LineIterator: Iterator<Item = LineResult>;
@@ -184,27 +205,6 @@ impl NakadiConnectorSettingsBuilder {
             builder
         };
         Ok(builder)
-    }
-}
-
-pub struct NakadiLineIterator {
-    lines: Split<BufReader<Response>>,
-}
-
-impl NakadiLineIterator {
-    pub fn new(response: Response) -> Self {
-        let reader = BufReader::new(response);
-        NakadiLineIterator {
-            lines: reader.split(LINE_SPLIT_BYTE),
-        }
-    }
-}
-
-impl Iterator for NakadiLineIterator {
-    type Item = LineResult;
-
-    fn next(&mut self) -> Option<LineResult> {
-        self.lines.next().map(|r| r.map(|l| (l, Instant::now())))
     }
 }
 
@@ -469,28 +469,47 @@ fn make_cursors_body(cursors: &[&[u8]]) -> Vec<u8> {
     body
 }
 
+#[derive(Fail, Debug)]
 pub enum ConnectError {
+    #[fail(display = "Token Error: {}", cause)]
     TokenError { cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)]
     Connection { message: String },
+    #[fail(display = "Server Error: {}", message)]
     Server { message: String },
+    #[fail(display = "Client Error: {}", message)]
     Client { message: String },
+    #[fail(display = "Other Error: {}", message)]
     Other { message: String },
 }
 
+#[derive(Fail, Debug)]
 pub enum CommitError {
+    #[fail(display = "Token Error: {}", cause)]
     TokenError { cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)]
     Connection { message: String },
+    #[fail(display = "Server Error: {}", message)]
     Server { message: String },
+    #[fail(display = "Client Error: {}", message)]
     Client { message: String },
+    #[fail(display = "Other Error: {}", message)]
     Other { message: String },
 }
 
+#[derive(Fail, Debug)]
 pub enum StatsError {
+    #[fail(display = "Token Error: {}", cause)]
     TokenError { cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)]
     Connection { message: String },
+    #[fail(display = "Server Error: {}", message)]
     Server { message: String },
+    #[fail(display = "Client Error: {}", message)]
     Client { message: String },
+    #[fail(display = "Parse Error: {}", message)]
     Parse { message: String },
+    #[fail(display = "Other Error: {}", message)]
     Other { message: String },
 }
 

@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate derive_builder;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
 #[macro_use]
 extern crate hyper;
 #[macro_use]
