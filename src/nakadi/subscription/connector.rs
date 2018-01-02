@@ -431,7 +431,7 @@ impl StreamConnector for NakadiStreamConnector {
                 message: format!(
                     "{}: {}",
                     StatusCode::Forbidden,
-                    "<Nakdion: Nakadi said forbidden.>"
+                    "<Nakadion: Nakadi said forbidden.>"
                 ),
             }),
             other_status if other_status.is_client_error() => Err(CommitError::Client {

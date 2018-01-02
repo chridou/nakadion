@@ -2,7 +2,7 @@ use std::time::Instant;
 
 pub struct Batch<T: BatchLine> {
     batch_line: T,
-    commit_deadline: Instant,
+    pub commit_deadline: Instant,
 }
 
 pub trait BatchLine {

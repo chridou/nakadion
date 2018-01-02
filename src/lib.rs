@@ -26,3 +26,12 @@ pub enum AfterBatchAction {
     Continue,
     Abort { reason: String },
 }
+
+#[derive(Clone, Copy)]
+pub enum CommitStrategy {
+    AllBatches,
+    MaxAge,
+    EveryNSeconds(u16),
+}
+
+

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use AfterBatchAction;
 
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with
@@ -10,6 +12,14 @@ impl StreamId {
         StreamId(id.into())
     }
 }
+
+impl fmt::Display for StreamId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
+}
+
+
 
 /// Information on a current batch. This might be
 /// useful for a `Handler` that wants to do checkpointing on its own.
