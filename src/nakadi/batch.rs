@@ -18,8 +18,9 @@ pub trait BatchLine {
     fn event_type(&self) -> Option<&[u8]>;
 
     fn event_type_str(&self) -> Option<Result<&str, String>> {
-        self.event_type().map(|et| ::std::str::from_utf8(et)
-            .map_err(|err| format!("Event type is not UTF-8: {}", err)))
+        self.event_type().map(|et| {
+            ::std::str::from_utf8(et).map_err(|err| format!("Event type is not UTF-8: {}", err))
+        })
     }
 
     fn events(&self) -> Option<&[u8]>;
@@ -33,7 +34,6 @@ pub trait BatchLine {
     fn is_subscription_line(&self) -> bool {
         self.event_type().is_some()
     }
-
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -71,8 +71,10 @@ impl BatchLine for NakadiBatchLine {
     }
 
     fn event_type(&self) -> Option<&[u8]> {
-        self.items.cursor.event_type.map(|(a, b)|
-        &self.bytes[a..b + 1])
+        self.items
+            .cursor
+            .event_type
+            .map(|(a, b)| &self.bytes[a..b + 1])
     }
 
     fn events(&self) -> Option<&[u8]> {
@@ -767,7 +769,12 @@ mod lineparsing {
 
         let mut cursor: Cursor = Default::default();
 
-        parse_cursor_fields(cursor_sample.as_bytes(), &mut cursor, 0, cursor_sample.len()).unwrap();
+        parse_cursor_fields(
+            cursor_sample.as_bytes(),
+            &mut cursor,
+            0,
+            cursor_sample.len(),
+        ).unwrap();
         assert!(true);
     }
 }

@@ -41,6 +41,6 @@ pub trait BatchHandler {
 }
 
 pub trait HandlerFactory {
-    type Handler : BatchHandler;
+    type Handler: BatchHandler;
     fn create_handler(&self) -> BatchHandler;
 }

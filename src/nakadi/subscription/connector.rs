@@ -471,46 +471,41 @@ fn make_cursors_body(cursors: &[&[u8]]) -> Vec<u8> {
 
 #[derive(Fail, Debug)]
 pub enum ConnectError {
-    #[fail(display = "Token Error: {}", cause)]
-    TokenError { cause: TokenError },
-    #[fail(display = "Connection Error: {}", message)]
-    Connection { message: String },
-    #[fail(display = "Server Error: {}", message)]
-    Server { message: String },
-    #[fail(display = "Client Error: {}", message)]
-    Client { message: String },
-    #[fail(display = "Other Error: {}", message)]
-    Other { message: String },
+    #[fail(display = "Token Error on connect: {}", cause)]
+    TokenError {
+        #[cause] cause: TokenError,
+    },
+    #[fail(display = "Connection Error: {}", message)] Connection {
+        message: String,
+    },
+    #[fail(display = "Server Error: {}", message)] Server {
+        message: String,
+    },
+    #[fail(display = "Client Error: {}", message)] Client {
+        message: String,
+    },
+    #[fail(display = "Other Error: {}", message)] Other {
+        message: String,
+    },
 }
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error: {}", cause)]
-    TokenError { cause: TokenError },
-    #[fail(display = "Connection Error: {}", message)]
-    Connection { message: String },
-    #[fail(display = "Server Error: {}", message)]
-    Server { message: String },
-    #[fail(display = "Client Error: {}", message)]
-    Client { message: String },
-    #[fail(display = "Other Error: {}", message)]
-    Other { message: String },
+    #[fail(display = "Token Error on commit: {}", cause)] TokenError { #[cause] cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
+    #[fail(display = "Server Error: {}", message)] Server { message: String },
+    #[fail(display = "Client Error: {}", message)] Client { message: String },
+    #[fail(display = "Other Error: {}", message)] Other { message: String },
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error: {}", cause)]
-    TokenError { cause: TokenError },
-    #[fail(display = "Connection Error: {}", message)]
-    Connection { message: String },
-    #[fail(display = "Server Error: {}", message)]
-    Server { message: String },
-    #[fail(display = "Client Error: {}", message)]
-    Client { message: String },
-    #[fail(display = "Parse Error: {}", message)]
-    Parse { message: String },
-    #[fail(display = "Other Error: {}", message)]
-    Other { message: String },
+    #[fail(display = "Token Error on stats: {}", cause)] TokenError { #[cause] cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
+    #[fail(display = "Server Error: {}", message)] Server { message: String },
+    #[fail(display = "Client Error: {}", message)] Client { message: String },
+    #[fail(display = "Parse Error: {}", message)] Parse { message: String },
+    #[fail(display = "Other Error: {}", message)] Other { message: String },
 }
 
 impl From<TokenError> for ConnectError {
