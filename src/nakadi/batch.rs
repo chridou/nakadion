@@ -1,7 +1,12 @@
 use std::time::Instant;
 
 pub struct Batch<T: BatchLine> {
-    batch_line: T,
+    pub batch_line: T,
+    pub commit_deadline: Instant,
+}
+
+pub struct SubscriptionBatch<T: SubscriptionBatchLine> {
+    pub batch_line: T,
     pub commit_deadline: Instant,
 }
 
@@ -33,6 +38,68 @@ pub trait BatchLine {
 
     fn is_subscription_line(&self) -> bool {
         self.event_type().is_some()
+    }
+}
+
+pub trait SubscriptionBatchLine {
+    fn cursor(&self) -> &[u8];
+
+    fn partition(&self) -> &[u8];
+
+    fn partition_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.partition())
+            .map_err(|err| format!("Partition is not UTF-8: {}", err))
+    }
+
+    fn event_type(&self) -> &[u8];
+
+    fn event_type_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.event_type())
+            .map_err(|err| format!("Event type is not UTF-8: {}", err))
+    }
+
+    fn events(&self) -> Option<&[u8]>;
+
+    fn info(&self) -> Option<&[u8]>;
+
+    fn is_keep_alive_line(&self) -> bool {
+        self.events().is_none()
+    }
+}
+
+pub struct WrappedSubscriptionBatchLine<B: BatchLine> {
+    batch_line: B,
+}
+
+impl<B: BatchLine> WrappedSubscriptionBatchLine<B> {
+    pub fn new(batch_line: B) -> Result<WrappedSubscriptionBatchLine<B>, String> {
+        if batch_line.is_subscription_line() {
+            Ok(WrappedSubscriptionBatchLine { batch_line })
+        } else {
+            Err("batch line is not a subscription batch".into())
+        }
+    }
+}
+
+impl<B: BatchLine> SubscriptionBatchLine for WrappedSubscriptionBatchLine<B> {
+    fn cursor(&self) -> &[u8] {
+        self.batch_line.cursor()
+    }
+
+    fn partition(&self) -> &[u8] {
+        self.batch_line.partition()
+    }
+
+    fn event_type(&self) -> &[u8] {
+        self.batch_line.event_type().unwrap()
+    }
+
+    fn events(&self) -> Option<&[u8]> {
+        self.batch_line.events()
+    }
+
+    fn info(&self) -> Option<&[u8]> {
+        self.batch_line.info()
     }
 }
 

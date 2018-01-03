@@ -1,12 +1,14 @@
+use std::env;
+use std::time::{Duration, Instant};
+use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
+
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::subscription::model::{StreamId, SubscriptionId};
 use reqwest::{Client, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use serde_json;
-use std::env;
-use std::time::{Duration, Instant};
-use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
+use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use self::stats::*;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
@@ -40,10 +42,10 @@ pub trait StreamConnector {
     type LineIterator: Iterator<Item = LineResult>;
     fn connect(&self) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
     fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError>;
-    fn commit(
+    fn commit<T: AsRef<[u8]>>(
         &self,
         stream_id: StreamId,
-        cursors: &[&[u8]],
+        cursors: &[T],
     ) -> ::std::result::Result<(), CommitError>;
 }
 
@@ -237,6 +239,51 @@ impl NakadiStreamConnector {
             token_provider,
         }
     }
+
+    pub fn attempt_commit<T: AsRef<[u8]>>(
+        &self,
+        stream_id: StreamId,
+        cursors: &[T],
+    ) -> ::std::result::Result<(), CommitError> {
+        let mut headers = Headers::new();
+        if let Some(AccessToken(token)) = self.token_provider.get_token()? {
+            headers.set(Authorization(Bearer { token }));
+        }
+
+        headers.set(XNakadiStreamId(stream_id.0));
+        headers.set(ContentType::json());
+
+        let body = make_cursors_body(cursors);
+
+        let mut response = self.http_client
+            .post(&self.commit_url)
+            .headers(headers)
+            .body(body)
+            .send()?;
+
+        match response.status() {
+            // All cursors committed but at least one did not increase an offset.
+            StatusCode::Ok => Ok(()),
+            // All cursors committed and all increased the offset.
+            StatusCode::NoContent => Ok(()),
+            StatusCode::Forbidden => Err(CommitError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakadion: Nakadi said forbidden.>"
+                ),
+            }),
+            other_status if other_status.is_client_error() => Err(CommitError::Client {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status if other_status.is_server_error() => Err(CommitError::Server {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status => Err(CommitError::Other {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+        }
+    }
 }
 
 fn create_connect_url(settings: &NakadiConnectorSettings) -> String {
@@ -347,7 +394,7 @@ impl StreamConnector for NakadiStreamConnector {
                 message: format!(
                     "{}: {}",
                     StatusCode::Forbidden,
-                    "Nakdion: Nakadi said forbidden."
+                    "Nakadion: Nakadi said forbidden."
                 ),
             }),
             StatusCode::Conflict => Err(ConnectError::Client {
@@ -388,7 +435,7 @@ impl StreamConnector for NakadiStreamConnector {
                 message: format!(
                     "{}: {}",
                     StatusCode::Forbidden,
-                    "<Nakdion: Nakadi said forbidden.>"
+                    "<Nakadion: Nakadi said forbidden.>"
                 ),
             }),
             other_status if other_status.is_client_error() => Err(StatsError::Client {
@@ -403,46 +450,34 @@ impl StreamConnector for NakadiStreamConnector {
         }
     }
 
-    fn commit(
+    fn commit<T: AsRef<[u8]>>(
         &self,
         stream_id: StreamId,
-        cursors: &[&[u8]],
+        cursors: &[T],
     ) -> ::std::result::Result<(), CommitError> {
-        let mut headers = Headers::new();
-        if let Some(AccessToken(token)) = self.token_provider.get_token()? {
-            headers.set(Authorization(Bearer { token }));
-        }
+        let mut op = || {
+            self.attempt_commit(stream_id.clone(), cursors)
+                .map_err(|err| match err {
+                    err @ CommitError::Client { .. } => BackoffError::Permanent(err),
+                    err => BackoffError::Transient(err),
+                })
+        };
 
-        headers.set(XNakadiStreamId(stream_id.0));
-        headers.set(ContentType::json());
+        let notify = |err, dur| {
+            warn!(
+                "Stream {} - Commit Error happened at {:?}: {}",
+                stream_id.clone(),
+                dur,
+                err
+            );
+        };
 
-        let body = make_cursors_body(cursors);
+        let mut backoff = ExponentialBackoff::default();
 
-        let mut response = self.http_client
-            .post(&self.commit_url)
-            .headers(headers)
-            .body(body)
-            .send()?;
-
-        match response.status() {
-            StatusCode::Ok => Ok(()),
-            StatusCode::NoContent => Ok(()),
-            StatusCode::Forbidden => Err(CommitError::Client {
-                message: format!(
-                    "{}: {}",
-                    StatusCode::Forbidden,
-                    "<Nakadion: Nakadi said forbidden.>"
-                ),
-            }),
-            other_status if other_status.is_client_error() => Err(CommitError::Client {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status if other_status.is_server_error() => Err(CommitError::Server {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status => Err(CommitError::Other {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
+        match op.retry_notify(&mut backoff, notify) {
+            Ok(x) => Ok(x),
+            Err(BackoffError::Transient(err)) => Err(err),
+            Err(BackoffError::Permanent(err)) => Err(err),
         }
     }
 }
@@ -455,12 +490,12 @@ fn read_response_body(response: &mut Response) -> String {
         .unwrap_or("<Nakadion: Could not read body.>".to_string())
 }
 
-fn make_cursors_body(cursors: &[&[u8]]) -> Vec<u8> {
-    let bytes_required: usize = cursors.iter().map(|c| c.len()).sum();
+fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
+    let bytes_required: usize = cursors.iter().map(|c| c.as_ref().len()).sum();
     let mut body = Vec::with_capacity(bytes_required + 20);
     body.extend(b"{items=[");
     for i in 0..cursors.len() {
-        body.extend(cursors[i].iter().cloned());
+        body.extend(cursors[i].as_ref().iter().cloned());
         if i != cursors.len() - 1 {
             body.push(b',');
         }

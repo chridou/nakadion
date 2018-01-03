@@ -14,6 +14,8 @@ extern crate serde_json;
 extern crate reqwest;
 extern crate uuid;
 
+extern crate backoff;
+
 extern crate url;
 
 mod auth;
@@ -33,5 +35,3 @@ pub enum CommitStrategy {
     MaxAge,
     EveryNSeconds(u16),
 }
-
-
