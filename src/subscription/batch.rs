@@ -65,7 +65,6 @@ impl BatchLine {
     }
 }
 
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct LineItems {
     pub cursor: Cursor,
@@ -95,7 +94,7 @@ impl Default for Cursor {
         Cursor {
             line_position: (0, 0),
             partition: (0, 0),
-            event_type: (0,0),
+            event_type: (0, 0),
         }
     }
 }
@@ -209,7 +208,6 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive_line(), true);
 }
-
 
 mod lineparsing {
     use super::{Cursor, LineItems};
@@ -650,7 +648,6 @@ mod lineparsing {
         assert!(true);
     }
 }
-
 
 /*
 #[test]

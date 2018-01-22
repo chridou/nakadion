@@ -23,8 +23,6 @@ impl fmt::Display for StreamId {
     }
 }
 
-
-
 /// Information on a current batch. This might be
 /// useful for a `Handler` that wants to do checkpointing on its own.
 #[derive(Clone, Debug)]

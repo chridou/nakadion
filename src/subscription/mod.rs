@@ -10,7 +10,6 @@ pub mod committer;
 pub mod worker;
 pub mod batch;
 
-
 #[derive(Clone)]
 pub struct AbortHandle {
     abort_requested: Arc<AtomicBool>,

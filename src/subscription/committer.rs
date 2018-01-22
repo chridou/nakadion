@@ -1,4 +1,3 @@
-
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashMap;
@@ -8,7 +7,7 @@ use std::time::{Duration, Instant};
 use CommitStrategy;
 use subscription::connector::CommitError;
 use subscription::model::StreamId;
-use subscription::batch::{Batch};
+use subscription::batch::Batch;
 use subscription::AbortHandle;
 use subscription::connector::StreamConnector;
 

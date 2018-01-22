@@ -1,9 +1,9 @@
 use std::thread;
 use std::time::Duration;
 
-use subscription::batch::{Batch};
+use subscription::batch::Batch;
 use subscription::connector::{NakadiStreamConnector, StreamConnector};
-use subscription::model::{StreamId, HandlerFactory};
+use subscription::model::{HandlerFactory, StreamId};
 
 const CONNECT_RETRY_BACKOFF: &'static [u64] =
     &[1, 1, 1, 1, 3, 3, 3, 5, 5, 5, 10, 10, 10, 15, 15, 15];
