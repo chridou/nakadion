@@ -9,8 +9,11 @@ use subscription::committer::Committer;
 
 #[derive(Clone)]
 pub struct WorkerHandle {
+    /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
+    /// Set by the worker to indicate whether it is running or not
     is_running: Arc<AtomicBool>,
+    /// Queried by the worker to determine whether it should stop
     is_stop_requested: Arc<AtomicBool>,
 }
 
