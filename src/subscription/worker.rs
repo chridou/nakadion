@@ -84,11 +84,12 @@ fn handler_loop(
 ) {
     loop {
         if (is_stop_requested.load(Ordering::Relaxed)) {
+            info!("Worker for partition '{}' is requested to stop.", partition);
             break;
         }
     }
 
     is_running.store(false, Ordering::Relaxed);
 
-    info!("Worker for partition '{}' shut down.", partition);
+    info!("Worker for partition '{}' stopped.", partition);
 }
