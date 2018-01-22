@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::subscription::model::{StreamId, SubscriptionId};
+use subscription::model::{StreamId, SubscriptionId};
 use reqwest::{Client, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};

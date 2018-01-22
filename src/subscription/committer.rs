@@ -1,4 +1,4 @@
-use nakadi::subscription::connector::CommitError;
+
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashMap;
@@ -6,21 +6,23 @@ use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
 use CommitStrategy;
-use nakadi::subscription::model::StreamId;
-use nakadi::batch::{SubscriptionBatch, SubscriptionBatchLine};
-use nakadi::subscription::AbortHandle;
-use nakadi::subscription::connector::StreamConnector;
+use subscription::connector::CommitError;
+use subscription::model::StreamId;
+use subscription::batch::{Batch};
+use subscription::AbortHandle;
+use subscription::connector::StreamConnector;
 
-pub struct Committer<B: SubscriptionBatchLine> {
-    sender: mpsc::Sender<CommitterMessage<B>>,
+#[derive(Clone)]
+pub struct Committer {
+    sender: mpsc::Sender<CommitterMessage>,
     stream_id: StreamId,
 }
 
-enum CommitterMessage<L: SubscriptionBatchLine> {
-    Commit(SubscriptionBatch<L>),
+enum CommitterMessage {
+    Commit(Batch),
 }
 
-impl<L: SubscriptionBatchLine + Send + 'static> Committer<L> {
+impl Committer {
     pub fn new<C>(
         connector: C,
         strategy: CommitStrategy,
@@ -43,7 +45,7 @@ impl<L: SubscriptionBatchLine + Send + 'static> Committer<L> {
         Committer { sender, stream_id }
     }
 
-    pub fn commit(&self, batch: SubscriptionBatch<L>) -> Result<(), String> {
+    pub fn commit(&self, batch: Batch) -> Result<(), String> {
         self.sender
             .send(CommitterMessage::Commit(batch))
             .map_err(|err| {
@@ -55,14 +57,13 @@ impl<L: SubscriptionBatchLine + Send + 'static> Committer<L> {
     }
 }
 
-fn start_commit_loop<L, C>(
-    receiver: mpsc::Receiver<CommitterMessage<L>>,
+fn start_commit_loop<C>(
+    receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
     stream_id: StreamId,
     connector: C,
     abort_handle: AbortHandle,
 ) where
-    L: SubscriptionBatchLine + Send + 'static,
     C: StreamConnector + Send + 'static,
 {
     thread::spawn(move || {
@@ -70,13 +71,13 @@ fn start_commit_loop<L, C>(
     });
 }
 
-struct CommitEntry<B: SubscriptionBatchLine> {
+struct CommitEntry {
     commit_deadline: Instant,
-    batch: SubscriptionBatch<B>,
+    batch: Batch,
 }
 
-impl<B: SubscriptionBatchLine> CommitEntry<B> {
-    pub fn new(batch: SubscriptionBatch<B>, strategy: CommitStrategy) -> CommitEntry<B> {
+impl CommitEntry {
+    pub fn new(batch: Batch, strategy: CommitStrategy) -> CommitEntry {
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
             CommitStrategy::MaxAge => batch.commit_deadline,
@@ -91,7 +92,7 @@ impl<B: SubscriptionBatchLine> CommitEntry<B> {
         }
     }
 
-    pub fn update(&mut self, next_batch: SubscriptionBatch<B>) {
+    pub fn update(&mut self, next_batch: Batch) {
         self.batch = next_batch;
     }
 
@@ -100,21 +101,20 @@ impl<B: SubscriptionBatchLine> CommitEntry<B> {
     }
 }
 
-fn run_commit_loop<B, C>(
-    receiver: mpsc::Receiver<CommitterMessage<B>>,
+fn run_commit_loop<C>(
+    receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
     stream_id: StreamId,
     connector: C,
     abort_handle: AbortHandle,
 ) where
-    B: SubscriptionBatchLine,
     C: StreamConnector,
 {
     let mut cursors = HashMap::new();
     loop {
         if abort_handle.abort_requested() {
             info!("Stream {} - Abort requested. Flushing cursors", stream_id);
-            flush_all_cursors::<B, _>(cursors, &stream_id, &connector);
+            flush_all_cursors::<_>(cursors, &stream_id, &connector);
             break;
         }
 
@@ -141,7 +141,7 @@ fn run_commit_loop<B, C>(
                     stream_id
                 );
                 abort_handle.request_abort();
-                flush_all_cursors::<B, _>(cursors, &stream_id, &connector);
+                flush_all_cursors::<_>(cursors, &stream_id, &connector);
                 break;
             }
         }
@@ -157,12 +157,11 @@ fn run_commit_loop<B, C>(
     info!("Stream {} - Committer stopped.", stream_id);
 }
 
-fn flush_all_cursors<B, C>(
-    all_cursors: HashMap<(Vec<u8>, Vec<u8>), CommitEntry<B>>,
+fn flush_all_cursors<C>(
+    all_cursors: HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     stream_id: &StreamId,
     connector: &C,
 ) where
-    B: SubscriptionBatchLine,
     C: StreamConnector,
 {
     let cursors_to_commit: Vec<_> = all_cursors
@@ -178,13 +177,12 @@ fn flush_all_cursors<B, C>(
     }
 }
 
-fn flush_due_cursors<B, C>(
-    all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry<B>>,
+fn flush_due_cursors<C>(
+    all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     stream_id: &StreamId,
     connector: &C,
 ) -> Result<(), CommitError>
 where
-    B: SubscriptionBatchLine,
     C: StreamConnector,
 {
     let mut cursors_to_commit: Vec<Vec<u8>> = Vec::new();

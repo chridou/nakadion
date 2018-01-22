@@ -7,22 +7,25 @@ pub mod consumer;
 pub mod model;
 pub mod connector;
 pub mod committer;
+pub mod worker;
+pub mod batch;
+
 
 #[derive(Clone)]
 pub struct AbortHandle {
-    state: Arc<AtomicBool>,
+    abort_requested: Arc<AtomicBool>,
     is_committer_stopped: Arc<AtomicBool>,
     is_processor_stopped: Arc<AtomicBool>,
 }
 
 impl AbortHandle {
     pub fn abort_requested(&self) -> bool {
-        self.state.load(Ordering::Relaxed)
+        self.abort_requested.load(Ordering::Relaxed)
     }
 
     pub fn request_abort(&self) {
         warn!("Abort requested");
-        self.state.store(true, Ordering::Relaxed)
+        self.abort_requested.store(true, Ordering::Relaxed)
     }
 
     pub fn mark_committer_stopped(&self) {
@@ -48,7 +51,7 @@ impl AbortHandle {
 impl Default for AbortHandle {
     fn default() -> AbortHandle {
         AbortHandle {
-            state: Arc::new(AtomicBool::new(false)),
+            abort_requested: Arc::new(AtomicBool::new(false)),
             is_committer_stopped: Arc::new(AtomicBool::new(false)),
             is_processor_stopped: Arc::new(AtomicBool::new(false)),
         }
@@ -70,7 +73,7 @@ impl InFlightCounter {
     }
 
     pub fn limit_reached(&self, limit: isize) -> bool {
-        self.in_flight.load(Ordering::Relaxed) > limit
+        self.in_flight.load(Ordering::Relaxed) >= limit
     }
 }
 

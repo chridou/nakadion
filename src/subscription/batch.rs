@@ -1,161 +1,70 @@
 use std::time::Instant;
 
-pub struct Batch<T: BatchLine> {
-    pub batch_line: T,
+pub struct Batch {
+    pub batch_line: BatchLine,
     pub commit_deadline: Instant,
-}
-
-pub struct SubscriptionBatch<T: SubscriptionBatchLine> {
-    pub batch_line: T,
-    pub commit_deadline: Instant,
-}
-
-pub trait BatchLine {
-    fn cursor(&self) -> &[u8];
-
-    fn partition(&self) -> &[u8];
-
-    fn partition_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.partition())
-            .map_err(|err| format!("Partition is not UTF-8: {}", err))
-    }
-
-    fn event_type(&self) -> Option<&[u8]>;
-
-    fn event_type_str(&self) -> Option<Result<&str, String>> {
-        self.event_type().map(|et| {
-            ::std::str::from_utf8(et).map_err(|err| format!("Event type is not UTF-8: {}", err))
-        })
-    }
-
-    fn events(&self) -> Option<&[u8]>;
-
-    fn info(&self) -> Option<&[u8]>;
-
-    fn is_keep_alive_line(&self) -> bool {
-        self.events().is_none()
-    }
-
-    fn is_subscription_line(&self) -> bool {
-        self.event_type().is_some()
-    }
-}
-
-pub trait SubscriptionBatchLine {
-    fn cursor(&self) -> &[u8];
-
-    fn partition(&self) -> &[u8];
-
-    fn partition_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.partition())
-            .map_err(|err| format!("Partition is not UTF-8: {}", err))
-    }
-
-    fn event_type(&self) -> &[u8];
-
-    fn event_type_str(&self) -> Result<&str, String> {
-        ::std::str::from_utf8(self.event_type())
-            .map_err(|err| format!("Event type is not UTF-8: {}", err))
-    }
-
-    fn events(&self) -> Option<&[u8]>;
-
-    fn info(&self) -> Option<&[u8]>;
-
-    fn is_keep_alive_line(&self) -> bool {
-        self.events().is_none()
-    }
-}
-
-pub struct WrappedSubscriptionBatchLine<B: BatchLine> {
-    batch_line: B,
-}
-
-impl<B: BatchLine> WrappedSubscriptionBatchLine<B> {
-    pub fn new(batch_line: B) -> Result<WrappedSubscriptionBatchLine<B>, String> {
-        if batch_line.is_subscription_line() {
-            Ok(WrappedSubscriptionBatchLine { batch_line })
-        } else {
-            Err("batch line is not a subscription batch".into())
-        }
-    }
-}
-
-impl<B: BatchLine> SubscriptionBatchLine for WrappedSubscriptionBatchLine<B> {
-    fn cursor(&self) -> &[u8] {
-        self.batch_line.cursor()
-    }
-
-    fn partition(&self) -> &[u8] {
-        self.batch_line.partition()
-    }
-
-    fn event_type(&self) -> &[u8] {
-        self.batch_line.event_type().unwrap()
-    }
-
-    fn events(&self) -> Option<&[u8]> {
-        self.batch_line.events()
-    }
-
-    fn info(&self) -> Option<&[u8]> {
-        self.batch_line.info()
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct NakadiBatchLine {
+pub struct BatchLine {
     bytes: Vec<u8>,
     items: LineItems,
 }
 
-impl NakadiBatchLine {
-    pub fn new(bytes: Vec<u8>) -> Result<NakadiBatchLine, String> {
+impl BatchLine {
+    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, String> {
         let items = lineparsing::parse_line(&bytes)?;
 
-        Ok(NakadiBatchLine { bytes, items })
+        Ok(BatchLine { bytes, items })
     }
 
-    pub fn from_slice(bytes: &[u8]) -> Result<NakadiBatchLine, String> {
+    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, String> {
         let bytes: Vec<_> = bytes.iter().cloned().collect();
-        NakadiBatchLine::new((bytes))
+        BatchLine::new((bytes))
     }
 
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
-}
 
-impl BatchLine for NakadiBatchLine {
-    fn cursor(&self) -> &[u8] {
+    pub fn cursor(&self) -> &[u8] {
         let (a, b) = self.items.cursor.line_position;
         &self.bytes[a..b + 1]
     }
 
-    fn partition(&self) -> &[u8] {
+    pub fn partition(&self) -> &[u8] {
         let (a, b) = self.items.cursor.partition;
         &self.bytes[a..b + 1]
     }
 
-    fn event_type(&self) -> Option<&[u8]> {
-        self.items
-            .cursor
-            .event_type
-            .map(|(a, b)| &self.bytes[a..b + 1])
+    pub fn partition_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.partition())
+            .map_err(|err| format!("Partition is not UTF-8: {}", err))
     }
 
-    fn events(&self) -> Option<&[u8]> {
+    pub fn event_type(&self) -> &[u8] {
+        let (a, b) = self.items.cursor.event_type;
+        &self.bytes[a..b + 1]
+    }
+
+    pub fn event_type_str(&self) -> Result<&str, String> {
+        ::std::str::from_utf8(self.event_type())
+            .map_err(|err| format!("Partition is not UTF-8: {}", err))
+    }
+
+    pub fn events(&self) -> Option<&[u8]> {
         self.items.events.map(|e| &self.bytes[e.0..e.1 + 1])
     }
 
-    fn info(&self) -> Option<&[u8]> {
+    pub fn info(&self) -> Option<&[u8]> {
         self.items.info.map(|e| &self.bytes[e.0..e.1 + 1])
     }
 
-    fn is_keep_alive_line(&self) -> bool {
+    pub fn is_keep_alive_line(&self) -> bool {
         self.items.events.is_none()
     }
 }
+
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LineItems {
@@ -178,7 +87,7 @@ impl Default for LineItems {
 pub struct Cursor {
     pub line_position: (usize, usize),
     pub partition: (usize, usize),
-    pub event_type: Option<(usize, usize)>,
+    pub event_type: (usize, usize),
 }
 
 impl Default for Cursor {
@@ -186,7 +95,7 @@ impl Default for Cursor {
         Cursor {
             line_position: (0, 0),
             partition: (0, 0),
-            event_type: None,
+            event_type: (0,0),
         }
     }
 }
@@ -215,16 +124,15 @@ fn parse_subscription_batch_line_with_info() {
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
+    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive_line(), false);
-    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
@@ -249,16 +157,15 @@ fn parse_subscription_batch_line_without_info() {
         + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
         + r#""data_type":"blah"}]"#;
 
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
+    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive_line(), false);
-    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
@@ -273,15 +180,14 @@ fn parse_subscription_batch_line_keep_alive_with_info() {
 
     let info_sample = br#"{"debug":"Stream started"}"#;
 
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
+    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
     assert_eq!(line.info(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive_line(), true);
-    assert_eq!(line.is_subscription_line(), true);
 }
 
 #[test]
@@ -294,117 +200,16 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), Some(Ok("order.ORDER_RECEIVED")));
+    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive_line(), true);
-    assert_eq!(line.is_subscription_line(), true);
 }
 
-#[test]
-fn parse_low_level_batch_line_with_info() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
-        + r#","events":[{"metadata":"#
-        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
-        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
-        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
-        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
-        + r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
-
-    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
-
-    let events_sample = r#"[{"metadata":"#.to_owned()
-        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
-        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
-        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
-        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
-        + r#""data_type":"blah"}]"#;
-
-    let info_sample = br#"{"debug":"Stream started"}"#;
-
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
-
-    assert_eq!(line.bytes(), line_sample.as_bytes());
-    assert_eq!(line.cursor(), cursor_sample, "cursor");
-    assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), None);
-    assert_eq!(line.events(), Some(events_sample.as_bytes()));
-    assert_eq!(line.info(), Some(&info_sample[..]));
-    assert_eq!(line.is_keep_alive_line(), false);
-    assert_eq!(line.is_subscription_line(), false);
-}
-
-#[test]
-fn parse_low_level_batch_line_without_info() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
-        + r#","events":[{"metadata":"#
-        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
-        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
-        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
-        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
-        + r#""data_type":"blah"}]}"#;
-
-    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
-
-    let events_sample = r#"[{"metadata":"#.to_owned()
-        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
-        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
-        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
-        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
-        + r#""data_type":"blah"}]"#;
-
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
-
-    assert_eq!(line.bytes(), line_sample.as_bytes());
-    assert_eq!(line.cursor(), cursor_sample);
-    assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), None);
-    assert_eq!(line.events(), Some(events_sample.as_bytes()));
-    assert_eq!(line.info(), None);
-    assert_eq!(line.is_keep_alive_line(), false);
-    assert_eq!(line.is_subscription_line(), false);
-}
-
-#[test]
-fn parse_low_level_batch_line_keep_alive_with_info() {
-    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
-        + r#","info":{"debug":"Stream started"}}"#;
-
-    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
-
-    let info_sample = br#"{"debug":"Stream started"}"#;
-
-    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
-
-    assert_eq!(line.bytes(), line_sample.as_bytes());
-    assert_eq!(line.cursor(), cursor_sample);
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), None);
-    assert_eq!(line.info(), Some(&info_sample[..]));
-    assert_eq!(line.is_keep_alive_line(), true);
-    assert_eq!(line.is_subscription_line(), false);
-}
-
-#[test]
-fn parse_low_level_batch_line_keep_alive_without_info() {
-    let line_sample = br#"{"cursor":{"partition":"6","offset":"543"}}"#;
-
-    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
-
-    let line = NakadiBatchLine::from_slice(line_sample).unwrap();
-
-    assert_eq!(line.bytes(), &line_sample[..]);
-    assert_eq!(line.cursor(), cursor_sample);
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), None);
-    assert_eq!(line.info(), None);
-    assert_eq!(line.is_keep_alive_line(), true);
-    assert_eq!(line.is_subscription_line(), false);
-}
 
 mod lineparsing {
     use super::{Cursor, LineItems};
@@ -680,7 +485,7 @@ mod lineparsing {
                         if b - a < 2 {
                             return Err("Empty String for event_type".into());
                         } else {
-                            cursor.event_type = Some((a + 1, b - 1));
+                            cursor.event_type = (a + 1, b - 1);
                             b
                         }
                     } else {
@@ -845,3 +650,107 @@ mod lineparsing {
         assert!(true);
     }
 }
+
+
+/*
+#[test]
+fn parse_low_level_batch_line_with_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}],"info":{"debug":"Stream started"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
+
+    let info_sample = br#"{"debug":"Stream started"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample, "cursor");
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.events(), Some(events_sample.as_bytes()));
+    assert_eq!(line.info(), Some(&info_sample[..]));
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_without_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","events":[{"metadata":"#
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let events_sample = r#"[{"metadata":"#.to_owned()
+        + r#"{"occurred_at":"1996-10-15T16:39:57+07:00","eid":"1f5a76d8-db49-4144-ace7"#
+        + r#"-e683e8ff4ba4","event_type":"aruha-test-hila","partition":"5","#
+        + r#""received_at":"2016-09-30T09:19:00.525Z","flow_id":"blahbloh"},"#
+        + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
+        + r#""data_type":"blah"}]"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6", "partition");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.events(), Some(events_sample.as_bytes()));
+    assert_eq!(line.info(), None);
+    assert_eq!(line.is_keep_alive_line(), false);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_keep_alive_with_info() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543"}"#.to_owned()
+        + r#","info":{"debug":"Stream started"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let info_sample = br#"{"debug":"Stream started"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample.as_bytes()).unwrap();
+
+    assert_eq!(line.bytes(), line_sample.as_bytes());
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.info(), Some(&info_sample[..]));
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), false);
+}
+
+#[test]
+fn parse_low_level_batch_line_keep_alive_without_info() {
+    let line_sample = br#"{"cursor":{"partition":"6","offset":"543"}}"#;
+
+    let cursor_sample = br#"{"partition":"6","offset":"543"}"#;
+
+    let line = NakadiBatchLine::from_slice(line_sample).unwrap();
+
+    assert_eq!(line.bytes(), &line_sample[..]);
+    assert_eq!(line.cursor(), cursor_sample);
+    assert_eq!(line.partition_str().unwrap(), "6");
+    assert_eq!(line.event_type_str(), None);
+    assert_eq!(line.info(), None);
+    assert_eq!(line.is_keep_alive_line(), true);
+    assert_eq!(line.is_subscription_line(), false);
+}
+*/

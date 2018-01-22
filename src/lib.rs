@@ -19,7 +19,9 @@ extern crate backoff;
 extern crate url;
 
 mod auth;
-mod nakadi;
+
+pub mod subscription;
+pub mod model;
 
 /// Describes what to do after a batch has been processed.
 ///
