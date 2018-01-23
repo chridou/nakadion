@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
-use CommitStrategy;
-use subscription::connector::CommitError;
-use subscription::model::StreamId;
-use subscription::batch::Batch;
-use subscription::AbortHandle;
-use subscription::connector::StreamConnector;
+use nakadi::CommitStrategy;
+use nakadi::connector::CommitError;
+use nakadi::model::StreamId;
+use nakadi::batch::Batch;
+use nakadi::AbortHandle;
+use nakadi::connector::StreamConnector;
 
 #[derive(Clone)]
 pub struct Committer {

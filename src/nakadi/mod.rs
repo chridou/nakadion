@@ -1,3 +1,18 @@
+/// Describes what to do after a batch has been processed.
+///
+/// Use to control what should happen next.
+pub enum AfterBatchAction {
+    Continue,
+    Abort { reason: String },
+}
+
+#[derive(Clone, Copy)]
+pub enum CommitStrategy {
+    AllBatches,
+    MaxAge,
+    EveryNSeconds(u16),
+}
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::thread;
@@ -9,6 +24,19 @@ pub mod connector;
 pub mod committer;
 pub mod worker;
 pub mod batch;
+
+/// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
+#[derive(Clone, Debug)]
+pub struct SubscriptionId(pub String);
+
+pub trait BatchHandler {
+    fn handle(&self, event_type: model::EventType, data: &[u8]) -> AfterBatchAction;
+}
+
+pub trait HandlerFactory {
+    type Handler: BatchHandler;
+    fn create_handler(&self) -> BatchHandler;
+}
 
 #[derive(Clone)]
 pub struct AbortHandle {

@@ -20,20 +20,5 @@ extern crate url;
 
 mod auth;
 
-pub mod subscription;
-pub mod model;
+pub mod nakadi;
 
-/// Describes what to do after a batch has been processed.
-///
-/// Use to control what should happen next.
-pub enum AfterBatchAction {
-    Continue,
-    Abort { reason: String },
-}
-
-#[derive(Clone, Copy)]
-pub enum CommitStrategy {
-    AllBatches,
-    MaxAge,
-    EveryNSeconds(u16),
-}

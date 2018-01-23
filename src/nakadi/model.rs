@@ -1,6 +1,6 @@
 use std::fmt;
 
-use AfterBatchAction;
+use nakadi::AfterBatchAction;
 
 /// A partition id that comes with a `Cursor`
 #[derive(Clone, Debug)]
@@ -47,12 +47,3 @@ impl<'a> EventType<'a> {
 /// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(pub String);
-
-pub trait BatchHandler {
-    fn handle(&self, event_type: EventType, data: &[u8]) -> AfterBatchAction;
-}
-
-pub trait HandlerFactory {
-    type Handler: BatchHandler;
-    fn create_handler(&self) -> BatchHandler;
-}
