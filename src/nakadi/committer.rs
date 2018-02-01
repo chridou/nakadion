@@ -14,7 +14,7 @@ use nakadi::connector::StreamConnector;
 #[derive(Clone)]
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
-    stream_id: StreamId,
+    pub stream_id: StreamId,
 }
 
 enum CommitterMessage {

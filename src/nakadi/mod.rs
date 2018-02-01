@@ -24,18 +24,22 @@ pub mod connector;
 pub mod committer;
 pub mod worker;
 pub mod batch;
+pub mod dispatcher;
 
 /// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(pub String);
 
 pub trait BatchHandler {
-    fn handle(&self, event_type: model::EventType, data: &[u8]) -> AfterBatchAction;
+    /// Handle the events.
+    ///
+    /// Calling this method may never panic!
+    fn handle(&self, event_type: model::EventType, events: &[u8]) -> AfterBatchAction;
 }
 
 pub trait HandlerFactory {
-    type Handler: BatchHandler;
-    fn create_handler(&self) -> BatchHandler;
+    type Handler: BatchHandler + Send + 'static;
+    fn create_handler(&self) -> Self::Handler;
 }
 
 #[derive(Clone)]

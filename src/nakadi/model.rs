@@ -3,8 +3,14 @@ use std::fmt;
 use nakadi::AfterBatchAction;
 
 /// A partition id that comes with a `Cursor`
-#[derive(Clone, Debug)]
-pub struct PartitionId<'a>(pub &'a [u8]);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartitionId(pub String);
+
+impl fmt::Display for PartitionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with
 /// a `Cursor`.
