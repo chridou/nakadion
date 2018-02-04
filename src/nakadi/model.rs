@@ -6,6 +6,12 @@ use nakadi::handler::AfterBatchAction;
 #[derive(Clone, Debug)]
 pub struct SubscriptionId(pub String);
 
+impl fmt::Display for SubscriptionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A partition id that comes with a `Cursor`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PartitionId(pub String);

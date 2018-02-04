@@ -1,12 +1,12 @@
-use nakadi::connector::LineResult;
+use nakadi::client::LineResult;
 use nakadi::Lifecycle;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 
 use nakadi::CommitStrategy;
-use nakadi::handler::{AfterBatchAction, HandlerFactory};
-use nakadi::connector::StreamConnector;
+use nakadi::handler::HandlerFactory;
+use nakadi::client::StreamingClient;
 use nakadi::model::*;
 use nakadi::committer::Committer;
 use nakadi::dispatcher::Dispatcher;
@@ -22,13 +22,9 @@ pub struct Consumer {
 }
 
 impl Consumer {
-    pub fn start<C, HF>(
-        connector: C,
-        handler_factory: HF,
-        commit_strategy: CommitStrategy,
-    ) -> Consumer
+    pub fn start<C, HF>(client: C, handler_factory: HF, commit_strategy: CommitStrategy) -> Consumer
     where
-        C: StreamConnector + Clone + Send + 'static,
+        C: StreamingClient + Clone + Send + 'static,
         HF: HandlerFactory + Send + Sync + 'static,
     {
         let lifecycle = Lifecycle::default();
@@ -37,7 +33,7 @@ impl Consumer {
             lifecycle: lifecycle.clone(),
         };
 
-        start_conumer_loop(connector, handler_factory, commit_strategy, lifecycle);
+        start_consumer_loop(client, handler_factory, commit_strategy, lifecycle);
 
         consumer
     }
@@ -51,25 +47,25 @@ impl Consumer {
     }
 }
 
-fn start_conumer_loop<C, HF>(
-    connector: C,
+fn start_consumer_loop<C, HF>(
+    client: C,
     handler_factory: HF,
     commit_strategy: CommitStrategy,
     lifecycle: Lifecycle,
 ) where
-    C: StreamConnector + Clone + Send + 'static,
+    C: StreamingClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
 {
-    thread::spawn(move || consume_loop(connector, handler_factory, commit_strategy, lifecycle));
+    thread::spawn(move || consumer_loop(client, handler_factory, commit_strategy, lifecycle));
 }
 
-fn consume_loop<C, HF>(
-    connector: C,
+fn consumer_loop<C, HF>(
+    client: C,
     handler_factory: HF,
     commit_strategy: CommitStrategy,
     lifecycle: Lifecycle,
 ) where
-    C: StreamConnector + Clone + Send + 'static,
+    C: StreamingClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
 {
     let handler_factory = Arc::new(handler_factory);
@@ -82,7 +78,7 @@ fn consume_loop<C, HF>(
 
         info!("Connecting to stream");
         let (stream_id, line_iterator) =
-            match connect(&connector, Duration::from_secs(300), &lifecycle) {
+            match connect(&client, Duration::from_secs(300), &lifecycle) {
                 Ok(v) => v,
                 Err(err) => {
                     warn!("No connection: {}", err);
@@ -92,11 +88,11 @@ fn consume_loop<C, HF>(
 
         info!("Connected to stream {}", stream_id);
 
-        let committer = Committer::start(connector.clone(), commit_strategy, stream_id.clone());
+        let committer = Committer::start(client.clone(), commit_strategy, stream_id.clone());
 
         let dispatcher = Dispatcher::start(handler_factory.clone(), committer.clone());
 
-        consume(line_iterator, dispatcher, committer);
+        consume(line_iterator, dispatcher, committer, lifecycle.clone());
     }
 
     lifecycle.stopped();
@@ -104,11 +100,14 @@ fn consume_loop<C, HF>(
     info!("Nakadi consumer stopped");
 }
 
-fn consume<I>(line_iterator: I, dispatcher: Dispatcher, committer: Committer)
+fn consume<I>(line_iterator: I, dispatcher: Dispatcher, committer: Committer, lifecycle: Lifecycle)
 where
     I: Iterator<Item = LineResult>,
 {
     for line_result in line_iterator {
+        if lifecycle.abort_requested() {
+            break;
+        }
         match line_result {
             Ok(line) => if let Err(err) = send_line(&dispatcher, line) {
                 error!("Could not process batch: {}", err);
@@ -121,12 +120,14 @@ where
         }
     }
 
+    info!("Stopping dispatcher");
     dispatcher.stop();
 
     while dispatcher.is_running() {
         thread::sleep(Duration::from_millis(10));
     }
 
+    info!("Stopping commiter");
     committer.stop();
 
     while committer.running() {
@@ -137,14 +138,26 @@ where
 fn send_line(dispatcher: &Dispatcher, line: (Vec<u8>, Instant)) -> Result<(), String> {
     let batch_line = BatchLine::new(line.0)?;
 
-    dispatcher.process(Batch {
-        batch_line: batch_line,
-        commit_deadline: line.1,
-    })
+    if let Some(info) = batch_line.info() {
+        match ::std::str::from_utf8(info) {
+            Ok(info) => info!("Received info: {}", info),
+            Err(err) => warn!("Received info line which is not UTF-8: {}", err),
+        };
+    }
+
+    if batch_line.is_keep_alive_line() {
+        info!("Keep alive!");
+        Ok(())
+    } else {
+        dispatcher.process(Batch {
+            batch_line: batch_line,
+            commit_deadline: line.1,
+        })
+    }
 }
 
-fn connect<C: StreamConnector>(
-    connector: &C,
+fn connect<C: StreamingClient>(
+    client: &C,
     max_dur: Duration,
     lifecycle: &Lifecycle,
 ) -> Result<(StreamId, C::LineIterator), String> {
@@ -152,7 +165,7 @@ fn connect<C: StreamConnector>(
     let mut attempt = 0;
     loop {
         attempt += 1;
-        match connector.connect() {
+        match client.connect() {
             Ok(it) => return Ok(it),
             Err(err) => {
                 let sleep_dur_secs = *CONNECT_RETRY_BACKOFF.get(attempt).unwrap_or(&30);

@@ -76,10 +76,10 @@ fn handler_loop<HF>(
 ) where
     HF: HandlerFactory,
 {
-    let stream_id = committer.stream_id.clone();
+    let stream_id = committer.stream_id().clone();
     let mut workers: Vec<Worker> = Vec::new();
 
-    info!("Processor on stream '{}' Started.", &committer.stream_id,);
+    info!("Processor on stream '{}' Started.", committer.stream_id(),);
     loop {
         if lifecycle.abort_requested() {
             info!(

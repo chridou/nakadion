@@ -5,17 +5,18 @@ use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
 use nakadi::CommitStrategy;
-use nakadi::connector::CommitError;
-use nakadi::model::StreamId;
+use nakadi::client::CommitError;
+use nakadi::model::{StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::Lifecycle;
-use nakadi::connector::StreamConnector;
+use nakadi::client::StreamingClient;
 
 #[derive(Clone)]
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
-    pub stream_id: StreamId,
+    stream_id: StreamId,
     lifecycle: Lifecycle,
+    subscription_id: SubscriptionId,
 }
 
 enum CommitterMessage {
@@ -23,19 +24,21 @@ enum CommitterMessage {
 }
 
 impl Committer {
-    pub fn start<C>(connector: C, strategy: CommitStrategy, stream_id: StreamId) -> Self
+    pub fn start<C>(client: C, strategy: CommitStrategy, stream_id: StreamId) -> Self
     where
-        C: StreamConnector + Send + 'static,
+        C: StreamingClient + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
         let lifecycle = Lifecycle::default();
 
+        let subscription_id = client.subscription_id().clone();
+
         start_commit_loop(
             receiver,
             strategy,
             stream_id.clone(),
-            connector,
+            client,
             lifecycle.clone(),
         );
 
@@ -43,6 +46,7 @@ impl Committer {
             sender,
             stream_id,
             lifecycle,
+            subscription_id,
         }
     }
 
@@ -55,6 +59,14 @@ impl Committer {
                     self.stream_id, err
                 )
             })
+    }
+
+    pub fn subscription_id(&self) -> &SubscriptionId {
+        &self.subscription_id
+    }
+
+    pub fn stream_id(&self) -> &StreamId {
+        &self.stream_id
     }
 
     pub fn running(&self) -> bool {
@@ -73,7 +85,7 @@ fn start_commit_loop<C>(
     connector: C,
     lifecycle: Lifecycle,
 ) where
-    C: StreamConnector + Send + 'static,
+    C: StreamingClient + Send + 'static,
 {
     thread::spawn(move || {
         run_commit_loop(receiver, strategy, stream_id, connector, lifecycle);
@@ -114,16 +126,16 @@ fn run_commit_loop<C>(
     receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
     stream_id: StreamId,
-    connector: C,
+    client: C,
     lifecycle: Lifecycle,
 ) where
-    C: StreamConnector,
+    C: StreamingClient,
 {
     let mut cursors = HashMap::new();
     loop {
         if lifecycle.abort_requested() {
             info!("Stream {} - Abort requested. Flushing cursors", stream_id);
-            flush_all_cursors::<_>(cursors, &stream_id, &connector);
+            flush_all_cursors::<_>(cursors, &stream_id, &client);
             break;
         }
 
@@ -149,12 +161,12 @@ fn run_commit_loop<C>(
                     "Stream {} - Commit channel disconnected. Flushing cursors.",
                     stream_id
                 );
-                flush_all_cursors::<_>(cursors, &stream_id, &connector);
+                flush_all_cursors::<_>(cursors, &stream_id, &client);
                 break;
             }
         }
 
-        if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &connector) {
+        if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &client) {
             error!("Stream {} - Failed to commit cursors: {}", stream_id, err);
             break;
         }
@@ -169,7 +181,7 @@ fn flush_all_cursors<C>(
     stream_id: &StreamId,
     connector: &C,
 ) where
-    C: StreamConnector,
+    C: StreamingClient,
 {
     let cursors_to_commit: Vec<_> = all_cursors
         .values()
@@ -187,10 +199,10 @@ fn flush_all_cursors<C>(
 fn flush_due_cursors<C>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     stream_id: &StreamId,
-    connector: &C,
+    client: &C,
 ) -> Result<(), CommitError>
 where
-    C: StreamConnector,
+    C: StreamingClient,
 {
     let mut cursors_to_commit: Vec<Vec<u8>> = Vec::new();
     let mut keys_to_commit: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
@@ -204,7 +216,7 @@ where
     }
 
     if !cursors_to_commit.is_empty() {
-        let _ = connector.commit(stream_id.clone(), &cursors_to_commit)?;
+        let _ = client.commit(stream_id.clone(), &cursors_to_commit)?;
     }
 
     for key in keys_to_commit {

@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::{StreamId, SubscriptionId};
-use reqwest::{Client, Response};
+use reqwest::{Client as HttpClient, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use serde_json;
@@ -39,21 +39,22 @@ impl Iterator for NakadiLineIterator {
     }
 }
 
-pub trait StreamConnector {
+pub trait StreamingClient {
     type LineIterator: Iterator<Item = LineResult>;
     fn connect(&self) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
-    fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError>;
     fn commit<T: AsRef<[u8]>>(
         &self,
         stream_id: StreamId,
         cursors: &[T],
     ) -> ::std::result::Result<(), CommitError>;
+
+    fn subscription_id(&self) -> &SubscriptionId;
 }
 
 /// Settings for establishing a connection to `Nakadi`.
 #[derive(Builder, Debug)]
 #[builder(pattern = "owned")]
-pub struct ConnectorConfig {
+pub struct ClientConfig {
     /// Maximum number of empty keep alive batches to get in a row before closing the
     /// connection. If 0 or undefined will send keep alive messages indefinitely.
     #[builder(default = "0")]
@@ -106,7 +107,7 @@ pub struct ConnectorConfig {
     pub subscription_id: SubscriptionId,
 }
 
-impl ConnectorConfigBuilder {
+impl ClientConfigBuilder {
     /// Create a builder from environment variables.
     ///
     /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
@@ -124,8 +125,8 @@ impl ConnectorConfigBuilder {
     /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
     /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See
     /// `ConnectorSettings::stream_keep_alive_limit`
-    pub fn from_env() -> Result<ConnectorConfigBuilder, String> {
-        let builder = ConnectorConfigBuilder::default();
+    pub fn from_env() -> Result<ClientConfigBuilder, String> {
+        let builder = ClientConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
             builder.stream_keep_alive_limit(env_val.parse().map_err(|err| {
                 format!(
@@ -212,27 +213,27 @@ impl ConnectorConfigBuilder {
 }
 
 #[derive(Clone)]
-pub struct Connector {
+pub struct Client {
     connect_url: String,
     stats_url: String,
     commit_url: String,
     subscription_id: SubscriptionId,
-    http_client: Client,
+    http_client: HttpClient,
     token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
 }
 
-impl Connector {
+impl Client {
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
-        settings: ConnectorConfig,
+        settings: ClientConfig,
         token_provider: T,
-    ) -> Connector {
+    ) -> Client {
         let connect_url = create_connect_url(&settings);
         let stats_url = create_stats_url(&settings);
         let commit_url = create_commit_url(&settings);
 
-        let http_client = Client::new();
+        let http_client = HttpClient::new();
 
-        Connector {
+        Client {
             http_client,
             connect_url,
             stats_url,
@@ -288,7 +289,7 @@ impl Connector {
     }
 }
 
-fn create_connect_url(settings: &ConnectorConfig) -> String {
+fn create_connect_url(settings: &ClientConfig) -> String {
     let mut connect_url = String::new();
     connect_url.push_str(&settings.nakadi_host);
     if !connect_url.ends_with("/") {
@@ -338,7 +339,7 @@ fn create_connect_url(settings: &ConnectorConfig) -> String {
     connect_url
 }
 
-fn create_commit_url(settings: &ConnectorConfig) -> String {
+fn create_commit_url(settings: &ClientConfig) -> String {
     let mut commit_url = String::new();
     commit_url.push_str(&settings.nakadi_host);
     if !commit_url.ends_with("/") {
@@ -350,7 +351,7 @@ fn create_commit_url(settings: &ConnectorConfig) -> String {
     commit_url
 }
 
-fn create_stats_url(settings: &ConnectorConfig) -> String {
+fn create_stats_url(settings: &ClientConfig) -> String {
     let mut commit_url = String::new();
     commit_url.push_str(&settings.nakadi_host);
     if !commit_url.ends_with("/") {
@@ -362,7 +363,7 @@ fn create_stats_url(settings: &ConnectorConfig) -> String {
     commit_url
 }
 
-impl StreamConnector for Connector {
+impl StreamingClient for Client {
     type LineIterator = NakadiLineIterator;
     fn connect(&self) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
         let mut headers = Headers::new();
@@ -418,7 +419,11 @@ impl StreamConnector for Connector {
         }
     }
 
-    fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError> {
+    fn subscription_id(&self) -> &SubscriptionId {
+        &self.subscription_id
+    }
+
+    /*    fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError> {
         let mut headers = Headers::new();
         if let Some(token) = self.token_provider.get_token()? {
             headers.set(Authorization(Bearer { token: token.0 }));
@@ -450,7 +455,7 @@ impl StreamConnector for Connector {
                 message: format!("{}: {}", other_status, read_response_body(&mut response)),
             }),
         }
-    }
+    }*/
 
     fn commit<T: AsRef<[u8]>>(
         &self,

@@ -24,7 +24,8 @@ mod nakadi;
 
 pub use auth::{AccessToken, ProvidesAccessToken, TokenError};
 pub use nakadi::handler::*;
-pub use nakadi::model::{EventType, SubscriptionId};
-pub use nakadi::connector::{Connector, ConnectorConfig, ConnectorConfigBuilder};
+pub use nakadi::model::{EventType, StreamId, SubscriptionId};
+pub use nakadi::client::{Client, ClientConfig, ClientConfigBuilder, ConnectError, LineResult,
+                         StreamingClient};
 pub use nakadi::CommitStrategy;
 pub use nakadi::{Nakadion, NakadionConfig};

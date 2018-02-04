@@ -2,14 +2,14 @@
 ///
 /// Use to control what should happen next.
 use nakadi::handler::HandlerFactory;
-use nakadi::connector::Connector;
+use nakadi::client::StreamingClient;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 pub mod handler;
 pub mod consumer;
 pub mod model;
-pub mod connector;
+pub mod client;
 pub mod committer;
 pub mod worker;
 pub mod batch;
@@ -100,16 +100,16 @@ impl Drop for DropGuard {
 }
 
 impl Nakadion {
-    pub fn start<HF>(
+    pub fn start<HF, C>(
         config: NakadionConfig,
-        connector: Connector,
+        client: C,
         handler_factory: HF,
     ) -> Result<Nakadion, String>
     where
+        C: StreamingClient + Clone + Sync + Send + 'static,
         HF: HandlerFactory + Sync + Send + 'static,
     {
-        let consumer =
-            consumer::Consumer::start(connector, handler_factory, config.commit_strategy);
+        let consumer = consumer::Consumer::start(client, handler_factory, config.commit_strategy);
 
         let guard = Arc::new(DropGuard { consumer });
         Ok(Nakadion { guard })

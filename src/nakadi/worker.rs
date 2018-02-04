@@ -1,9 +1,6 @@
 use nakadi::Lifecycle;
 use nakadi::model::PartitionId;
-use nakadi::model::StreamId;
 use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -18,7 +15,6 @@ pub struct Worker {
     lifecycle: Lifecycle,
     /// The partition this worker is responsible for.
     partition: PartitionId,
-    stream_id: StreamId,
 }
 
 impl Worker {
@@ -35,7 +31,6 @@ impl Worker {
             lifecycle: lifecycle.clone(),
             sender,
             partition: partition.clone(),
-            stream_id: committer.stream_id.clone(),
         };
 
         start_handler_loop(receiver, lifecycle, partition, handler, committer);
@@ -84,17 +79,17 @@ fn handler_loop<H: BatchHandler>(
     handler: H,
     committer: Committer,
 ) {
-    let stream_id = committer.stream_id.clone();
+    let stream_id = committer.stream_id().clone();
 
     info!(
         "Worker on stream '{}' for partition '{}': Started.",
-        &committer.stream_id, partition
+        stream_id, partition
     );
     loop {
         if lifecycle.abort_requested() {
             info!(
                 "Worker on stream '{}' for partition '{}': Stop reqeusted externally.",
-                &committer.stream_id, partition
+                stream_id, partition
             );
             break;
         }
@@ -105,7 +100,7 @@ fn handler_loop<H: BatchHandler>(
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 info!(
                     "Worker on stream '{}' for partition '{}': Channel disconnected. Stopping.",
-                    &committer.stream_id, partition
+                    stream_id, partition
                 );
                 break;
             }
@@ -117,7 +112,7 @@ fn handler_loop<H: BatchHandler>(
                 Err(err) => {
                     error!(
                         "Worker on stream '{}' for partition '{}': Invalid event type. Stopping: {}",
-                     &committer.stream_id,
+                     stream_id,
                       partition,
                        err);
                     break;
@@ -138,7 +133,7 @@ fn handler_loop<H: BatchHandler>(
                         warn!(
                             "Worker on stream '{}' for partition '{}': \
                              Failed to commit. Stopping: {}",
-                            &committer.stream_id, partition, err
+                            stream_id, partition, err
                         );
                         break;
                     }
@@ -146,7 +141,7 @@ fn handler_loop<H: BatchHandler>(
                 AfterBatchAction::Abort { reason } => {
                     warn!(
                         "Worker on stream '{}' for partition '{}' stopping: {}",
-                        &committer.stream_id, partition, reason
+                        stream_id, partition, reason
                     );
                     break;
                 }
@@ -155,7 +150,7 @@ fn handler_loop<H: BatchHandler>(
             warn!(
                 "Worker on stream '{}' for partition '{}': \
                  Received batch without events.",
-                &committer.stream_id, partition
+                stream_id, partition
             );
             continue;
         }
@@ -165,6 +160,6 @@ fn handler_loop<H: BatchHandler>(
 
     info!(
         "Worker on stream '{}' for partition '{}': Stopped.",
-        &committer.stream_id, partition
+        stream_id, partition
     );
 }
