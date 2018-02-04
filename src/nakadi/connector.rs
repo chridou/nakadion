@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::env;
 use std::time::{Duration, Instant};
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
@@ -52,7 +53,7 @@ pub trait StreamConnector {
 /// Settings for establishing a connection to `Nakadi`.
 #[derive(Builder, Debug)]
 #[builder(pattern = "owned")]
-pub struct NakadiConnectorSettings {
+pub struct ConnectorConfig {
     /// Maximum number of empty keep alive batches to get in a row before closing the
     /// connection. If 0 or undefined will send keep alive messages indefinitely.
     #[builder(default = "0")]
@@ -105,7 +106,7 @@ pub struct NakadiConnectorSettings {
     pub subscription_id: SubscriptionId,
 }
 
-impl NakadiConnectorSettingsBuilder {
+impl ConnectorConfigBuilder {
     /// Create a builder from environment variables.
     ///
     /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
@@ -123,8 +124,8 @@ impl NakadiConnectorSettingsBuilder {
     /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
     /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See
     /// `ConnectorSettings::stream_keep_alive_limit`
-    pub fn from_env() -> Result<NakadiConnectorSettingsBuilder, String> {
-        let builder = NakadiConnectorSettingsBuilder::default();
+    pub fn from_env() -> Result<ConnectorConfigBuilder, String> {
+        let builder = ConnectorConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
             builder.stream_keep_alive_limit(env_val.parse().map_err(|err| {
                 format!(
@@ -210,33 +211,34 @@ impl NakadiConnectorSettingsBuilder {
     }
 }
 
-pub struct NakadiStreamConnector {
+#[derive(Clone)]
+pub struct Connector {
     connect_url: String,
     stats_url: String,
     commit_url: String,
     subscription_id: SubscriptionId,
     http_client: Client,
-    token_provider: Box<ProvidesAccessToken>,
+    token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
 }
 
-impl NakadiStreamConnector {
-    pub fn new(
-        settings: NakadiConnectorSettings,
-        token_provider: Box<ProvidesAccessToken>,
-    ) -> NakadiStreamConnector {
+impl Connector {
+    pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
+        settings: ConnectorConfig,
+        token_provider: T,
+    ) -> Connector {
         let connect_url = create_connect_url(&settings);
         let stats_url = create_stats_url(&settings);
         let commit_url = create_commit_url(&settings);
 
         let http_client = Client::new();
 
-        NakadiStreamConnector {
+        Connector {
             http_client,
             connect_url,
             stats_url,
             commit_url,
             subscription_id: settings.subscription_id,
-            token_provider,
+            token_provider: Arc::new(token_provider),
         }
     }
 
@@ -286,7 +288,7 @@ impl NakadiStreamConnector {
     }
 }
 
-fn create_connect_url(settings: &NakadiConnectorSettings) -> String {
+fn create_connect_url(settings: &ConnectorConfig) -> String {
     let mut connect_url = String::new();
     connect_url.push_str(&settings.nakadi_host);
     if !connect_url.ends_with("/") {
@@ -336,7 +338,7 @@ fn create_connect_url(settings: &NakadiConnectorSettings) -> String {
     connect_url
 }
 
-fn create_commit_url(settings: &NakadiConnectorSettings) -> String {
+fn create_commit_url(settings: &ConnectorConfig) -> String {
     let mut commit_url = String::new();
     commit_url.push_str(&settings.nakadi_host);
     if !commit_url.ends_with("/") {
@@ -348,7 +350,7 @@ fn create_commit_url(settings: &NakadiConnectorSettings) -> String {
     commit_url
 }
 
-fn create_stats_url(settings: &NakadiConnectorSettings) -> String {
+fn create_stats_url(settings: &ConnectorConfig) -> String {
     let mut commit_url = String::new();
     commit_url.push_str(&settings.nakadi_host);
     if !commit_url.ends_with("/") {
@@ -360,7 +362,7 @@ fn create_stats_url(settings: &NakadiConnectorSettings) -> String {
     commit_url
 }
 
-impl StreamConnector for NakadiStreamConnector {
+impl StreamConnector for Connector {
     type LineIterator = NakadiLineIterator;
     fn connect(&self) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
         let mut headers = Headers::new();

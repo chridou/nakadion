@@ -1,6 +1,10 @@
 use std::fmt;
 
-use nakadi::AfterBatchAction;
+use nakadi::handler::AfterBatchAction;
+
+/// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
+#[derive(Clone, Debug)]
+pub struct SubscriptionId(pub String);
 
 /// A partition id that comes with a `Cursor`
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,7 +53,3 @@ impl<'a> EventType<'a> {
         EventType(value)
     }
 }
-
-/// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
-#[derive(Clone, Debug)]
-pub struct SubscriptionId(pub String);

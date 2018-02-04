@@ -11,6 +11,12 @@ impl AccessToken {
     }
 }
 
+impl fmt::Display for AccessToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<secret-access-token>")
+    }
+}
+
 /// Provides an `AccessToken`.
 ///
 /// Authentication can be disabled by returning `None` on `get_token`.

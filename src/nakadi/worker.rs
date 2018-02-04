@@ -1,3 +1,4 @@
+use nakadi::Lifecycle;
 use nakadi::model::PartitionId;
 use nakadi::model::StreamId;
 use std::sync::mpsc;
@@ -6,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use nakadi::{AfterBatchAction, BatchHandler};
+use nakadi::handler::{AfterBatchAction, BatchHandler};
 use nakadi::batch::Batch;
 use nakadi::model::EventType;
 use nakadi::committer::Committer;
@@ -14,13 +15,7 @@ use nakadi::committer::Committer;
 pub struct Worker {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
-    /// Set by the worker to indicate whether it is running or not
-    ///
-    /// Starts with true and once it is false the worker has stooped
-    /// working.
-    is_running: Arc<AtomicBool>,
-    /// Queried by the worker to determine whether it should stop
-    is_stop_requested: Arc<AtomicBool>,
+    lifecycle: Lifecycle,
     /// The partition this worker is responsible for.
     partition: PartitionId,
     stream_id: StreamId,
@@ -34,35 +29,26 @@ impl Worker {
     ) -> Worker {
         let (sender, receiver) = mpsc::channel();
 
-        let is_running = Arc::new(AtomicBool::new(true));
-        let is_stop_requested = Arc::new(AtomicBool::new(false));
+        let lifecycle = Lifecycle::default();
 
         let handle = Worker {
-            is_running: is_running.clone(),
-            is_stop_requested: Arc::new(AtomicBool::new(false)),
+            lifecycle: lifecycle.clone(),
             sender,
             partition: partition.clone(),
             stream_id: committer.stream_id.clone(),
         };
 
-        start_handler_loop(
-            receiver,
-            is_stop_requested,
-            is_running,
-            partition,
-            handler,
-            committer,
-        );
+        start_handler_loop(receiver, lifecycle, partition, handler, committer);
 
         handle
     }
 
-    pub fn is_running(&self) -> bool {
-        self.is_running.load(Ordering::Relaxed)
+    pub fn running(&self) -> bool {
+        self.lifecycle.running()
     }
 
     pub fn stop(&self) {
-        self.is_stop_requested.store(true, Ordering::Relaxed);
+        self.lifecycle.request_abort()
     }
 
     pub fn process(&self, batch: Batch) -> Result<(), String> {
@@ -83,28 +69,17 @@ impl Worker {
 
 fn start_handler_loop<H: BatchHandler + Send + 'static>(
     receiver: mpsc::Receiver<Batch>,
-    is_stop_requested: Arc<AtomicBool>,
-    is_running: Arc<AtomicBool>,
+    lifecycle: Lifecycle,
     partition: PartitionId,
     handler: H,
     committer: Committer,
 ) {
-    thread::spawn(move || {
-        handler_loop(
-            receiver,
-            &is_stop_requested,
-            &is_running,
-            partition,
-            handler,
-            committer,
-        )
-    });
+    thread::spawn(move || handler_loop(receiver, &lifecycle, partition, handler, committer));
 }
 
 fn handler_loop<H: BatchHandler>(
     receiver: mpsc::Receiver<Batch>,
-    is_stop_requested: &AtomicBool,
-    is_running: &AtomicBool,
+    lifecycle: &Lifecycle,
     partition: PartitionId,
     handler: H,
     committer: Committer,
@@ -116,7 +91,7 @@ fn handler_loop<H: BatchHandler>(
         &committer.stream_id, partition
     );
     loop {
-        if is_stop_requested.load(Ordering::Relaxed) {
+        if lifecycle.abort_requested() {
             info!(
                 "Worker on stream '{}' for partition '{}': Stop reqeusted externally.",
                 &committer.stream_id, partition
@@ -186,7 +161,7 @@ fn handler_loop<H: BatchHandler>(
         }
     }
 
-    is_running.store(false, Ordering::Relaxed);
+    lifecycle.stopped();
 
     info!(
         "Worker on stream '{}' for partition '{}': Stopped.",

@@ -8,13 +8,14 @@ use nakadi::CommitStrategy;
 use nakadi::connector::CommitError;
 use nakadi::model::StreamId;
 use nakadi::batch::Batch;
-use nakadi::AbortHandle;
+use nakadi::Lifecycle;
 use nakadi::connector::StreamConnector;
 
 #[derive(Clone)]
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
     pub stream_id: StreamId,
+    lifecycle: Lifecycle,
 }
 
 enum CommitterMessage {
@@ -22,26 +23,27 @@ enum CommitterMessage {
 }
 
 impl Committer {
-    pub fn new<C>(
-        connector: C,
-        strategy: CommitStrategy,
-        stream_id: StreamId,
-        abort_handle: AbortHandle,
-    ) -> Self
+    pub fn start<C>(connector: C, strategy: CommitStrategy, stream_id: StreamId) -> Self
     where
         C: StreamConnector + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
+
+        let lifecycle = Lifecycle::default();
 
         start_commit_loop(
             receiver,
             strategy,
             stream_id.clone(),
             connector,
-            abort_handle.clone(),
+            lifecycle.clone(),
         );
 
-        Committer { sender, stream_id }
+        Committer {
+            sender,
+            stream_id,
+            lifecycle,
+        }
     }
 
     pub fn commit(&self, batch: Batch) -> Result<(), String> {
@@ -54,6 +56,14 @@ impl Committer {
                 )
             })
     }
+
+    pub fn running(&self) -> bool {
+        self.lifecycle.running()
+    }
+
+    pub fn stop(&self) {
+        self.lifecycle.request_abort()
+    }
 }
 
 fn start_commit_loop<C>(
@@ -61,12 +71,12 @@ fn start_commit_loop<C>(
     strategy: CommitStrategy,
     stream_id: StreamId,
     connector: C,
-    abort_handle: AbortHandle,
+    lifecycle: Lifecycle,
 ) where
     C: StreamConnector + Send + 'static,
 {
     thread::spawn(move || {
-        run_commit_loop(receiver, strategy, stream_id, connector, abort_handle);
+        run_commit_loop(receiver, strategy, stream_id, connector, lifecycle);
     });
 }
 
@@ -105,13 +115,13 @@ fn run_commit_loop<C>(
     strategy: CommitStrategy,
     stream_id: StreamId,
     connector: C,
-    abort_handle: AbortHandle,
+    lifecycle: Lifecycle,
 ) where
     C: StreamConnector,
 {
     let mut cursors = HashMap::new();
     loop {
-        if abort_handle.abort_requested() {
+        if lifecycle.abort_requested() {
             info!("Stream {} - Abort requested. Flushing cursors", stream_id);
             flush_all_cursors::<_>(cursors, &stream_id, &connector);
             break;
@@ -139,20 +149,18 @@ fn run_commit_loop<C>(
                     "Stream {} - Commit channel disconnected. Flushing cursors.",
                     stream_id
                 );
-                abort_handle.request_abort();
                 flush_all_cursors::<_>(cursors, &stream_id, &connector);
                 break;
             }
         }
 
         if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &connector) {
-            abort_handle.request_abort();
             error!("Stream {} - Failed to commit cursors: {}", stream_id, err);
             break;
         }
     }
 
-    abort_handle.mark_committer_stopped();
+    lifecycle.stopped();
     info!("Stream {} - Committer stopped.", stream_id);
 }
 

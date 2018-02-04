@@ -1,23 +1,12 @@
 /// Describes what to do after a batch has been processed.
 ///
 /// Use to control what should happen next.
-pub enum AfterBatchAction {
-    Continue,
-    Abort { reason: String },
-}
-
-#[derive(Clone, Copy)]
-pub enum CommitStrategy {
-    AllBatches,
-    MaxAge,
-    EveryNSeconds(u16),
-}
-
+use nakadi::handler::HandlerFactory;
+use nakadi::connector::Connector;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::thread;
-use std::time::Duration;
 
+pub mod handler;
 pub mod consumer;
 pub mod model;
 pub mod connector;
@@ -26,65 +15,40 @@ pub mod worker;
 pub mod batch;
 pub mod dispatcher;
 
-/// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
-#[derive(Clone, Debug)]
-pub struct SubscriptionId(pub String);
-
-pub trait BatchHandler {
-    /// Handle the events.
-    ///
-    /// Calling this method may never panic!
-    fn handle(&self, event_type: model::EventType, events: &[u8]) -> AfterBatchAction;
-}
-
-pub trait HandlerFactory {
-    type Handler: BatchHandler + Send + 'static;
-    fn create_handler(&self) -> Self::Handler;
+#[derive(Clone, Copy)]
+pub enum CommitStrategy {
+    AllBatches,
+    MaxAge,
+    EveryNSeconds(u16),
 }
 
 #[derive(Clone)]
-pub struct AbortHandle {
-    abort_requested: Arc<AtomicBool>,
-    is_committer_stopped: Arc<AtomicBool>,
-    is_processor_stopped: Arc<AtomicBool>,
+pub struct Lifecycle {
+    state: Arc<(AtomicBool, AtomicBool)>,
 }
 
-impl AbortHandle {
+impl Lifecycle {
     pub fn abort_requested(&self) -> bool {
-        self.abort_requested.load(Ordering::Relaxed)
+        self.state.0.load(Ordering::Relaxed)
     }
 
     pub fn request_abort(&self) {
-        warn!("Abort requested");
-        self.abort_requested.store(true, Ordering::Relaxed)
+        self.state.0.store(true, Ordering::Relaxed)
     }
 
-    pub fn mark_committer_stopped(&self) {
-        self.is_committer_stopped.store(true, Ordering::Relaxed)
+    pub fn stopped(&self) {
+        self.state.1.store(true, Ordering::Relaxed)
     }
 
-    pub fn mark_processor_stopped(&self) {
-        self.is_processor_stopped.store(true, Ordering::Relaxed)
-    }
-
-    pub fn all_stopped(&self) -> bool {
-        self.is_committer_stopped.load(Ordering::Relaxed)
-            && self.is_processor_stopped.load(Ordering::Relaxed)
-    }
-
-    pub fn wait_for_all_stopped(&self) {
-        while !self.all_stopped() {
-            thread::sleep(Duration::from_millis(100))
-        }
+    pub fn running(&self) -> bool {
+        self.state.1.load(Ordering::Relaxed)
     }
 }
 
-impl Default for AbortHandle {
-    fn default() -> AbortHandle {
-        AbortHandle {
-            abort_requested: Arc::new(AtomicBool::new(false)),
-            is_committer_stopped: Arc::new(AtomicBool::new(false)),
-            is_processor_stopped: Arc::new(AtomicBool::new(false)),
+impl Default for Lifecycle {
+    fn default() -> Lifecycle {
+        Lifecycle {
+            state: Arc::new((AtomicBool::new(false), AtomicBool::new(true))),
         }
     }
 }
@@ -113,5 +77,49 @@ impl Default for InFlightCounter {
         InFlightCounter {
             in_flight: Arc::new(AtomicIsize::new(0)),
         }
+    }
+}
+
+pub struct NakadionConfig {
+    commit_strategy: CommitStrategy,
+    max_in_flight: u64,
+}
+
+pub struct Nakadion {
+    guard: Arc<DropGuard>,
+}
+
+struct DropGuard {
+    consumer: consumer::Consumer,
+}
+
+impl Drop for DropGuard {
+    fn drop(&mut self) {
+        self.consumer.stop()
+    }
+}
+
+impl Nakadion {
+    pub fn start<HF>(
+        config: NakadionConfig,
+        connector: Connector,
+        handler_factory: HF,
+    ) -> Result<Nakadion, String>
+    where
+        HF: HandlerFactory + Sync + Send + 'static,
+    {
+        let consumer =
+            consumer::Consumer::start(connector, handler_factory, config.commit_strategy);
+
+        let guard = Arc::new(DropGuard { consumer });
+        Ok(Nakadion { guard })
+    }
+
+    pub fn running(&self) -> bool {
+        self.guard.consumer.running()
+    }
+
+    pub fn stop(&self) {
+        self.guard.consumer.stop()
     }
 }

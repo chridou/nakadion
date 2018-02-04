@@ -1,11 +1,11 @@
 //! The processor orchestrates the workers
 
+use std::sync::Arc;
+use nakadi::Lifecycle;
 use nakadi::worker::Worker;
 use nakadi::model::PartitionId;
 use nakadi::committer::Committer;
-use nakadi::HandlerFactory;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use nakadi::handler::HandlerFactory;
 use nakadi::batch::Batch;
 use std::time::Duration;
 use std::thread;
@@ -15,48 +15,34 @@ use std::sync::mpsc;
 pub struct Dispatcher {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
-    /// Set by the worker to indicate whether it is running or not
-    ///
-    /// Starts with true and once it is false the worker has stooped
-    /// working.
-    is_running: Arc<AtomicBool>,
-    /// Queried by the worker to determine whether it should stop
-    is_stop_requested: Arc<AtomicBool>,
+    lifecycle: Lifecycle,
 }
 
 impl Dispatcher {
-    pub fn start<HF: HandlerFactory + Send + 'static>(
-        handler_factory: HF,
-        committer: Committer,
-    ) -> Dispatcher {
+    pub fn start<HF>(handler_factory: Arc<HF>, committer: Committer) -> Dispatcher
+    where
+        HF: HandlerFactory + Send + Sync + 'static,
+    {
         let (sender, receiver) = mpsc::channel();
 
-        let is_running = Arc::new(AtomicBool::new(true));
-        let is_stop_requested = Arc::new(AtomicBool::new(false));
+        let lifecycle = Lifecycle::default();
 
         let handle = Dispatcher {
-            is_running: is_running.clone(),
-            is_stop_requested: Arc::new(AtomicBool::new(false)),
+            lifecycle: lifecycle.clone(),
             sender,
         };
 
-        start_handler_loop(
-            receiver,
-            is_stop_requested,
-            is_running,
-            handler_factory,
-            committer,
-        );
+        start_handler_loop(receiver, lifecycle, handler_factory, committer);
 
         handle
     }
 
     pub fn is_running(&self) -> bool {
-        self.is_running.load(Ordering::Relaxed)
+        self.lifecycle.running()
     }
 
     pub fn stop(&self) {
-        self.is_stop_requested.store(true, Ordering::Relaxed);
+        self.lifecycle.request_abort()
     }
 
     pub fn process(&self, batch: Batch) -> Result<(), String> {
@@ -71,37 +57,31 @@ impl Dispatcher {
     }
 }
 
-fn start_handler_loop<HF: HandlerFactory + Send + 'static>(
+fn start_handler_loop<HF>(
     receiver: mpsc::Receiver<Batch>,
-    is_stop_requested: Arc<AtomicBool>,
-    is_running: Arc<AtomicBool>,
-    handler_factory: HF,
+    lifecycle: Lifecycle,
+    handler_factory: Arc<HF>,
     committer: Committer,
-) {
-    thread::spawn(move || {
-        handler_loop(
-            receiver,
-            &is_stop_requested,
-            &is_running,
-            handler_factory,
-            committer,
-        )
-    });
+) where
+    HF: HandlerFactory + Send + Sync + 'static,
+{
+    thread::spawn(move || handler_loop(receiver, lifecycle, handler_factory, committer));
 }
 
-fn handler_loop<HF: HandlerFactory>(
+fn handler_loop<HF>(
     receiver: mpsc::Receiver<Batch>,
-    is_stop_requested: &AtomicBool,
-    is_running: &AtomicBool,
-    handler_factory: HF,
+    lifecycle: Lifecycle,
+    handler_factory: Arc<HF>,
     committer: Committer,
-) {
+) where
+    HF: HandlerFactory,
+{
     let stream_id = committer.stream_id.clone();
     let mut workers: Vec<Worker> = Vec::new();
 
     info!("Processor on stream '{}' Started.", &committer.stream_id,);
     loop {
-        if is_stop_requested.load(Ordering::Relaxed) {
+        if lifecycle.abort_requested() {
             info!(
                 "Processor on stream '{}': Stop reqeusted externally.",
                 stream_id
@@ -168,7 +148,17 @@ fn handler_loop<HF: HandlerFactory>(
 
     workers.iter().for_each(|w| w.stop());
 
-    is_running.store(false, Ordering::Relaxed);
+    info!(
+        "Processor on stream '{}': Waiting for workers to stop",
+        stream_id
+    );
 
+    while workers.iter().any(|w| w.running()) {
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    info!("Processor on stream '{}': All wokers stopped.", stream_id);
+
+    lifecycle.stopped();
     info!("Processor on stream '{}': Stopped.", stream_id);
 }
