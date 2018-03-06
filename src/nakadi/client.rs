@@ -5,11 +5,13 @@ use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::{StreamId, SubscriptionId};
+
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use serde_json;
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
+use failure::*;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
@@ -125,15 +127,12 @@ impl ClientConfigBuilder {
     /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
     /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See
     /// `ConnectorSettings::stream_keep_alive_limit`
-    pub fn from_env() -> Result<ClientConfigBuilder, String> {
+    pub fn from_env() -> Result<ClientConfigBuilder, Error> {
         let builder = ClientConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
-            builder.stream_keep_alive_limit(env_val.parse().map_err(|err| {
-                format!(
-                    "Could not parse 'NAKADION_STREAM_KEEP_ALIVE_LIMIT': {}",
-                    err
-                )
-            })?)
+            builder.stream_keep_alive_limit(env_val
+                .parse::<usize>()
+                .context("Could not parse 'NAKADION_STREAM_KEEP_ALIVE_LIMIT'")?)
         } else {
             warn!(
                 "Environment variable 'NAKADION_STREAM_KEEP_ALIVE_LIMIT' not found. Using \
@@ -143,27 +142,24 @@ impl ClientConfigBuilder {
         };
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_LIMIT").ok() {
             builder.stream_limit(env_val
-                .parse()
-                .map_err(|err| format!("Could not parse 'NAKADION_STREAM_LIMIT': {}", err))?)
+                .parse::<usize>()
+                .context("Could not parse 'NAKADION_STREAM_LIMIT'")?)
         } else {
             warn!("Environment variable 'NAKADION_STREAM_LIMIT' not found. Using default.");
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_TIMEOUT_SECS").ok() {
-            builder.stream_timeout(Duration::from_secs(env_val.parse().map_err(|err| {
-                format!("Could not parse 'NAKADION_STREAM_TIMEOUT_SECS': {}", err)
-            })?))
+            builder.stream_timeout(Duration::from_secs(env_val
+                .parse::<u64>()
+                .context("Could not parse 'NAKADION_STREAM_TIMEOUT_SECS'")?))
         } else {
             warn!("Environment variable 'NAKADION_STREAM_TIMEOUT_SECS' not found. Using default.");
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_BATCH_FLUSH_TIMEOUT_SECS").ok() {
-            builder.batch_flush_timeout(Duration::from_secs(env_val.parse().map_err(|err| {
-                format!(
-                    "Could not parse 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS': {}",
-                    err
-                )
-            })?))
+            builder.batch_flush_timeout(Duration::from_secs(env_val
+                .parse::<u64>()
+                .context("Could not parse 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS'")?))
         } else {
             warn!(
                 "Environment variable 'NAKADION_BATCH_FLUSH_TIMEOUT_SECS' not found. Using \
@@ -173,16 +169,16 @@ impl ClientConfigBuilder {
         };
         let builder = if let Some(env_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
             builder.batch_limit(env_val
-                .parse()
-                .map_err(|err| format!("Could not parse 'NAKADION_BATCH_LIMIT': {}", err))?)
+                .parse::<usize>()
+                .context("Could not parse 'NAKADION_BATCH_LIMIT'")?)
         } else {
             warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_MAX_UNCOMMITED_EVENTS").ok() {
-            builder.max_uncommitted_events(env_val.parse().map_err(|err| {
-                format!("Could not parse 'NAKADION_MAX_UNCOMMITED_EVENTS': {}", err)
-            })?)
+            builder.max_uncommitted_events(env_val
+                .parse::<usize>()
+                .context("Could not parse 'NAKADION_MAX_UNCOMMITED_EVENTS'")?)
         } else {
             warn!(
                 "Environment variable 'NAKADION_MAX_UNCOMMITED_EVENTS' not found. Using \
@@ -226,7 +222,7 @@ impl Client {
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
         settings: ClientConfig,
         token_provider: T,
-    ) -> Result<Client, String> {
+    ) -> Result<Client, Error> {
         let connect_url = create_connect_url(&settings);
         let stats_url = create_stats_url(&settings);
         let commit_url = create_commit_url(&settings);
@@ -234,7 +230,7 @@ impl Client {
         let http_client = HttpClientBuilder::new()
             .timeout(Duration::from_secs(1))
             .build()
-            .map_err(|err| err.to_string())?;
+            .context("Could not create HTTP client")?;
 
         Ok(Client {
             http_client,

@@ -1,4 +1,5 @@
 extern crate env_logger;
+extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate nakadion;
@@ -12,6 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
+use failure::Error;
 use nakadion::auth::*;
 use nakadion::maintenance::*;
 use nakadion::*;
@@ -122,12 +124,12 @@ fn main() {
         .unwrap();
 }
 
-fn consume(subscription_id: SubscriptionId) -> Result<(), String> {
+fn consume(subscription_id: SubscriptionId) -> Result<(), Error> {
     let config_builder = ClientConfigBuilder::default()
         .nakadi_host("http://localhost:8080".into())
         .subscription_id(subscription_id);
 
-    let config = config_builder.build()?;
+    let config = config_builder.build().unwrap();
 
     let client = Client::new(config, AccessTokenProvider)?;
 

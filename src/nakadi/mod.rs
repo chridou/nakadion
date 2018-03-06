@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::thread;
 
+use failure::*;
+
 use nakadi::handler::HandlerFactory;
 use nakadi::client::StreamingClient;
 
@@ -89,7 +91,7 @@ impl Nakadion {
         client: C,
         handler_factory: HF,
         commit_strategy: CommitStrategy,
-    ) -> Result<Nakadion, String>
+    ) -> Result<Nakadion, Error>
     where
         C: StreamingClient + Clone + Sync + Send + 'static,
         HF: HandlerFactory + Sync + Send + 'static,
