@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use nakadi::CommitStrategy;
 use nakadi::client::{CommitError, CommitStatus};
-use nakadi::model::{StreamId, SubscriptionId};
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::Lifecycle;
 use nakadi::client::StreamingClient;
@@ -188,17 +188,20 @@ fn flush_all_cursors<C>(
         .values()
         .map(|v| v.batch.batch_line.cursor())
         .collect();
-    match connector.commit(stream_id.clone(), &cursors_to_commit) {
+
+    let flow_id = FlowId::default();
+
+    match connector.commit(stream_id.clone(), &cursors_to_commit, flow_id.clone()) {
         Ok(CommitStatus::AllOffsetsIncreased) => {
-            info!("Stream {} - All remaining offstets incresed.", stream_id)
+            info!("Stream {} - All remaining offstets increased.", stream_id)
         }
         Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
-            "Stream {} - Not all remaining offstets incresed.",
+            "Stream {} - Not all remaining offstets increased.",
             stream_id
         ),
         Err(err) => error!(
-            "Stream {} - Failed to commit all remaining cursors: {}",
-            stream_id, err
+            "Stream {} - FlowId {} - Failed to commit all remaining cursors: {}",
+            stream_id, flow_id, err
         ),
     }
 }
@@ -222,8 +225,10 @@ where
         }
     }
 
+    let flow_id = FlowId::default();
+
     let status = if !cursors_to_commit.is_empty() {
-        client.commit(stream_id.clone(), &cursors_to_commit)?
+        client.commit(stream_id.clone(), &cursors_to_commit, flow_id.clone())?
     } else {
         CommitStatus::AllOffsetsIncreased
     };

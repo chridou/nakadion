@@ -79,7 +79,9 @@ fn main() {
     let event_schema = EventTypeSchema {
         version: Some("0.1".into()),
         schema_type: SchemaType::JsonSchema,
-        schema: "{ \"properties\": {\"fortune\": {\"type\": \"string\"} }, \"required\": [\"fortune\"] }".into(),
+        schema: "{ \"properties\": {\"fortune\": {\"type\": \
+                 \"string\"} }, \"required\": [\"fortune\"] }"
+            .into(),
     };
 
     let event_definition = EventTypeDefinition {

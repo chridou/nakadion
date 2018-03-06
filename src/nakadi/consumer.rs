@@ -1,4 +1,4 @@
-use nakadi::client::LineResult;
+use nakadi::client::{ConnectError, LineResult};
 use nakadi::Lifecycle;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -12,8 +12,10 @@ use nakadi::committer::Committer;
 use nakadi::dispatcher::Dispatcher;
 use nakadi::batch::{Batch, BatchLine};
 
-const CONNECT_RETRY_BACKOFF: &'static [u64] =
-    &[1, 1, 1, 1, 3, 3, 3, 5, 5, 5, 10, 10, 10, 15, 15, 15];
+const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
+    10, 50, 100, 500, 1000, 1000, 1000, 3000, 3000, 3000, 5000, 5000, 5000, 10_000, 10_000, 10_000,
+    15_000, 15_000, 15_000,
+];
 
 /// The consumer connects to the stream and sends batch lines to the processor.
 ///
@@ -84,8 +86,13 @@ fn consumer_loop<C, HF>(
             match connect(&client, Duration::from_secs(300), &lifecycle) {
                 Ok(v) => v,
                 Err(err) => {
-                    warn!("No connection: {}", err);
-                    continue;
+                    if err.is_permanent() {
+                        error!("Permanent connection error: {}", err);
+                        break;
+                    } else {
+                        warn!("Temporary connection error: {}", err);
+                        continue;
+                    }
                 }
             };
 
@@ -163,31 +170,35 @@ fn connect<C: StreamingClient>(
     client: &C,
     max_dur: Duration,
     lifecycle: &Lifecycle,
-) -> Result<(StreamId, C::LineIterator), String> {
+) -> Result<(StreamId, C::LineIterator), ConnectError> {
     let deadline = Instant::now() + max_dur;
     let mut attempt = 0;
     loop {
         attempt += 1;
-        match client.connect() {
+        let flow_id = FlowId::default();
+        match client.connect(flow_id.clone()) {
             Ok(it) => return Ok(it),
             Err(err) => {
-                let sleep_dur_secs = *CONNECT_RETRY_BACKOFF.get(attempt).unwrap_or(&30);
+                let sleep_dur_ms = *CONNECT_RETRY_BACKOFF_MS.get(attempt).unwrap_or(&30_000);
                 if Instant::now() >= deadline {
-                    return Err(format!(
-                        "Failed to connect to Nakadi after {} attempts.",
-                        attempt
+                    return Err(ConnectError::Other(
+                        format!("Failed to connect to Nakadi after {} attempts.", attempt),
+                        flow_id,
                     ));
                 } else if lifecycle.abort_requested() {
-                    return Err(format!(
-                        "Failed to connect to Nakadi after {} attempts. Abort requested",
-                        attempt
+                    return Err(ConnectError::Other(
+                        format!(
+                            "Failed to connect to Nakadi after {} attempts. Abort requested",
+                            attempt
+                        ),
+                        flow_id,
                     ));
                 } else {
                     warn!(
-                        "Failed to connect(attempt {}) to Nakadi(retry in {} seconds): {}",
-                        attempt, sleep_dur_secs, err
+                        "Failed to connect(attempt {}) to Nakadi(retry in {} ,s): {}",
+                        attempt, sleep_dur_ms, err
                     );
-                    thread::sleep(Duration::from_secs(sleep_dur_secs));
+                    thread::sleep(Duration::from_millis(sleep_dur_ms));
                 }
             }
         }

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nakadi::handler::AfterBatchAction;
+use uuid::Uuid;
 
 /// A `SubscriptionId` is used to guarantee a continous flow of events for a
 /// client.
@@ -37,6 +37,29 @@ impl StreamId {
 impl fmt::Display for StreamId {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}", self.0)
+    }
+}
+
+/// A `StreamId` identifies a subscription. It must be provided for checkpointing with
+/// a `Cursor`.
+#[derive(Clone, Debug)]
+pub struct FlowId(pub String);
+
+impl FlowId {
+    pub fn new<T: Into<String>>(id: T) -> Self {
+        FlowId(id.into())
+    }
+}
+
+impl fmt::Display for FlowId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Default for FlowId {
+    fn default() -> FlowId {
+        FlowId(Uuid::new_v4().to_string())
     }
 }
 

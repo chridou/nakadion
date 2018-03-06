@@ -309,20 +309,27 @@ pub struct Subscription {
 
 #[derive(Fail, Debug)]
 pub enum CreateSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Unprocessable Entity: {}", _0)]
     UnprocessableEntity(String),
-    #[fail(display = "Bad request: {}", _0)] BadRequest(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum DeleteSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "NotFound: {}", _0)] NotFound(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "NotFound: {}", _0)]
+    NotFound(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 #[derive(Debug, Clone)]
@@ -342,12 +349,15 @@ impl CreateSubscriptionStatus {
 
 #[derive(Fail, Debug)]
 pub enum CreateEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Event type already exists: {}", _0)]
     Conflict(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)]
+    UnprocessableEntity(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl CreateEventTypeError {
@@ -363,9 +373,12 @@ impl CreateEventTypeError {
 
 #[derive(Fail, Debug)]
 pub enum DeleteEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl DeleteEventTypeError {
@@ -542,7 +555,8 @@ pub struct EventTypeDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeSchema {
     pub version: Option<String>,
-    #[serde(rename = "type")] pub schema_type: SchemaType,
+    #[serde(rename = "type")]
+    pub schema_type: SchemaType,
     pub schema: String,
 }
 

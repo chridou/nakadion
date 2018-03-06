@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{StreamId, SubscriptionId};
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
@@ -14,6 +14,7 @@ use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::*;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
+header! { (XFlowId, "X-Flow-Id") => [String] }
 
 const LINE_SPLIT_BYTE: u8 = b'\n';
 
@@ -43,11 +44,15 @@ impl Iterator for NakadiLineIterator {
 /// A client to the Nakadi Event Broker
 pub trait StreamingClient {
     type LineIterator: Iterator<Item = LineResult>;
-    fn connect(&self) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
+    fn connect(
+        &self,
+        flow_id: FlowId,
+    ) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
     fn commit<T: AsRef<[u8]>>(
         &self,
         stream_id: StreamId,
         cursors: &[T],
+        flow_id: FlowId,
     ) -> ::std::result::Result<CommitStatus, CommitError>;
 
     fn subscription_id(&self) -> &SubscriptionId;
@@ -321,7 +326,7 @@ impl ConfigBuilder {
             stream_timeout: self.stream_timeout.unwrap_or(Duration::from_secs(0)),
             batch_flush_timeout: self.batch_flush_timeout.unwrap_or(Duration::from_secs(0)),
             batch_limit: self.batch_limit.unwrap_or(0),
-            max_uncommitted_events: self.max_uncommitted_events.unwrap_or(1),
+            max_uncommitted_events: self.max_uncommitted_events.unwrap_or(0),
             nakadi_host: nakadi_host,
             subscription_id: subscription_id,
             request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(300)),
@@ -390,12 +395,14 @@ impl Client {
         &self,
         stream_id: StreamId,
         cursors: &[T],
+        flow_id: FlowId,
     ) -> ::std::result::Result<CommitStatus, CommitError> {
         let mut headers = Headers::new();
         if let Some(AccessToken(token)) = self.token_provider.get_token()? {
             headers.set(Authorization(Bearer { token }));
         }
 
+        headers.set(XFlowId(flow_id.0.clone()));
         headers.set(XNakadiStreamId(stream_id.0));
         headers.set(ContentType::json());
 
@@ -412,36 +419,42 @@ impl Client {
             StatusCode::Ok => Ok(CommitStatus::NotAllOffsetsIncreased),
             // All cursors committed and all increased the offset.
             StatusCode::NoContent => Ok(CommitStatus::AllOffsetsIncreased),
-            StatusCode::NotFound => Err(CommitError::SubscriptionNotFound(format!(
-                "{}: {}",
-                StatusCode::NotFound,
-                read_response_body(&mut response)
-            ))),
-            StatusCode::UnprocessableEntity => Err(CommitError::UnprocessableEntity(format!(
-                "{}: {}",
-                StatusCode::UnprocessableEntity,
-                read_response_body(&mut response)
-            ))),
-            StatusCode::Forbidden => Err(CommitError::Client(format!(
-                "{}: {}",
-                StatusCode::Forbidden,
-                "<Nakadion: Nakadi said forbidden.>"
-            ))),
-            other_status if other_status.is_client_error() => Err(CommitError::Client(format!(
-                "{}: {}",
-                other_status,
-                read_response_body(&mut response)
-            ))),
-            other_status if other_status.is_server_error() => Err(CommitError::Server(format!(
-                "{}: {}",
-                other_status,
-                read_response_body(&mut response)
-            ))),
-            other_status => Err(CommitError::Other(format!(
-                "{}: {}",
-                other_status,
-                read_response_body(&mut response)
-            ))),
+            StatusCode::NotFound => Err(CommitError::SubscriptionNotFound(
+                format!(
+                    "{}: {}",
+                    StatusCode::NotFound,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::UnprocessableEntity => Err(CommitError::UnprocessableEntity(
+                format!(
+                    "{}: {}",
+                    StatusCode::UnprocessableEntity,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::Forbidden => Err(CommitError::Client(
+                format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakadion: Nakadi said forbidden.>"
+                ),
+                flow_id,
+            )),
+            other_status if other_status.is_client_error() => Err(CommitError::Client(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
+            other_status if other_status.is_server_error() => Err(CommitError::Server(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
+            other_status => Err(CommitError::Other(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
         }
     }
 }
@@ -522,11 +535,16 @@ fn create_stats_url(config: &Config) -> String {
 
 impl StreamingClient for Client {
     type LineIterator = NakadiLineIterator;
-    fn connect(&self) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
+    fn connect(
+        &self,
+        flow_id: FlowId,
+    ) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
         let mut headers = Headers::new();
         if let Some(AccessToken(token)) = self.token_provider.get_token()? {
             headers.set(Authorization(Bearer { token }));
         }
+
+        headers.set(XFlowId(flow_id.0.clone()));
 
         let mut response = self.http_client
             .get(&self.connect_url)
@@ -542,37 +560,59 @@ impl StreamingClient for Client {
                 {
                     stream_id
                 } else {
-                    return Err(ConnectError::Server {
-                        message: "The response lacked the \
-                                  'X-Nakadi-StreamId' header."
-                            .to_string(),
-                    });
+                    return Err(ConnectError::Other(
+                        "The response lacked the \
+                         'X-Nakadi-StreamId' header."
+                            .into(),
+                        flow_id.clone(),
+                    ));
                 };
                 Ok((stream_id, NakadiLineIterator::new(response)))
             }
-            StatusCode::Forbidden => Err(ConnectError::Client {
-                message: format!(
+            StatusCode::Forbidden => Err(ConnectError::Forbidden(
+                format!(
                     "{}: {}",
                     StatusCode::Forbidden,
                     "Nakadion: Nakadi said forbidden."
                 ),
-            }),
-            StatusCode::Conflict => Err(ConnectError::Client {
-                message: format!(
+                flow_id,
+            )),
+            StatusCode::Unauthorized => Err(ConnectError::Unauthorized(
+                format!(
+                    "{}: {}",
+                    StatusCode::Unauthorized,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::NotFound => Err(ConnectError::SubscriptionNotFound(
+                format!(
+                    "{}: {}",
+                    StatusCode::NotFound,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::BadRequest => Err(ConnectError::BadRequest(
+                format!(
+                    "{}: {}",
+                    StatusCode::BadRequest,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::Conflict => Err(ConnectError::Conflict(
+                format!(
                     "{}: {}",
                     StatusCode::Conflict,
                     read_response_body(&mut response)
                 ),
-            }),
-            other_status if other_status.is_client_error() => Err(ConnectError::Client {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status if other_status.is_server_error() => Err(ConnectError::Server {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status => Err(ConnectError::Other {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
+                flow_id,
+            )),
+            other_status => Err(ConnectError::Other(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
         }
     }
 
@@ -618,9 +658,10 @@ impl StreamingClient for Client {
         &self,
         stream_id: StreamId,
         cursors: &[T],
+        flow_id: FlowId,
     ) -> ::std::result::Result<CommitStatus, CommitError> {
         let mut op = || {
-            self.attempt_commit(stream_id.clone(), cursors)
+            self.attempt_commit(stream_id.clone(), cursors, flow_id.clone())
                 .map_err(|err| match err {
                     err @ CommitError::Client { .. } => BackoffError::Permanent(err),
                     err => BackoffError::Transient(err),
@@ -670,19 +711,33 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
 
 #[derive(Fail, Debug)]
 pub enum ConnectError {
-    #[fail(display = "Token Error on connect: {}", cause)]
-    TokenError {
-        #[cause]
-        cause: TokenError,
-    },
-    #[fail(display = "Connection Error: {}", message)]
-    Connection { message: String },
-    #[fail(display = "Server Error: {}", message)]
-    Server { message: String },
-    #[fail(display = "Client Error: {}", message)]
-    Client { message: String },
-    #[fail(display = "Other Error: {}", message)]
-    Other { message: String },
+    #[fail(display = "Token Error on connect: {}", _0)]
+    Token(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String, FlowId),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String, FlowId),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String, FlowId),
+    #[fail(display = "Conflict: {}", _0)]
+    Conflict(String, FlowId),
+    #[fail(display = "Subscription not found: {}", _0)]
+    SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Other error: {}", _0)]
+    Other(String, FlowId),
+}
+
+impl ConnectError {
+    pub fn is_permanent(&self) -> bool {
+        match *self {
+            ConnectError::Forbidden(_, _) => true,
+            ConnectError::BadRequest(_, _) => true,
+            ConnectError::SubscriptionNotFound(_, _) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -697,16 +752,16 @@ pub enum CommitError {
     TokenError(String),
     #[fail(display = "Connection Error: {}", _0)]
     Connection(String),
-    #[fail(display = "Subscription not found: {}", _0)]
-    SubscriptionNotFound(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)]
-    UnprocessableEntity(String),
-    #[fail(display = "Server Error: {}", _0)]
-    Server(String),
-    #[fail(display = "Client Error: {}", _0)]
-    Client(String),
-    #[fail(display = "Other Error: {}", _0)]
-    Other(String),
+    #[fail(display = "Subscription not found(FlowId: {}): {}", _1, _0)]
+    SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
+    UnprocessableEntity(String, FlowId),
+    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)]
+    Server(String, FlowId),
+    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)]
+    Client(String, FlowId),
+    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)]
+    Other(String, FlowId),
 }
 
 #[derive(Fail, Debug)]
@@ -726,16 +781,14 @@ pub enum StatsError {
 }
 
 impl From<TokenError> for ConnectError {
-    fn from(cause: TokenError) -> ConnectError {
-        ConnectError::TokenError { cause }
+    fn from(err: TokenError) -> ConnectError {
+        ConnectError::Token(format!("Could not get token: {}", err))
     }
 }
 
 impl From<::reqwest::Error> for ConnectError {
     fn from(e: ::reqwest::Error) -> ConnectError {
-        ConnectError::Connection {
-            message: format!("Connection Error: {}", e),
-        }
+        ConnectError::Connection(format!("Connection Error: {}", e))
     }
 }
 

@@ -27,7 +27,10 @@ pub trait ProvidesAccessToken {
 
 #[derive(Fail, Debug, Clone)]
 pub enum TokenError {
-    #[fail(display = "Client Error: {}", message)] Client { message: String },
-    #[fail(display = "Server Error: {}", message)] Server { message: String },
-    #[fail(display = "Other Error: {}", message)] Other { message: String },
+    #[fail(display = "Client Error: {}", message)]
+    Client { message: String },
+    #[fail(display = "Server Error: {}", message)]
+    Server { message: String },
+    #[fail(display = "Other Error: {}", message)]
+    Other { message: String },
 }

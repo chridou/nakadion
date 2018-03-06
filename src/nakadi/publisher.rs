@@ -2,15 +2,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::io::Read;
 
-use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+use serde::Serialize;
+use serde_json;
 
 use reqwest::{Client as HttpClient, Response};
 use reqwest::StatusCode;
-use reqwest::header::{Authorization, Bearer, Headers};
+use reqwest::header::{Authorization, Bearer};
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
-use failure::*;
 
 use auth::{AccessToken, ProvidesAccessToken};
+use nakadi::model::FlowId;
+
+header! { (XFlowId, "X-Flow-Id") => [String] }
 
 pub struct NakadiPublisher {
     nakadi_base_url: String,
@@ -41,14 +44,22 @@ impl NakadiPublisher {
         }
     }
 
-    pub fn publish(&self, event_type: &str, bytes: Vec<u8>) -> Result<PublishStatus, PublishError> {
+    pub fn publish_raw(
+        &self,
+        event_type: &str,
+        bytes: Vec<u8>,
+        flow_id: Option<FlowId>,
+    ) -> Result<PublishStatus, PublishError> {
         let url = format!("{}/event-types/{}/events", self.nakadi_base_url, event_type);
+
+        let flow_id = flow_id.unwrap_or_else(|| FlowId::default());
 
         let mut op = || match publish_events(
             &self.http_client,
             &url,
             &*self.token_provider,
             bytes.clone(),
+            &flow_id,
         ) {
             Ok(publish_status) => Ok(publish_status),
             Err(err) => {
@@ -75,6 +86,19 @@ impl NakadiPublisher {
             Err(BackoffError::Permanent(err)) => Err(err),
         }
     }
+
+    pub fn publish_events<T: Serialize>(
+        &self,
+        event_type: &str,
+        events: &[T],
+        flow_id: Option<FlowId>,
+    ) -> Result<PublishStatus, PublishError> {
+        let bytes = match serde_json::to_vec(events) {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(PublishError::Serialization(err.to_string())),
+        };
+        self.publish_raw(event_type, bytes, flow_id)
+    }
 }
 
 fn publish_events(
@@ -82,6 +106,7 @@ fn publish_events(
     url: &str,
     token_provider: &ProvidesAccessToken,
     bytes: Vec<u8>,
+    flow_id: &FlowId,
 ) -> Result<PublishStatus, PublishError> {
     let mut request_builder = client.post(url);
 
@@ -90,8 +115,10 @@ fn publish_events(
             request_builder.header(Authorization(Bearer { token }));
         }
         Ok(None) => (),
-        Err(err) => return Err(PublishError::Other(err.to_string())),
+        Err(err) => return Err(PublishError::Token(err.to_string())),
     };
+
+    request_builder.header(XFlowId(flow_id.0.clone()));
 
     match request_builder.body(bytes).send() {
         Ok(ref mut response) => match response.status() {
@@ -99,22 +126,22 @@ fn publish_events(
             StatusCode::MultiStatus => Ok(PublishStatus::NotAllEventsPublished),
             StatusCode::Unauthorized => {
                 let msg = read_response_body(response);
-                Err(PublishError::Unauthorized(msg))
+                Err(PublishError::Unauthorized(msg, flow_id.clone()))
             }
             StatusCode::Forbidden => {
                 let msg = read_response_body(response);
-                Err(PublishError::Forbidden(msg))
+                Err(PublishError::Forbidden(msg, flow_id.clone()))
             }
             StatusCode::UnprocessableEntity => {
                 let msg = read_response_body(response);
-                Err(PublishError::UnprocessableEntity(msg))
+                Err(PublishError::UnprocessableEntity(msg, flow_id.clone()))
             }
             _ => {
                 let msg = read_response_body(response);
-                Err(PublishError::Other(msg))
+                Err(PublishError::Other(msg, flow_id.clone()))
             }
         },
-        Err(err) => Err(PublishError::Other(format!("{}", err))),
+        Err(err) => Err(PublishError::Other(format!("{}", err), flow_id.clone())),
     }
 }
 
@@ -134,21 +161,30 @@ pub enum PublishStatus {
 
 #[derive(Fail, Debug)]
 pub enum PublishError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized(FlowId: {}): {}", _1, _0)]
+    Unauthorized(String, FlowId),
     /// Already exists
-    #[fail(display = "Forbidden: {}", _0)]
-    Forbidden(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Forbidden(FlowId: {}): {}", _1, _0)]
+    Forbidden(String, FlowId),
+    #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
+    UnprocessableEntity(String, FlowId),
+    #[fail(display = "Could not serialize events: {}", _0)]
+    Serialization(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Token(String),
+    #[fail(display = "An error occured(FlowId: {}): {}", _1, _0)]
+    Other(String, FlowId),
 }
 
 impl PublishError {
     pub fn is_retry_suggested(&self) -> bool {
         match *self {
-            PublishError::Unauthorized(_) => true,
-            PublishError::Forbidden(_) => false,
-            PublishError::UnprocessableEntity(_) => false,
-            PublishError::Other(_) => true,
+            PublishError::Unauthorized(_, _) => true,
+            PublishError::Forbidden(_, _) => false,
+            PublishError::UnprocessableEntity(_, _) => false,
+            PublishError::Serialization(_) => false,
+            PublishError::Token(_) => true,
+            PublishError::Other(_, _) => true,
         }
     }
 }
