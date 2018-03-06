@@ -5,7 +5,7 @@ use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
 use nakadi::CommitStrategy;
-use nakadi::client::CommitError;
+use nakadi::client::{CommitError, CommitStatus};
 use nakadi::model::{StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::Lifecycle;
@@ -189,7 +189,13 @@ fn flush_all_cursors<C>(
         .map(|v| v.batch.batch_line.cursor())
         .collect();
     match connector.commit(stream_id.clone(), &cursors_to_commit) {
-        Ok(()) => info!("Stream {} - Committed all remaining cursors.", stream_id),
+        Ok(CommitStatus::AllOffsetsIncreased) => {
+            info!("Stream {} - All remaining offstets incresed.", stream_id)
+        }
+        Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
+            "Stream {} - Not all remaining offstets incresed.",
+            stream_id
+        ),
         Err(err) => error!(
             "Stream {} - Failed to commit all remaining cursors: {}",
             stream_id, err
@@ -201,7 +207,7 @@ fn flush_due_cursors<C>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     stream_id: &StreamId,
     client: &C,
-) -> Result<(), CommitError>
+) -> Result<CommitStatus, CommitError>
 where
     C: StreamingClient,
 {
@@ -216,13 +222,15 @@ where
         }
     }
 
-    if !cursors_to_commit.is_empty() {
-        let _ = client.commit(stream_id.clone(), &cursors_to_commit)?;
-    }
+    let status = if !cursors_to_commit.is_empty() {
+        client.commit(stream_id.clone(), &cursors_to_commit)?
+    } else {
+        CommitStatus::AllOffsetsIncreased
+    };
 
     for key in keys_to_commit {
         all_cursors.remove(&key);
     }
 
-    Ok(())
+    Ok(status)
 }

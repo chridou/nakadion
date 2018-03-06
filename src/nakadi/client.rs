@@ -47,7 +47,7 @@ pub trait StreamingClient {
         &self,
         stream_id: StreamId,
         cursors: &[T],
-    ) -> ::std::result::Result<(), CommitError>;
+    ) -> ::std::result::Result<CommitStatus, CommitError>;
 
     fn subscription_id(&self) -> &SubscriptionId;
 }
@@ -248,7 +248,7 @@ impl Client {
         &self,
         stream_id: StreamId,
         cursors: &[T],
-    ) -> ::std::result::Result<(), CommitError> {
+    ) -> ::std::result::Result<CommitStatus, CommitError> {
         let mut headers = Headers::new();
         if let Some(AccessToken(token)) = self.token_provider.get_token()? {
             headers.set(Authorization(Bearer { token }));
@@ -267,25 +267,39 @@ impl Client {
 
         match response.status() {
             // All cursors committed but at least one did not increase an offset.
-            StatusCode::Ok => Ok(()),
+            StatusCode::Ok => Ok(CommitStatus::NotAllOffsetsIncreased),
             // All cursors committed and all increased the offset.
-            StatusCode::NoContent => Ok(()),
-            StatusCode::Forbidden => Err(CommitError::Client {
-                message: format!(
-                    "{}: {}",
-                    StatusCode::Forbidden,
-                    "<Nakadion: Nakadi said forbidden.>"
-                ),
-            }),
-            other_status if other_status.is_client_error() => Err(CommitError::Client {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status if other_status.is_server_error() => Err(CommitError::Server {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
-            other_status => Err(CommitError::Other {
-                message: format!("{}: {}", other_status, read_response_body(&mut response)),
-            }),
+            StatusCode::NoContent => Ok(CommitStatus::AllOffsetsIncreased),
+            StatusCode::NotFound => Err(CommitError::SubscriptionNotFound(format!(
+                "{}: {}",
+                StatusCode::NotFound,
+                read_response_body(&mut response)
+            ))),
+            StatusCode::UnprocessableEntity => Err(CommitError::UnprocessableEntity(format!(
+                "{}: {}",
+                StatusCode::UnprocessableEntity,
+                read_response_body(&mut response)
+            ))),
+            StatusCode::Forbidden => Err(CommitError::Client(format!(
+                "{}: {}",
+                StatusCode::Forbidden,
+                "<Nakadion: Nakadi said forbidden.>"
+            ))),
+            other_status if other_status.is_client_error() => Err(CommitError::Client(format!(
+                "{}: {}",
+                other_status,
+                read_response_body(&mut response)
+            ))),
+            other_status if other_status.is_server_error() => Err(CommitError::Server(format!(
+                "{}: {}",
+                other_status,
+                read_response_body(&mut response)
+            ))),
+            other_status => Err(CommitError::Other(format!(
+                "{}: {}",
+                other_status,
+                read_response_body(&mut response)
+            ))),
         }
     }
 }
@@ -462,7 +476,7 @@ impl StreamingClient for Client {
         &self,
         stream_id: StreamId,
         cursors: &[T],
-    ) -> ::std::result::Result<(), CommitError> {
+    ) -> ::std::result::Result<CommitStatus, CommitError> {
         let mut op = || {
             self.attempt_commit(stream_id.clone(), cursors)
                 .map_err(|err| match err {
@@ -532,23 +546,31 @@ pub enum ConnectError {
     },
 }
 
+#[derive(Debug)]
+pub enum CommitStatus {
+    AllOffsetsIncreased,
+    NotAllOffsetsIncreased,
+}
+
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", cause)] TokenError { #[cause] cause: TokenError },
-    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
-    #[fail(display = "Server Error: {}", message)] Server { message: String },
-    #[fail(display = "Client Error: {}", message)] Client { message: String },
-    #[fail(display = "Other Error: {}", message)] Other { message: String },
+    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Subscription not found: {}", _0)] SubscriptionNotFound(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
+    #[fail(display = "Server Error: {}", _0)] Server(String),
+    #[fail(display = "Client Error: {}", _0)] Client(String),
+    #[fail(display = "Other Error: {}", _0)] Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", cause)] TokenError { #[cause] cause: TokenError },
-    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
-    #[fail(display = "Server Error: {}", message)] Server { message: String },
-    #[fail(display = "Client Error: {}", message)] Client { message: String },
-    #[fail(display = "Parse Error: {}", message)] Parse { message: String },
-    #[fail(display = "Other Error: {}", message)] Other { message: String },
+    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Server Error: {}", _0)] Server(String),
+    #[fail(display = "Client Error: {}", _0)] Client(String),
+    #[fail(display = "Parse Error: {}", _0)] Parse(String),
+    #[fail(display = "Other Error: {}", _0)] Other(String),
 }
 
 impl From<TokenError> for ConnectError {
@@ -566,38 +588,32 @@ impl From<::reqwest::Error> for ConnectError {
 }
 
 impl From<TokenError> for CommitError {
-    fn from(cause: TokenError) -> CommitError {
-        CommitError::TokenError { cause }
+    fn from(e: TokenError) -> CommitError {
+        CommitError::TokenError(format!("{}", e))
     }
 }
 
 impl From<::reqwest::Error> for CommitError {
     fn from(e: ::reqwest::Error) -> CommitError {
-        CommitError::Connection {
-            message: format!("Connection Error: {}", e),
-        }
+        CommitError::Connection(format!("{}", e))
     }
 }
 
 impl From<TokenError> for StatsError {
-    fn from(cause: TokenError) -> StatsError {
-        StatsError::TokenError { cause }
+    fn from(e: TokenError) -> StatsError {
+        StatsError::TokenError(format!("{}", e))
     }
 }
 
 impl From<serde_json::error::Error> for StatsError {
-    fn from(cause: serde_json::error::Error) -> StatsError {
-        StatsError::Parse {
-            message: format!("Could not parse stats response: {}", cause),
-        }
+    fn from(e: serde_json::error::Error) -> StatsError {
+        StatsError::Parse(format!("{}", e))
     }
 }
 
 impl From<::reqwest::Error> for StatsError {
     fn from(e: ::reqwest::Error) -> StatsError {
-        StatsError::Connection {
-            message: format!("Connection Error: {}", e),
-        }
+        StatsError::Connection(format!("{}", e))
     }
 }
 
