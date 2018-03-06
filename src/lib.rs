@@ -20,17 +20,17 @@ extern crate backoff;
 
 extern crate url;
 
-mod auth;
+pub mod auth;
 
 mod nakadi;
 
-pub use auth::{AccessToken, ProvidesAccessToken, TokenError};
 pub use nakadi::handler::*;
+pub use nakadi::consumer::*;
 pub use nakadi::model::{EventType, StreamId, SubscriptionId};
 pub use nakadi::client::{Client, ClientConfig, ClientConfigBuilder, ConnectError, LineResult,
                          StreamingClient};
 pub use nakadi::CommitStrategy;
-pub use nakadi::{Nakadion, NakadionConfig};
+pub use nakadi::Nakadion;
 
 pub use nakadi::maintenance;
 pub use nakadi::publisher;

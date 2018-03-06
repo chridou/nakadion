@@ -1,10 +1,13 @@
 /// Describes what to do after a batch has been processed.
 ///
 /// Use to control what should happen next.
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use std::thread;
+
 use nakadi::handler::HandlerFactory;
 use nakadi::client::StreamingClient;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 pub mod handler;
 pub mod consumer;
@@ -61,44 +64,18 @@ impl Default for Lifecycle {
     }
 }
 
-#[derive(Clone)]
-pub struct InFlightCounter {
-    in_flight: Arc<AtomicIsize>,
-}
-
-impl InFlightCounter {
-    pub fn inc(&self) {
-        self.in_flight.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn dec(&self) {
-        self.in_flight.fetch_sub(1, Ordering::Relaxed);
-    }
-
-    pub fn limit_reached(&self, limit: isize) -> bool {
-        self.in_flight.load(Ordering::Relaxed) >= limit
-    }
-}
-
-impl Default for InFlightCounter {
-    fn default() -> InFlightCounter {
-        InFlightCounter {
-            in_flight: Arc::new(AtomicIsize::new(0)),
-        }
-    }
-}
-
-pub struct NakadionConfig {
-    commit_strategy: CommitStrategy,
-    max_in_flight: u64,
-}
-
 pub struct Nakadion {
     guard: Arc<DropGuard>,
 }
 
 struct DropGuard {
     consumer: consumer::Consumer,
+}
+
+impl DropGuard {
+    pub fn running(&self) -> bool {
+        self.consumer.running()
+    }
 }
 
 impl Drop for DropGuard {
@@ -109,15 +86,15 @@ impl Drop for DropGuard {
 
 impl Nakadion {
     pub fn start<HF, C>(
-        config: NakadionConfig,
         client: C,
         handler_factory: HF,
+        commit_strategy: CommitStrategy,
     ) -> Result<Nakadion, String>
     where
         C: StreamingClient + Clone + Sync + Send + 'static,
         HF: HandlerFactory + Sync + Send + 'static,
     {
-        let consumer = consumer::Consumer::start(client, handler_factory, config.commit_strategy);
+        let consumer = consumer::Consumer::start(client, handler_factory, commit_strategy);
 
         let guard = Arc::new(DropGuard { consumer });
         Ok(Nakadion { guard })
@@ -129,5 +106,15 @@ impl Nakadion {
 
     pub fn stop(&self) {
         self.guard.consumer.stop()
+    }
+
+    pub fn block(&self) {
+        self.block_with_interval(Duration::from_secs(1))
+    }
+
+    pub fn block_with_interval(&self, poll_interval: Duration) {
+        while self.running() {
+            thread::sleep(poll_interval);
+        }
     }
 }

@@ -2,8 +2,9 @@ use std::fmt;
 
 use nakadi::handler::AfterBatchAction;
 
-/// A `SubscriptionId` is used to guarantee a continous flow of events for a client.
-#[derive(Clone, Debug)]
+/// A `SubscriptionId` is used to guarantee a continous flow of events for a
+/// client.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubscriptionId(pub String);
 
 impl fmt::Display for SubscriptionId {
