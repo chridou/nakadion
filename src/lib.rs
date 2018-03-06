@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate derive_builder;
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate hyper;
@@ -26,8 +24,7 @@ mod nakadi;
 pub use nakadi::handler::*;
 pub use nakadi::consumer::*;
 pub use nakadi::model::{EventType, PartitionId, StreamId, SubscriptionId};
-pub use nakadi::client::{Client, ClientConfig, ClientConfigBuilder, ConnectError, LineResult,
-                         StreamingClient};
+pub use nakadi::client;
 pub use nakadi::CommitStrategy;
 pub use nakadi::Nakadion;
 

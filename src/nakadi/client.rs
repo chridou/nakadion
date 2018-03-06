@@ -54,12 +54,10 @@ pub trait StreamingClient {
 }
 
 /// Settings for establishing a connection to `Nakadi`.
-#[derive(Builder, Debug)]
-#[builder(pattern = "owned")]
-pub struct ClientConfig {
+#[derive(Debug)]
+pub struct Config {
     /// Maximum number of empty keep alive batches to get in a row before closing the
     /// connection. If 0 or undefined will send keep alive messages indefinitely.
-    #[builder(default = "0")]
     pub stream_keep_alive_limit: usize,
     /// Maximum number of `Event`s in this stream (over all partitions being streamed
     /// in this
@@ -67,7 +65,6 @@ pub struct ClientConfig {
     ///
     /// * If 0 or undefined, will stream batches indefinitely.
     /// * Stream initialization will fail if `stream_limit` is lower than `batch_limit`.
-    #[builder(default = "0")]
     pub stream_limit: usize,
     /// Maximum time in seconds a stream will live before connection is closed by the
     /// server.
@@ -78,7 +75,6 @@ pub struct ClientConfig {
     /// will be flushed to the client.
     /// Stream initialization will fail if `stream_timeout` is lower than
     /// `batch_flush_timeout`.
-    #[builder(default = "Duration::from_secs(0)")]
     pub stream_timeout: Duration,
     /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
     ///
@@ -86,14 +82,12 @@ pub struct ClientConfig {
     /// before this `batch_flush_timeout` is reached, the messages are immediately
     /// flushed to the client and batch flush timer is reset.
     ///  * If 0 or undefined, will assume 30 seconds.
-    #[builder(default = "Duration::from_secs(0)")]
     pub batch_flush_timeout: Duration,
     /// Maximum number of `Event`s in each chunk (and therefore per partition) of the
     /// stream.
     ///
     ///  * If 0 or unspecified will buffer Events indefinitely and flush on reaching of
     ///  `batch_flush_timeout`.
-    #[builder(default = "0")]
     pub batch_limit: usize,
     /// The amount of uncommitted events Nakadi will stream before pausing the stream.
     /// When in paused state and commit comes - the stream will resume. Minimal value
@@ -101,15 +95,118 @@ pub struct ClientConfig {
     ///
     /// When using the concurrent worker you should adjust this value to safe your
     /// workers from running dry.
-    #[builder(default = "0")]
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: String,
-    /// The subscription id to use, e.g. "https://my.nakadi.com"
+    /// The subscription id to use
     pub subscription_id: SubscriptionId,
+
+    pub request_timeout: Duration,
 }
 
-impl ClientConfigBuilder {
+pub struct ConfigBuilder {
+    pub stream_keep_alive_limit: Option<usize>,
+    pub stream_limit: Option<usize>,
+    pub stream_timeout: Option<Duration>,
+    pub batch_flush_timeout: Option<Duration>,
+    pub batch_limit: Option<usize>,
+    pub max_uncommitted_events: Option<usize>,
+    pub nakadi_host: Option<String>,
+    pub subscription_id: Option<SubscriptionId>,
+    pub request_timeout: Option<Duration>,
+}
+
+impl Default for ConfigBuilder {
+    fn default() -> ConfigBuilder {
+        ConfigBuilder {
+            stream_keep_alive_limit: None,
+            stream_limit: None,
+            stream_timeout: None,
+            batch_flush_timeout: None,
+            batch_limit: None,
+            max_uncommitted_events: None,
+            nakadi_host: None,
+            subscription_id: None,
+            request_timeout: None,
+        }
+    }
+}
+
+impl ConfigBuilder {
+    /// Maximum number of empty keep alive batches to get in a row before closing the
+    /// connection. If 0 or undefined will send keep alive messages indefinitely.
+    pub fn stream_keep_alive_limit(mut self, stream_keep_alive_limit: usize) -> ConfigBuilder {
+        self.stream_keep_alive_limit = Some(stream_keep_alive_limit);
+        self
+    }
+    /// Maximum number of `Event`s in this stream (over all partitions being streamed
+    /// in this
+    /// connection).
+    ///
+    /// * If 0 or undefined, will stream batches indefinitely.
+    /// * Stream initialization will fail if `stream_limit` is lower than `batch_limit`.
+    pub fn stream_limit(mut self, stream_limit: usize) -> ConfigBuilder {
+        self.stream_limit = Some(stream_limit);
+        self
+    }
+    /// Maximum time in seconds a stream will live before connection is closed by the
+    /// server.
+    ///
+    /// If 0 or unspecified will stream indefinitely.
+    /// If this timeout is reached, any pending messages (in the sense of
+    /// `stream_limit`)
+    /// will be flushed to the client.
+    /// Stream initialization will fail if `stream_timeout` is lower than
+    /// `batch_flush_timeout`.
+    pub fn stream_timeout(mut self, stream_timeout: Duration) -> ConfigBuilder {
+        self.stream_timeout = Some(stream_timeout);
+        self
+    }
+    /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
+    ///
+    ///  * If the amount of buffered Events reaches `batch_limit`
+    /// before this `batch_flush_timeout` is reached, the messages are immediately
+    /// flushed to the client and batch flush timer is reset.
+    ///  * If 0 or undefined, will assume 30 seconds.
+    pub fn batch_flush_timeout(mut self, batch_flush_timeout: Duration) -> ConfigBuilder {
+        self.batch_flush_timeout = Some(batch_flush_timeout);
+        self
+    }
+    /// Maximum number of `Event`s in each chunk (and therefore per partition) of the
+    /// stream.
+    ///
+    ///  * If 0 or unspecified will buffer Events indefinitely and flush on reaching of
+    ///  `batch_flush_timeout`.
+    pub fn batch_limit(mut self, batch_limit: usize) -> ConfigBuilder {
+        self.batch_limit = Some(batch_limit);
+        self
+    }
+    /// The amount of uncommitted events Nakadi will stream before pausing the stream.
+    /// When in paused state and commit comes - the stream will resume. Minimal value
+    /// is 1.
+    ///
+    /// When using the concurrent worker you should adjust this value to safe your
+    /// workers from running dry.
+    pub fn max_uncommitted_events(mut self, max_uncommitted_events: usize) -> ConfigBuilder {
+        self.max_uncommitted_events = Some(max_uncommitted_events);
+        self
+    }
+    /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
+    pub fn nakadi_host<T: Into<String>>(mut self, nakadi_host: T) -> ConfigBuilder {
+        self.nakadi_host = Some(nakadi_host.into());
+        self
+    }
+    /// The subscription id to use
+    pub fn subscription_id(mut self, subscription_id: SubscriptionId) -> ConfigBuilder {
+        self.subscription_id = Some(subscription_id);
+        self
+    }
+
+    pub fn request_timeout(mut self, request_timeout: Duration) -> ConfigBuilder {
+        self.request_timeout = Some(request_timeout);
+        self
+    }
+
     /// Create a builder from environment variables.
     ///
     /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
@@ -127,8 +224,8 @@ impl ClientConfigBuilder {
     /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
     /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See
     /// `ConnectorSettings::stream_keep_alive_limit`
-    pub fn from_env() -> Result<ClientConfigBuilder, Error> {
-        let builder = ClientConfigBuilder::default();
+    pub fn from_env() -> Result<ConfigBuilder, Error> {
+        let builder = ConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
             builder.stream_keep_alive_limit(env_val
                 .parse::<usize>()
@@ -206,6 +303,46 @@ impl ClientConfigBuilder {
         };
         Ok(builder)
     }
+
+    pub fn build(self) -> Result<Config, Error> {
+        let nakadi_host = if let Some(nakadi_host) = self.nakadi_host {
+            nakadi_host
+        } else {
+            bail!("Nakadi host required");
+        };
+        let subscription_id = if let Some(subscription_id) = self.subscription_id {
+            subscription_id
+        } else {
+            bail!("Subscription id host required");
+        };
+        Ok(Config {
+            stream_keep_alive_limit: self.stream_keep_alive_limit.unwrap_or(0),
+            stream_limit: self.stream_keep_alive_limit.unwrap_or(0),
+            stream_timeout: self.stream_timeout.unwrap_or(Duration::from_secs(0)),
+            batch_flush_timeout: self.batch_flush_timeout.unwrap_or(Duration::from_secs(0)),
+            batch_limit: self.batch_limit.unwrap_or(0),
+            max_uncommitted_events: self.max_uncommitted_events.unwrap_or(1),
+            nakadi_host: nakadi_host,
+            subscription_id: subscription_id,
+            request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(300)),
+        })
+    }
+
+    pub fn build_client<T>(self, token_provider: T) -> Result<Client, Error>
+    where
+        T: ProvidesAccessToken + Send + Sync + 'static,
+    {
+        self.build_client_with_shared_access_token_provider(Arc::new(token_provider))
+    }
+
+    pub fn build_client_with_shared_access_token_provider(
+        self,
+        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    ) -> Result<Client, Error> {
+        let config = self.build().context("Could not build client config")?;
+
+        Client::with_shared_access_token_provider(config, token_provider)
+    }
 }
 
 #[derive(Clone)]
@@ -220,15 +357,22 @@ pub struct Client {
 
 impl Client {
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
-        settings: ClientConfig,
+        config: Config,
         token_provider: T,
     ) -> Result<Client, Error> {
-        let connect_url = create_connect_url(&settings);
-        let stats_url = create_stats_url(&settings);
-        let commit_url = create_commit_url(&settings);
+        Client::with_shared_access_token_provider(config, Arc::new(token_provider))
+    }
+
+    pub fn with_shared_access_token_provider(
+        config: Config,
+        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    ) -> Result<Client, Error> {
+        let connect_url = create_connect_url(&config);
+        let stats_url = create_stats_url(&config);
+        let commit_url = create_commit_url(&config);
 
         let http_client = HttpClientBuilder::new()
-            .timeout(Duration::from_secs(1))
+            .timeout(config.request_timeout)
             .build()
             .context("Could not create HTTP client")?;
 
@@ -237,29 +381,9 @@ impl Client {
             connect_url,
             stats_url,
             commit_url,
-            subscription_id: settings.subscription_id,
-            token_provider: Arc::new(token_provider),
-        })
-    }
-
-    pub fn with_shared_access_token_provider(
-        settings: ClientConfig,
-        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
-    ) -> Client {
-        let connect_url = create_connect_url(&settings);
-        let stats_url = create_stats_url(&settings);
-        let commit_url = create_commit_url(&settings);
-
-        let http_client = HttpClient::new();
-
-        Client {
-            http_client,
-            connect_url,
-            stats_url,
-            commit_url,
-            subscription_id: settings.subscription_id,
+            subscription_id: config.subscription_id,
             token_provider,
-        }
+        })
     }
 
     pub fn attempt_commit<T: AsRef<[u8]>>(
@@ -322,45 +446,45 @@ impl Client {
     }
 }
 
-fn create_connect_url(settings: &ClientConfig) -> String {
+fn create_connect_url(config: &Config) -> String {
     let mut connect_url = String::new();
-    connect_url.push_str(&settings.nakadi_host);
+    connect_url.push_str(&config.nakadi_host);
     if !connect_url.ends_with("/") {
         connect_url.push('/');
     }
     connect_url.push_str("subscriptions/");
-    connect_url.push_str(&settings.subscription_id.0);
+    connect_url.push_str(&config.subscription_id.0);
     connect_url.push_str("/events");
 
     let mut connect_params = Vec::new();
-    if settings.stream_keep_alive_limit != 0 {
+    if config.stream_keep_alive_limit != 0 {
         connect_params.push(format!(
             "stream_keep_alive_limit={}",
-            settings.stream_keep_alive_limit
+            config.stream_keep_alive_limit
         ));
     }
-    if settings.stream_limit != 0 {
-        connect_params.push(format!("stream_limit={}", settings.stream_limit));
+    if config.stream_limit != 0 {
+        connect_params.push(format!("stream_limit={}", config.stream_limit));
     }
-    if settings.stream_timeout != Duration::from_secs(0) {
+    if config.stream_timeout != Duration::from_secs(0) {
         connect_params.push(format!(
             "stream_timeout={}",
-            settings.stream_timeout.as_secs()
+            config.stream_timeout.as_secs()
         ));
     }
-    if settings.batch_flush_timeout != Duration::from_secs(0) {
+    if config.batch_flush_timeout != Duration::from_secs(0) {
         connect_params.push(format!(
             "batch_flush_timeout={}",
-            settings.batch_flush_timeout.as_secs()
+            config.batch_flush_timeout.as_secs()
         ));
     }
-    if settings.batch_limit != 0 {
-        connect_params.push(format!("batch_limit={}", settings.batch_limit));
+    if config.batch_limit != 0 {
+        connect_params.push(format!("batch_limit={}", config.batch_limit));
     }
-    if settings.max_uncommitted_events != 0 {
+    if config.max_uncommitted_events != 0 {
         connect_params.push(format!(
             "max_uncommitted_events={}",
-            settings.max_uncommitted_events
+            config.max_uncommitted_events
         ));
     }
 
@@ -372,26 +496,26 @@ fn create_connect_url(settings: &ClientConfig) -> String {
     connect_url
 }
 
-fn create_commit_url(settings: &ClientConfig) -> String {
+fn create_commit_url(config: &Config) -> String {
     let mut commit_url = String::new();
-    commit_url.push_str(&settings.nakadi_host);
+    commit_url.push_str(&config.nakadi_host);
     if !commit_url.ends_with("/") {
         commit_url.push('/');
     }
     commit_url.push_str("subscriptions/");
-    commit_url.push_str(&settings.subscription_id.0);
+    commit_url.push_str(&config.subscription_id.0);
     commit_url.push_str("/stats");
     commit_url
 }
 
-fn create_stats_url(settings: &ClientConfig) -> String {
+fn create_stats_url(config: &Config) -> String {
     let mut commit_url = String::new();
-    commit_url.push_str(&settings.nakadi_host);
+    commit_url.push_str(&config.nakadi_host);
     if !commit_url.ends_with("/") {
         commit_url.push('/');
     }
     commit_url.push_str("subscriptions/");
-    commit_url.push_str(&settings.subscription_id.0);
+    commit_url.push_str(&config.subscription_id.0);
     commit_url.push_str("/cursors");
     commit_url
 }
@@ -548,20 +672,17 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
 pub enum ConnectError {
     #[fail(display = "Token Error on connect: {}", cause)]
     TokenError {
-        #[cause] cause: TokenError,
+        #[cause]
+        cause: TokenError,
     },
-    #[fail(display = "Connection Error: {}", message)] Connection {
-        message: String,
-    },
-    #[fail(display = "Server Error: {}", message)] Server {
-        message: String,
-    },
-    #[fail(display = "Client Error: {}", message)] Client {
-        message: String,
-    },
-    #[fail(display = "Other Error: {}", message)] Other {
-        message: String,
-    },
+    #[fail(display = "Connection Error: {}", message)]
+    Connection { message: String },
+    #[fail(display = "Server Error: {}", message)]
+    Server { message: String },
+    #[fail(display = "Client Error: {}", message)]
+    Client { message: String },
+    #[fail(display = "Other Error: {}", message)]
+    Other { message: String },
 }
 
 #[derive(Debug)]
@@ -572,23 +693,36 @@ pub enum CommitStatus {
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Subscription not found: {}", _0)] SubscriptionNotFound(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
-    #[fail(display = "Server Error: {}", _0)] Server(String),
-    #[fail(display = "Client Error: {}", _0)] Client(String),
-    #[fail(display = "Other Error: {}", _0)] Other(String),
+    #[fail(display = "Token Error on commit: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Subscription not found: {}", _0)]
+    SubscriptionNotFound(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)]
+    UnprocessableEntity(String),
+    #[fail(display = "Server Error: {}", _0)]
+    Server(String),
+    #[fail(display = "Client Error: {}", _0)]
+    Client(String),
+    #[fail(display = "Other Error: {}", _0)]
+    Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Server Error: {}", _0)] Server(String),
-    #[fail(display = "Client Error: {}", _0)] Client(String),
-    #[fail(display = "Parse Error: {}", _0)] Parse(String),
-    #[fail(display = "Other Error: {}", _0)] Other(String),
+    #[fail(display = "Token Error on stats: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Server Error: {}", _0)]
+    Server(String),
+    #[fail(display = "Client Error: {}", _0)]
+    Client(String),
+    #[fail(display = "Parse Error: {}", _0)]
+    Parse(String),
+    #[fail(display = "Other Error: {}", _0)]
+    Other(String),
 }
 
 impl From<TokenError> for ConnectError {
@@ -663,7 +797,8 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")]
+        pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {

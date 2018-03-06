@@ -17,6 +17,7 @@ use failure::Error;
 use nakadion::auth::*;
 use nakadion::maintenance::*;
 use nakadion::*;
+use nakadion::client::*;
 
 use log::LevelFilter;
 use env_logger::Builder;
@@ -125,13 +126,11 @@ fn main() {
 }
 
 fn consume(subscription_id: SubscriptionId) -> Result<(), Error> {
-    let config_builder = ClientConfigBuilder::default()
-        .nakadi_host("http://localhost:8080".into())
+    let config_builder = ConfigBuilder::default()
+        .nakadi_host("http://localhost:8080")
         .subscription_id(subscription_id);
 
-    let config = config_builder.build().unwrap();
-
-    let client = Client::new(config, AccessTokenProvider)?;
+    let client = config_builder.build_client(AccessTokenProvider)?;
 
     let handler_factory = DemoHandlerFactory {
         state: Arc::new(AtomicUsize::new(0)),
