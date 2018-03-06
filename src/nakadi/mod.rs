@@ -15,6 +15,7 @@ pub mod worker;
 pub mod batch;
 pub mod dispatcher;
 pub mod maintenance;
+pub mod publisher;
 
 /// Stragtegy for committing cursors
 #[derive(Clone, Copy)]

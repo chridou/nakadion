@@ -1,12 +1,16 @@
 use std::sync::Arc;
+use std::time::Duration;
+use std::io::Read;
 
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
 use reqwest::{Client as HttpClient, Response};
 use reqwest::StatusCode;
-use reqwest::header::{Authorization, Bearer, ContentType, Headers};
+use reqwest::header::{Authorization, Bearer, Headers};
+use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
+use failure::*;
 
-use auth::ProvidesAccessToken;
+use auth::{AccessToken, ProvidesAccessToken};
 
 pub struct MaintenanceClient {
     nakadi_base_url: String,
@@ -37,7 +41,187 @@ impl MaintenanceClient {
         }
     }
 
-    //pub fn create_event_type(&self, schema: )
+    pub fn delete_event_type(&self, event_type_name: &str) -> Result<(), DeleteEventTypeError> {
+        let url = format!("{}/event-types/{}", self.nakadi_base_url, event_type_name);
+
+        let mut op = || match delete_event_type(&self.http_client, &url, &*self.token_provider) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                if err.is_retry_suggested() {
+                    Err(BackoffError::Transient(err))
+                } else {
+                    Err(BackoffError::Permanent(err))
+                }
+            }
+        };
+
+        let notify = |err, dur| {
+            warn!("Delete event type error happened {:?}: {}", dur, err);
+        };
+
+        let mut backoff = ExponentialBackoff::default();
+        backoff.max_elapsed_time = Some(Duration::from_secs(5));
+        backoff.initial_interval = Duration::from_millis(100);
+        backoff.multiplier = 1.5;
+
+        match op.retry_notify(&mut backoff, notify) {
+            Ok(x) => Ok(x),
+            Err(BackoffError::Transient(err)) => Err(err),
+            Err(BackoffError::Permanent(err)) => Err(err),
+        }
+    }
+
+    pub fn create_event_type(&self, schema: &EventTypeSchema) -> Result<(), CreateEventTypeError> {
+        let url = format!("{}/event-types", self.nakadi_base_url);
+
+        let mut op =
+            || match create_event_type(&self.http_client, &url, &*self.token_provider, schema) {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    if err.is_retry_suggested() {
+                        Err(BackoffError::Transient(err))
+                    } else {
+                        Err(BackoffError::Permanent(err))
+                    }
+                }
+            };
+
+        let notify = |err, dur| {
+            warn!("Create event type error happened {:?}: {}", dur, err);
+        };
+
+        let mut backoff = ExponentialBackoff::default();
+        backoff.max_elapsed_time = Some(Duration::from_secs(5));
+        backoff.initial_interval = Duration::from_millis(100);
+        backoff.multiplier = 1.5;
+
+        match op.retry_notify(&mut backoff, notify) {
+            Ok(x) => Ok(x),
+            Err(BackoffError::Transient(err)) => Err(err),
+            Err(BackoffError::Permanent(err)) => Err(err),
+        }
+    }
+}
+
+fn create_event_type(
+    client: &HttpClient,
+    url: &str,
+    token_provider: &ProvidesAccessToken,
+    schema: &EventTypeSchema,
+) -> Result<(), CreateEventTypeError> {
+    let mut request_builder = client.post(url);
+
+    match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => {
+            request_builder.header(Authorization(Bearer { token }));
+        }
+        Ok(None) => (),
+        Err(err) => return Err(CreateEventTypeError::Other(err.to_string())),
+    };
+
+    match request_builder.json(schema).send() {
+        Ok(ref mut response) => match response.status() {
+            StatusCode::Created => Ok(()),
+            StatusCode::Unauthorized => {
+                let msg = read_response_body(response);
+                Err(CreateEventTypeError::Unauthorized(msg))
+            }
+            StatusCode::Conflict => {
+                let msg = read_response_body(response);
+                Err(CreateEventTypeError::Conflict(msg))
+            }
+            StatusCode::UnprocessableEntity => {
+                let msg = read_response_body(response);
+                Err(CreateEventTypeError::UnprocessableEntity(msg))
+            }
+            _ => {
+                let msg = read_response_body(response);
+                Err(CreateEventTypeError::Other(msg))
+            }
+        },
+        Err(err) => Err(CreateEventTypeError::Other(format!("{}", err))),
+    }
+}
+
+fn delete_event_type(
+    client: &HttpClient,
+    url: &str,
+    token_provider: &ProvidesAccessToken,
+) -> Result<(), DeleteEventTypeError> {
+    let mut request_builder = client.delete(url);
+
+    match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => {
+            request_builder.header(Authorization(Bearer { token }));
+        }
+        Ok(None) => (),
+        Err(err) => return Err(DeleteEventTypeError::Other(err.to_string())),
+    };
+
+    match request_builder.send() {
+        Ok(ref mut response) => match response.status() {
+            StatusCode::Ok => Ok(()),
+            StatusCode::Unauthorized => {
+                let msg = read_response_body(response);
+                Err(DeleteEventTypeError::Unauthorized(msg))
+            }
+            StatusCode::Forbidden => {
+                let msg = read_response_body(response);
+                Err(DeleteEventTypeError::Forbidden(msg))
+            }
+            _ => {
+                let msg = read_response_body(response);
+                Err(DeleteEventTypeError::Other(msg))
+            }
+        },
+        Err(err) => Err(DeleteEventTypeError::Other(format!("{}", err))),
+    }
+}
+
+fn read_response_body(response: &mut Response) -> String {
+    let mut buf = String::new();
+    response
+        .read_to_string(&mut buf)
+        .map(|_| buf)
+        .unwrap_or("<Could not read body.>".to_string())
+}
+
+#[derive(Fail, Debug)]
+pub enum CreateEventTypeError {
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    /// Already exists
+    #[fail(display = "Event type already exists: {}", _0)]
+    Conflict(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
+}
+
+impl CreateEventTypeError {
+    pub fn is_retry_suggested(&self) -> bool {
+        match *self {
+            CreateEventTypeError::Unauthorized(_) => true,
+            CreateEventTypeError::Conflict(_) => false,
+            CreateEventTypeError::UnprocessableEntity(_) => false,
+            CreateEventTypeError::Other(_) => true,
+        }
+    }
+}
+
+#[derive(Fail, Debug)]
+pub enum DeleteEventTypeError {
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
+}
+
+impl DeleteEventTypeError {
+    pub fn is_retry_suggested(&self) -> bool {
+        match *self {
+            DeleteEventTypeError::Unauthorized(_) => true,
+            DeleteEventTypeError::Forbidden(_) => false,
+            DeleteEventTypeError::Other(_) => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

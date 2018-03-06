@@ -14,6 +14,8 @@ extern crate serde_json;
 extern crate reqwest;
 extern crate uuid;
 
+extern crate chrono;
+
 extern crate backoff;
 
 extern crate url;
@@ -31,3 +33,4 @@ pub use nakadi::CommitStrategy;
 pub use nakadi::{Nakadion, NakadionConfig};
 
 pub use nakadi::maintenance;
+pub use nakadi::publisher;
