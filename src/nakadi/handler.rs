@@ -1,4 +1,4 @@
-use nakadi::model::EventType;
+use nakadi::model::{EventType, PartitionId};
 
 pub enum AfterBatchAction {
     Continue,
@@ -14,5 +14,5 @@ pub trait BatchHandler {
 
 pub trait HandlerFactory {
     type Handler: BatchHandler + Send + 'static;
-    fn create_handler(&self) -> Self::Handler;
+    fn create_handler(&self, partition: &PartitionId) -> Self::Handler;
 }

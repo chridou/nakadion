@@ -32,7 +32,7 @@ impl Dispatcher {
             sender,
         };
 
-        start_handler_loop(receiver, lifecycle, handler_factory, committer);
+        start_dispatcher_loop(receiver, lifecycle, handler_factory, committer);
 
         handle
     }
@@ -57,7 +57,7 @@ impl Dispatcher {
     }
 }
 
-fn start_handler_loop<HF>(
+fn start_dispatcher_loop<HF>(
     receiver: mpsc::Receiver<Batch>,
     lifecycle: Lifecycle,
     handler_factory: Arc<HF>,
@@ -65,10 +65,10 @@ fn start_handler_loop<HF>(
 ) where
     HF: HandlerFactory + Send + Sync + 'static,
 {
-    thread::spawn(move || handler_loop(receiver, lifecycle, handler_factory, committer));
+    thread::spawn(move || dispatcher_loop(receiver, lifecycle, handler_factory, committer));
 }
 
-fn handler_loop<HF>(
+fn dispatcher_loop<HF>(
     receiver: mpsc::Receiver<Batch>,
     lifecycle: Lifecycle,
     handler_factory: Arc<HF>,
@@ -130,7 +130,7 @@ fn handler_loop<HF>(
                 "Processor on stream '{}': Creating new worker for partition {}",
                 stream_id, partition
             );
-            let handler = handler_factory.create_handler();
+            let handler = handler_factory.create_handler(&partition);
             let worker = Worker::start(handler, committer.clone(), partition.clone());
             workers.push(worker);
             &workers[workers.len() - 1]

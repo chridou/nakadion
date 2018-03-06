@@ -39,6 +39,7 @@ impl Iterator for NakadiLineIterator {
     }
 }
 
+/// A client to the Nakadi Event Broker
 pub trait StreamingClient {
     type LineIterator: Iterator<Item = LineResult>;
     fn connect(&self) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
@@ -515,8 +516,7 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
 pub enum ConnectError {
     #[fail(display = "Token Error on connect: {}", cause)]
     TokenError {
-        #[cause]
-        cause: TokenError,
+        #[cause] cause: TokenError,
     },
     #[fail(display = "Connection Error: {}", message)] Connection {
         message: String,
@@ -534,47 +534,21 @@ pub enum ConnectError {
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", cause)]
-    TokenError {
-        #[cause]
-        cause: TokenError,
-    },
-    #[fail(display = "Connection Error: {}", message)] Connection {
-        message: String,
-    },
-    #[fail(display = "Server Error: {}", message)] Server {
-        message: String,
-    },
-    #[fail(display = "Client Error: {}", message)] Client {
-        message: String,
-    },
-    #[fail(display = "Other Error: {}", message)] Other {
-        message: String,
-    },
+    #[fail(display = "Token Error on commit: {}", cause)] TokenError { #[cause] cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
+    #[fail(display = "Server Error: {}", message)] Server { message: String },
+    #[fail(display = "Client Error: {}", message)] Client { message: String },
+    #[fail(display = "Other Error: {}", message)] Other { message: String },
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", cause)]
-    TokenError {
-        #[cause]
-        cause: TokenError,
-    },
-    #[fail(display = "Connection Error: {}", message)] Connection {
-        message: String,
-    },
-    #[fail(display = "Server Error: {}", message)] Server {
-        message: String,
-    },
-    #[fail(display = "Client Error: {}", message)] Client {
-        message: String,
-    },
-    #[fail(display = "Parse Error: {}", message)] Parse {
-        message: String,
-    },
-    #[fail(display = "Other Error: {}", message)] Other {
-        message: String,
-    },
+    #[fail(display = "Token Error on stats: {}", cause)] TokenError { #[cause] cause: TokenError },
+    #[fail(display = "Connection Error: {}", message)] Connection { message: String },
+    #[fail(display = "Server Error: {}", message)] Server { message: String },
+    #[fail(display = "Client Error: {}", message)] Client { message: String },
+    #[fail(display = "Parse Error: {}", message)] Parse { message: String },
+    #[fail(display = "Other Error: {}", message)] Other { message: String },
 }
 
 impl From<TokenError> for ConnectError {
@@ -655,8 +629,7 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")]
-        pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {

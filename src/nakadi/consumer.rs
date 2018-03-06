@@ -16,6 +16,9 @@ const CONNECT_RETRY_BACKOFF: &'static [u64] =
     &[1, 1, 1, 1, 3, 3, 3, 5, 5, 5, 10, 10, 10, 15, 15, 15];
 
 /// The consumer connects to the stream and sends batch lines to the processor.
+///
+/// This is the top level component used by an application that wants to consume a
+/// Nakadi stream
 #[derive(Clone)]
 pub struct Consumer {
     lifecycle: Lifecycle,

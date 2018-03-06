@@ -15,11 +15,17 @@ pub mod worker;
 pub mod batch;
 pub mod dispatcher;
 
+/// Stragtegy for committing cursors
 #[derive(Clone, Copy)]
 pub enum CommitStrategy {
+    /// Commit all cursors immediately
     AllBatches,
+    /// Commit as late as possile
     MaxAge,
+    /// Commit latest after N seconds
     EveryNSeconds(u16),
+    /// Commit latest after N batches
+    EveryNBatches(u16),
 }
 
 #[derive(Clone)]

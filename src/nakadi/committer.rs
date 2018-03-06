@@ -101,6 +101,7 @@ impl CommitEntry {
     pub fn new(batch: Batch, strategy: CommitStrategy) -> CommitEntry {
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
+            CommitStrategy::EveryNBatches(_) => Instant::now(),
             CommitStrategy::MaxAge => batch.commit_deadline,
             CommitStrategy::EveryNSeconds(n) => {
                 let by_strategy = Instant::now() + Duration::from_secs(n as u64);
