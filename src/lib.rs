@@ -6,9 +6,8 @@ extern crate failure;
 extern crate hyper;
 #[macro_use]
 extern crate log;
-extern crate serde;
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 extern crate serde_json;
 
 extern crate reqwest;
@@ -26,7 +25,7 @@ mod nakadi;
 
 pub use nakadi::handler::*;
 pub use nakadi::consumer::*;
-pub use nakadi::model::{EventType, StreamId, SubscriptionId};
+pub use nakadi::model::{EventType, PartitionId, StreamId, SubscriptionId};
 pub use nakadi::client::{Client, ClientConfig, ClientConfigBuilder, ConnectError, LineResult,
                          StreamingClient};
 pub use nakadi::CommitStrategy;

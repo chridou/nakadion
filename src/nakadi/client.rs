@@ -5,12 +5,11 @@ use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::{StreamId, SubscriptionId};
-use reqwest::{Client as HttpClient, Response};
+use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use serde_json;
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
-use self::stats::*;
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 
@@ -227,21 +226,24 @@ impl Client {
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
         settings: ClientConfig,
         token_provider: T,
-    ) -> Client {
+    ) -> Result<Client, String> {
         let connect_url = create_connect_url(&settings);
         let stats_url = create_stats_url(&settings);
         let commit_url = create_commit_url(&settings);
 
-        let http_client = HttpClient::new();
+        let http_client = HttpClientBuilder::new()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .map_err(|err| err.to_string())?;
 
-        Client {
+        Ok(Client {
             http_client,
             connect_url,
             stats_url,
             commit_url,
             subscription_id: settings.subscription_id,
             token_provider: Arc::new(token_provider),
-        }
+        })
     }
 
     pub fn with_shared_access_token_provider(

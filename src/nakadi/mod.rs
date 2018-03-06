@@ -48,7 +48,7 @@ impl Lifecycle {
     }
 
     pub fn stopped(&self) {
-        self.state.1.store(true, Ordering::Relaxed)
+        self.state.1.store(false, Ordering::Relaxed)
     }
 
     pub fn running(&self) -> bool {
@@ -73,7 +73,7 @@ struct DropGuard {
 }
 
 impl DropGuard {
-    pub fn running(&self) -> bool {
+    fn running(&self) -> bool {
         self.consumer.running()
     }
 }

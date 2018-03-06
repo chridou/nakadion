@@ -173,12 +173,15 @@ fn connect<C: StreamingClient>(
             Err(err) => {
                 let sleep_dur_secs = *CONNECT_RETRY_BACKOFF.get(attempt).unwrap_or(&30);
                 if Instant::now() >= deadline {
-                    return Err("Failed to connect to Nakadi after {} attempts.".to_string());
+                    return Err(format!(
+                        "Failed to connect to Nakadi after {} attempts.",
+                        attempt
+                    ));
                 } else if lifecycle.abort_requested() {
-                    return Err(
-                        "Failed to connect to Nakadi after {} attempts. Abort requested"
-                            .to_string(),
-                    );
+                    return Err(format!(
+                        "Failed to connect to Nakadi after {} attempts. Abort requested",
+                        attempt
+                    ));
                 } else {
                     warn!(
                         "Failed to connect(attempt {}) to Nakadi(retry in {} seconds): {}",
