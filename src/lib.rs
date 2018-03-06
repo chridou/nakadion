@@ -29,3 +29,5 @@ pub use nakadi::client::{Client, ClientConfig, ClientConfigBuilder, ConnectError
                          StreamingClient};
 pub use nakadi::CommitStrategy;
 pub use nakadi::{Nakadion, NakadionConfig};
+
+pub use nakadi::maintenance;

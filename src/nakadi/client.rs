@@ -244,6 +244,26 @@ impl Client {
         }
     }
 
+    pub fn with_shared_access_token_provider(
+        settings: ClientConfig,
+        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    ) -> Client {
+        let connect_url = create_connect_url(&settings);
+        let stats_url = create_stats_url(&settings);
+        let commit_url = create_commit_url(&settings);
+
+        let http_client = HttpClient::new();
+
+        Client {
+            http_client,
+            connect_url,
+            stats_url,
+            commit_url,
+            subscription_id: settings.subscription_id,
+            token_provider,
+        }
+    }
+
     pub fn attempt_commit<T: AsRef<[u8]>>(
         &self,
         stream_id: StreamId,
