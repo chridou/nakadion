@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use nakadi::handler::{AfterBatchAction, BatchHandler};
+use nakadi::handler::{BatchHandler, ProcessingStatus};
 use nakadi::batch::Batch;
 use nakadi::model::EventType;
 use nakadi::committer::Committer;
@@ -127,18 +127,20 @@ fn handler_loop<H: BatchHandler>(
 
         if let Some(handler_result) = maybe_a_handler_result {
             match handler_result {
-                AfterBatchAction::Continue => match committer.commit(batch) {
-                    Ok(()) => continue,
-                    Err(err) => {
-                        warn!(
-                            "Worker on stream '{}' for partition '{}': \
-                             Failed to commit. Stopping: {}",
-                            stream_id, partition, err
-                        );
-                        break;
+                ProcessingStatus::Processed(num_events_hint) => {
+                    match committer.commit(batch, num_events_hint) {
+                        Ok(()) => continue,
+                        Err(err) => {
+                            warn!(
+                                "Worker on stream '{}' for partition '{}': \
+                                 Failed to commit. Stopping: {}",
+                                stream_id, partition, err
+                            );
+                            break;
+                        }
                     }
-                },
-                AfterBatchAction::Abort { reason } => {
+                }
+                ProcessingStatus::Failed { reason } => {
                     warn!(
                         "Worker on stream '{}' for partition '{}' stopping: {}",
                         stream_id, partition, reason

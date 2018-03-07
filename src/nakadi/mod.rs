@@ -33,6 +33,8 @@ pub enum CommitStrategy {
     EveryNSeconds(u16),
     /// Commit latest after N batches
     EveryNBatches(u16),
+    /// Commit latest after N events
+    EveryNEvents(u16),
 }
 
 #[derive(Clone)]

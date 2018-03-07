@@ -58,8 +58,8 @@ pub struct DemoHandler {
 }
 
 impl BatchHandler for DemoHandler {
-    fn handle(&self, event_type: EventType, events: &[u8]) -> AfterBatchAction {
-        AfterBatchAction::Continue
+    fn handle(&self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
+        ProcessingStatus::processed(0)
     }
 }
 

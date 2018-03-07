@@ -18,7 +18,12 @@ header! { (XFlowId, "X-Flow-Id") => [String] }
 
 const LINE_SPLIT_BYTE: u8 = b'\n';
 
-pub type LineResult = ::std::result::Result<(Vec<u8>, Instant), IoError>;
+pub struct RawLine {
+    pub bytes: Vec<u8>,
+    pub received_at: Instant,
+}
+
+pub type LineResult = ::std::result::Result<RawLine, IoError>;
 
 pub struct NakadiLineIterator {
     lines: Split<BufReader<Response>>,
@@ -37,7 +42,12 @@ impl Iterator for NakadiLineIterator {
     type Item = LineResult;
 
     fn next(&mut self) -> Option<LineResult> {
-        self.lines.next().map(|r| r.map(|l| (l, Instant::now())))
+        self.lines.next().map(|r| {
+            r.map(|l| RawLine {
+                bytes: l,
+                received_at: Instant::now(),
+            })
+        })
     }
 }
 
@@ -660,6 +670,10 @@ impl StreamingClient for Client {
         cursors: &[T],
         flow_id: FlowId,
     ) -> ::std::result::Result<CommitStatus, CommitError> {
+        if cursors.is_empty() {
+            return Ok(CommitStatus::NothingToCommit);
+        }
+
         let mut op = || {
             self.attempt_commit(stream_id.clone(), cursors, flow_id.clone())
                 .map_err(|err| match err {
@@ -711,22 +725,14 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
 
 #[derive(Fail, Debug)]
 pub enum ConnectError {
-    #[fail(display = "Token Error on connect: {}", _0)]
-    Token(String),
-    #[fail(display = "Connection Error: {}", _0)]
-    Connection(String),
-    #[fail(display = "Forbidden: {}", _0)]
-    Forbidden(String, FlowId),
-    #[fail(display = "Unauthorized: {}", _0)]
-    Unauthorized(String, FlowId),
-    #[fail(display = "Bad request: {}", _0)]
-    BadRequest(String, FlowId),
-    #[fail(display = "Conflict: {}", _0)]
-    Conflict(String, FlowId),
-    #[fail(display = "Subscription not found: {}", _0)]
-    SubscriptionNotFound(String, FlowId),
-    #[fail(display = "Other error: {}", _0)]
-    Other(String, FlowId),
+    #[fail(display = "Token Error on connect: {}", _0)] Token(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Forbidden: {}", _0)] Forbidden(String, FlowId),
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String, FlowId),
+    #[fail(display = "Bad request: {}", _0)] BadRequest(String, FlowId),
+    #[fail(display = "Conflict: {}", _0)] Conflict(String, FlowId),
+    #[fail(display = "Subscription not found: {}", _0)] SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Other error: {}", _0)] Other(String, FlowId),
 }
 
 impl ConnectError {
@@ -744,40 +750,30 @@ impl ConnectError {
 pub enum CommitStatus {
     AllOffsetsIncreased,
     NotAllOffsetsIncreased,
+    NothingToCommit,
 }
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", _0)]
-    TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)]
-    Connection(String),
+    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
     #[fail(display = "Subscription not found(FlowId: {}): {}", _1, _0)]
     SubscriptionNotFound(String, FlowId),
     #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
     UnprocessableEntity(String, FlowId),
-    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)]
-    Server(String, FlowId),
-    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)]
-    Client(String, FlowId),
-    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)]
-    Other(String, FlowId),
+    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)] Server(String, FlowId),
+    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)] Client(String, FlowId),
+    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)] Other(String, FlowId),
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", _0)]
-    TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)]
-    Connection(String),
-    #[fail(display = "Server Error: {}", _0)]
-    Server(String),
-    #[fail(display = "Client Error: {}", _0)]
-    Client(String),
-    #[fail(display = "Parse Error: {}", _0)]
-    Parse(String),
-    #[fail(display = "Other Error: {}", _0)]
-    Other(String),
+    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Server Error: {}", _0)] Server(String),
+    #[fail(display = "Client Error: {}", _0)] Client(String),
+    #[fail(display = "Parse Error: {}", _0)] Parse(String),
+    #[fail(display = "Other Error: {}", _0)] Other(String),
 }
 
 impl From<TokenError> for ConnectError {
@@ -850,8 +846,7 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")]
-        pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {

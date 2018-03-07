@@ -2,7 +2,7 @@ use std::time::Instant;
 
 pub struct Batch {
     pub batch_line: BatchLine,
-    pub commit_deadline: Instant,
+    pub received_at: Instant,
 }
 
 #[derive(Debug, PartialEq, Eq)]

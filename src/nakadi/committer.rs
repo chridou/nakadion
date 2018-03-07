@@ -11,6 +11,8 @@ use nakadi::batch::Batch;
 use nakadi::Lifecycle;
 use nakadi::client::StreamingClient;
 
+const CURSOR_COMMIT_OFFSET: u64 = 55;
+
 #[derive(Clone)]
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
@@ -20,7 +22,7 @@ pub struct Committer {
 }
 
 enum CommitterMessage {
-    Commit(Batch),
+    Commit(Batch, Option<usize>),
 }
 
 impl Committer {
@@ -50,9 +52,9 @@ impl Committer {
         }
     }
 
-    pub fn commit(&self, batch: Batch) -> Result<(), String> {
+    pub fn commit(&self, batch: Batch, num_events_hint: Option<usize>) -> Result<(), String> {
         self.sender
-            .send(CommitterMessage::Commit(batch))
+            .send(CommitterMessage::Commit(batch, num_events_hint))
             .map_err(|err| {
                 format!(
                     "Stream {} - Could not accept commit request: {}",
@@ -94,31 +96,49 @@ fn start_commit_loop<C>(
 
 struct CommitEntry {
     commit_deadline: Instant,
+    num_batches: usize,
+    num_events: usize,
     batch: Batch,
 }
 
 impl CommitEntry {
-    pub fn new(batch: Batch, strategy: CommitStrategy) -> CommitEntry {
+    pub fn new(
+        batch: Batch,
+        strategy: CommitStrategy,
+        num_events_hint: Option<usize>,
+    ) -> CommitEntry {
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
-            CommitStrategy::EveryNBatches(_) => Instant::now(),
-            CommitStrategy::MaxAge => batch.commit_deadline,
+            CommitStrategy::EveryNBatches(_) => {
+                batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET)
+            }
+            CommitStrategy::EveryNEvents(_) => {
+                batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET)
+            }
+            CommitStrategy::MaxAge => batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
             CommitStrategy::EveryNSeconds(n) => {
                 let by_strategy = Instant::now() + Duration::from_secs(n as u64);
-                ::std::cmp::min(by_strategy, batch.commit_deadline)
+                ::std::cmp::min(
+                    by_strategy,
+                    batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
+                )
             }
         };
         CommitEntry {
             commit_deadline,
+            num_batches: 1,
+            num_events: num_events_hint.unwrap_or(0),
             batch,
         }
     }
 
-    pub fn update(&mut self, next_batch: Batch) {
+    pub fn update(&mut self, next_batch: Batch, num_events_hint: Option<usize>) {
         self.batch = next_batch;
+        self.num_events += num_events_hint.unwrap_or(0);
+        self.num_batches += 1;
     }
 
-    pub fn is_due(&self) -> bool {
+    pub fn is_due_by_deadline(&self) -> bool {
         self.commit_deadline <= Instant::now()
     }
 }
@@ -141,7 +161,7 @@ fn run_commit_loop<C>(
         }
 
         match receiver.recv_timeout(Duration::from_millis(100)) {
-            Ok(CommitterMessage::Commit(next_batch)) => {
+            Ok(CommitterMessage::Commit(next_batch, num_events_hint)) => {
                 let mut key = (
                     next_batch.batch_line.partition().to_vec(),
                     next_batch.batch_line.event_type().to_vec(),
@@ -149,10 +169,10 @@ fn run_commit_loop<C>(
 
                 match cursors.entry(key) {
                     Entry::Vacant(mut entry) => {
-                        entry.insert(CommitEntry::new(next_batch, strategy));
+                        entry.insert(CommitEntry::new(next_batch, strategy, num_events_hint));
                     }
                     Entry::Occupied(mut entry) => {
-                        entry.get_mut().update(next_batch);
+                        entry.get_mut().update(next_batch, num_events_hint);
                     }
                 }
             }
@@ -167,7 +187,7 @@ fn run_commit_loop<C>(
             }
         }
 
-        if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &client) {
+        if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &client, strategy) {
             error!("Stream {} - Failed to commit cursors: {}", stream_id, err);
             break;
         }
@@ -199,6 +219,10 @@ fn flush_all_cursors<C>(
             "Stream {} - Not all remaining offstets increased.",
             stream_id
         ),
+        Ok(CommitStatus::NothingToCommit) => info!(
+            "Stream {} - There was nothing to be finally committed.",
+            stream_id
+        ),
         Err(err) => error!(
             "Stream {} - FlowId {} - Failed to commit all remaining cursors: {}",
             stream_id, flow_id, err
@@ -210,15 +234,30 @@ fn flush_due_cursors<C>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     stream_id: &StreamId,
     client: &C,
+    strategy: CommitStrategy,
 ) -> Result<CommitStatus, CommitError>
 where
     C: StreamingClient,
 {
+    let num_batches: usize = all_cursors.iter().map(|entry| entry.1.num_batches).sum();
+    let num_events: usize = all_cursors.iter().map(|entry| entry.1.num_events).sum();
+
+    let commit_all = match strategy {
+        CommitStrategy::EveryNBatches(n) => num_batches >= n as usize,
+        CommitStrategy::EveryNEvents(n) => num_events >= n as usize,
+        _ => false,
+    };
+
     let mut cursors_to_commit: Vec<Vec<u8>> = Vec::new();
     let mut keys_to_commit: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-    {
+    if commit_all {
         for (key, entry) in &*all_cursors {
-            if entry.is_due() {
+            cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
+            keys_to_commit.push(key.clone());
+        }
+    } else {
+        for (key, entry) in &*all_cursors {
+            if entry.is_due_by_deadline() {
                 cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
                 keys_to_commit.push(key.clone());
             }
@@ -230,7 +269,7 @@ where
     let status = if !cursors_to_commit.is_empty() {
         client.commit(stream_id.clone(), &cursors_to_commit, flow_id.clone())?
     } else {
-        CommitStatus::AllOffsetsIncreased
+        CommitStatus::NothingToCommit
     };
 
     for key in keys_to_commit {

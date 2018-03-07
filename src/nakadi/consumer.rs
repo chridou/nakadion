@@ -1,4 +1,4 @@
-use nakadi::client::{ConnectError, LineResult};
+use nakadi::client::{ConnectError, LineResult, RawLine};
 use nakadi::Lifecycle;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -119,7 +119,7 @@ where
             break;
         }
         match line_result {
-            Ok(line) => if let Err(err) = send_line(&dispatcher, line) {
+            Ok(raw_line) => if let Err(err) = send_line(&dispatcher, raw_line) {
                 error!("Could not process batch: {}", err);
                 break;
             },
@@ -145,8 +145,8 @@ where
     }
 }
 
-fn send_line(dispatcher: &Dispatcher, line: (Vec<u8>, Instant)) -> Result<(), String> {
-    let batch_line = BatchLine::new(line.0)?;
+fn send_line(dispatcher: &Dispatcher, line: RawLine) -> Result<(), String> {
+    let batch_line = BatchLine::new(line.bytes)?;
 
     if let Some(info) = batch_line.info() {
         match ::std::str::from_utf8(info) {
@@ -161,7 +161,7 @@ fn send_line(dispatcher: &Dispatcher, line: (Vec<u8>, Instant)) -> Result<(), St
     } else {
         dispatcher.process(Batch {
             batch_line: batch_line,
-            commit_deadline: line.1,
+            received_at: line.received_at,
         })
     }
 }
@@ -195,7 +195,7 @@ fn connect<C: StreamingClient>(
                     ));
                 } else {
                     warn!(
-                        "Failed to connect(attempt {}) to Nakadi(retry in {} ,s): {}",
+                        "Failed to connect(attempt {}) to Nakadi(retry in {}ms): {}",
                         attempt, sleep_dur_ms, err
                     );
                     thread::sleep(Duration::from_millis(sleep_dur_ms));
