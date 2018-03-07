@@ -99,6 +99,7 @@ struct CommitEntry {
     num_batches: usize,
     num_events: usize,
     batch: Batch,
+    first_cursor_received_at: Instant,
 }
 
 impl CommitEntry {
@@ -107,6 +108,7 @@ impl CommitEntry {
         strategy: CommitStrategy,
         num_events_hint: Option<usize>,
     ) -> CommitEntry {
+        let first_cursor_received_at = batch.received_at;
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
             CommitStrategy::EveryNBatches(_) => {
@@ -129,6 +131,7 @@ impl CommitEntry {
             num_batches: 1,
             num_events: num_events_hint.unwrap_or(0),
             batch,
+            first_cursor_received_at,
         }
     }
 
