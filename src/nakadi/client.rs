@@ -31,7 +31,7 @@ pub struct NakadiLineIterator {
 
 impl NakadiLineIterator {
     pub fn new(response: Response) -> Self {
-        let reader = BufReader::new(response);
+        let reader = BufReader::with_capacity(1024 * 1024, response);
         NakadiLineIterator {
             lines: reader.split(LINE_SPLIT_BYTE),
         }
