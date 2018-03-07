@@ -184,6 +184,8 @@ where
     while committer.running() {
         thread::sleep(Duration::from_millis(10));
     }
+
+    info!("Committer stopped");
 }
 
 fn send_line(dispatcher: &Dispatcher, line: RawLine) -> Result<(), String> {
@@ -197,7 +199,7 @@ fn send_line(dispatcher: &Dispatcher, line: RawLine) -> Result<(), String> {
     }
 
     if batch_line.is_keep_alive_line() {
-        info!("Keep alive!");
+        debug!("Keep alive!");
         Ok(())
     } else {
         dispatcher.process(Batch {

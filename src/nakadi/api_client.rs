@@ -82,6 +82,7 @@ impl ConfigBuilder {
     /// Variables:
     ///
     /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
+    /// * NAKADION_REQUEST_TIMEOUT_MS:
     pub fn from_env() -> Result<ConfigBuilder, Error> {
         let builder = ConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_NAKADI_HOST").ok() {
@@ -90,6 +91,17 @@ impl ConfigBuilder {
             warn!(
                 "Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
                  manually."
+            );
+            builder
+        };
+        let builder = if let Some(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS").ok() {
+            builder.request_timeout(Duration::from_millis(env_val
+                .parse::<u64>()
+                .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?))
+        } else {
+            warn!(
+                "Environment variable 'NAKADION_REQUEST_TIMEOUT_MS' not found. It will have to be set \
+                 to the default."
             );
             builder
         };
@@ -387,14 +399,14 @@ impl ApiClient for NakadiApiClient {
 fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
     let bytes_required: usize = cursors.iter().map(|c| c.as_ref().len()).sum();
     let mut body = Vec::with_capacity(bytes_required + 20);
-    body.extend(b"{items=[");
+    body.extend(b"{\"items\":[");
     for i in 0..cursors.len() {
         body.extend(cursors[i].as_ref().iter().cloned());
         if i != cursors.len() - 1 {
             body.push(b',');
         }
     }
-    body.extend(b"}]");
+    body.extend(b"]}");
     body
 }
 

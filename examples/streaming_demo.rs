@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate env_logger;
 extern crate failure;
 #[macro_use]
@@ -5,20 +6,26 @@ extern crate log;
 extern crate nakadion;
 #[macro_use]
 extern crate serde;
+extern crate serde_json;
+extern crate uuid;
 
 use std::env;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use chrono::DateTime;
+use chrono::offset::Utc;
+use uuid::Uuid;
 
 use failure::Error;
 use nakadion::auth::*;
 use nakadion::api_client::*;
 use nakadion::*;
 use nakadion::streaming_client::*;
-
+use nakadion::events::*;
+use nakadion::FlowId;
 use log::LevelFilter;
 use env_logger::Builder;
 
@@ -33,8 +40,43 @@ impl ProvidesAccessToken for AccessTokenProvider {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Event {
+pub struct EventData {
     fortune: String,
+}
+
+#[derive(Serialize)]
+pub struct OutgoingEvent {
+    data: EventData,
+    data_op: String,
+    metadata: OutgoingMetadata,
+    data_type: String,
+}
+
+#[derive(Deserialize)]
+pub struct IncomingEvent {
+    data: EventData,
+    data_op: String,
+    metadata: IncomingMetadata,
+    data_type: String,
+}
+
+impl OutgoingEvent {
+    pub fn new() -> OutgoingEvent {
+        OutgoingEvent {
+            data_op: "S".into(),
+            data_type: "hallo".into(),
+            data: EventData {
+                fortune: Uuid::new_v4().to_string(),
+            },
+            metadata: OutgoingMetadata {
+                eid: Uuid::new_v4(),
+                event_type: None,
+                occurred_at: Utc::now(),
+                parent_eids: Vec::new(),
+                partition: None,
+            },
+        }
+    }
 }
 
 pub struct DemoHandlerFactory {
@@ -59,6 +101,15 @@ pub struct DemoHandler {
 
 impl BatchHandler for DemoHandler {
     fn handle(&self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
+        let events: Vec<IncomingEvent> = match serde_json::from_slice(events) {
+            Ok(events) => events,
+            Err(err) => {
+                error!("{}", err);
+                return ProcessingStatus::failed(err.to_string());
+            }
+        };
+
+        self.state.fetch_add(events.len(), Ordering::Relaxed);
         ProcessingStatus::processed(0)
     }
 }
@@ -115,6 +166,8 @@ fn main() {
     let subscription_status = api_client.create_subscription(&request).unwrap();
     info!("{:#?}", subscription_status);
 
+    publish();
+
     if let Err(err) = consume(
         subscription_status.subscription().id.clone(),
         api_client.clone(),
@@ -132,13 +185,17 @@ fn main() {
 }
 
 fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Result<(), Error> {
-    let config_builder =
-        ::nakadion::streaming_client::ConfigBuilder::default().nakadi_host("http://localhost:8080");
+    let config_builder = ::nakadion::streaming_client::ConfigBuilder::default()
+        .nakadi_host("http://localhost:8080")
+        .max_uncommitted_events(1000)
+        .batch_limit(100);
 
     let streaming_client = config_builder.build_client(AccessTokenProvider)?;
 
+    let count = Arc::new(AtomicUsize::new(0));
+
     let handler_factory = DemoHandlerFactory {
-        state: Arc::new(AtomicUsize::new(0)),
+        state: count.clone(),
     };
 
     let nakadion = Nakadion::start(
@@ -146,13 +203,42 @@ fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Resu
         streaming_client,
         api_client,
         handler_factory,
-        CommitStrategy::AllBatches,
+        CommitStrategy::EveryNBatches(10),
     )?;
 
-    thread::sleep(Duration::from_secs(300));
+    thread::sleep(Duration::from_secs(90));
+
+    info!("Events consumed: {}", count.load(Ordering::Relaxed));
 
     nakadion.stop();
 
     nakadion.block();
     Ok(())
+}
+
+fn publish() {
+    thread::spawn(move || {
+        let publisher =
+            nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
+
+        let end = Instant::now() + Duration::from_secs(90);
+
+        let mut count = 0;
+
+        while end > Instant::now() {
+            let mut events = Vec::new();
+            for _ in 0..100 {
+                count += 1;
+                let event = OutgoingEvent::new();
+                events.push(event);
+            }
+            if let Err(err) =
+                publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
+            {
+                error!("{}", err);
+            }
+        }
+
+        info!("{} events published", count);
+    });
 }

@@ -66,10 +66,6 @@ impl Committer {
             })
     }
 
-    pub fn subscription_id(&self) -> &SubscriptionId {
-        &self.subscription_id
-    }
-
     pub fn stream_id(&self) -> &StreamId {
         &self.stream_id
     }

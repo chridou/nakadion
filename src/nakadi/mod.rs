@@ -23,6 +23,7 @@ pub mod batch;
 pub mod dispatcher;
 pub mod publisher;
 pub mod api_client;
+pub mod events;
 
 /// Stragtegy for committing cursors
 #[derive(Clone, Copy)]

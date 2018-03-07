@@ -103,7 +103,6 @@ pub struct Config {
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: String,
-    pub request_timeout: Duration,
 }
 
 pub struct ConfigBuilder {
@@ -114,7 +113,6 @@ pub struct ConfigBuilder {
     pub batch_limit: Option<usize>,
     pub max_uncommitted_events: Option<usize>,
     pub nakadi_host: Option<String>,
-    pub request_timeout: Option<Duration>,
 }
 
 impl Default for ConfigBuilder {
@@ -127,7 +125,6 @@ impl Default for ConfigBuilder {
             batch_limit: None,
             max_uncommitted_events: None,
             nakadi_host: None,
-            request_timeout: None,
         }
     }
 }
@@ -194,11 +191,6 @@ impl ConfigBuilder {
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub fn nakadi_host<T: Into<String>>(mut self, nakadi_host: T) -> ConfigBuilder {
         self.nakadi_host = Some(nakadi_host.into());
-        self
-    }
-
-    pub fn request_timeout(mut self, request_timeout: Duration) -> ConfigBuilder {
-        self.request_timeout = Some(request_timeout);
         self
     }
 
@@ -304,7 +296,6 @@ impl ConfigBuilder {
             batch_limit: self.batch_limit.unwrap_or(0),
             max_uncommitted_events: self.max_uncommitted_events.unwrap_or(0),
             nakadi_host: nakadi_host,
-            request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(300)),
         })
     }
 
@@ -345,7 +336,7 @@ impl NakadiStreamingClient {
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
     ) -> Result<NakadiStreamingClient, Error> {
         let http_client = HttpClientBuilder::new()
-            .timeout(config.request_timeout)
+            .timeout(None)
             .build()
             .context("Could not create HTTP client")?;
 

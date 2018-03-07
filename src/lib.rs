@@ -23,10 +23,12 @@ mod nakadi;
 
 pub use nakadi::handler::*;
 pub use nakadi::consumer::*;
-pub use nakadi::model::{EventType, PartitionId, StreamId, SubscriptionId};
+pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
 pub use nakadi::streaming_client;
 pub use nakadi::api_client;
 pub use nakadi::CommitStrategy;
 pub use nakadi::Nakadion;
 
 pub use nakadi::publisher;
+
+pub use nakadi::events;

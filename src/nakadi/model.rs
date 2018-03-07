@@ -14,7 +14,7 @@ impl fmt::Display for SubscriptionId {
 }
 
 /// A partition id that comes with a `Cursor`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartitionId(pub String);
 
 impl fmt::Display for PartitionId {
@@ -42,7 +42,7 @@ impl fmt::Display for StreamId {
 
 /// A `StreamId` identifies a subscription. It must be provided for checkpointing with
 /// a `Cursor`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FlowId(pub String);
 
 impl FlowId {
