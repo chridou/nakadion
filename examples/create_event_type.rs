@@ -7,7 +7,7 @@ use std::env;
 use std::io::Write;
 
 use nakadion::auth::*;
-use nakadion::maintenance::*;
+use nakadion::api_client::*;
 
 use log::LevelFilter;
 use env_logger::Builder;
@@ -55,12 +55,10 @@ fn main() {
         default_statistic: None,
     };
 
-    let maintenance_client = MaintenanceClient::new("http://localhost:8080", AccessTokenProvider);
+    let api_client = NakadiApiClient::new("http://localhost:8080", AccessTokenProvider);
 
     info!("Create event type");
-    maintenance_client
-        .create_event_type(&event_definition)
-        .unwrap();
+    api_client.create_event_type(&event_definition).unwrap();
 
     info!("Create subscription");
 
@@ -69,23 +67,21 @@ fn main() {
         event_types: vec![EVENT_TYPE_NAME.into()],
     };
 
-    let subscription_status = maintenance_client.create_subscription(&request).unwrap();
+    let subscription_status = api_client.create_subscription(&request).unwrap();
     info!("{:#?}", subscription_status);
 
     info!("Create subscription a second time");
 
-    let subscription_status = maintenance_client.create_subscription(&request).unwrap();
+    let subscription_status = api_client.create_subscription(&request).unwrap();
     info!("{:#?}", subscription_status);
 
     info!("Delete subscription");
 
-    maintenance_client
+    api_client
         .delete_subscription(&subscription_status.subscription().id)
         .unwrap();
 
     info!("Delete event type");
 
-    maintenance_client
-        .delete_event_type(EVENT_TYPE_NAME)
-        .unwrap();
+    api_client.delete_event_type(EVENT_TYPE_NAME).unwrap();
 }

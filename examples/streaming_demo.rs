@@ -15,9 +15,9 @@ use std::time::Duration;
 
 use failure::Error;
 use nakadion::auth::*;
-use nakadion::maintenance::*;
+use nakadion::api_client::*;
 use nakadion::*;
-use nakadion::client::*;
+use nakadion::streaming_client::*;
 
 use log::LevelFilter;
 use env_logger::Builder;
@@ -96,10 +96,13 @@ fn main() {
         default_statistic: None,
     };
 
-    let maintenance_client = MaintenanceClient::new("http://localhost:8080", AccessTokenProvider);
+    let api_client = ::nakadion::api_client::ConfigBuilder::default()
+        .nakadi_host("http://localhost:8080")
+        .build_client(AccessTokenProvider)
+        .unwrap();
 
     info!("Create event type");
-    if let Err(err) = maintenance_client.create_event_type(&event_definition) {
+    if let Err(err) = api_client.create_event_type(&event_definition) {
         error!("Could not create event type: {}", err);
     }
 
@@ -109,41 +112,47 @@ fn main() {
         event_types: vec![EVENT_TYPE_NAME.into()],
     };
 
-    let subscription_status = maintenance_client.create_subscription(&request).unwrap();
+    let subscription_status = api_client.create_subscription(&request).unwrap();
     info!("{:#?}", subscription_status);
 
-    if let Err(err) = consume(subscription_status.subscription().id.clone()) {
+    if let Err(err) = consume(
+        subscription_status.subscription().id.clone(),
+        api_client.clone(),
+    ) {
         error!("Aborting: {}", err);
     }
 
     info!("Delete subscription");
-    maintenance_client
+    api_client
         .delete_subscription(&subscription_status.subscription().id)
         .unwrap();
 
     info!("Delete event type");
-    maintenance_client
-        .delete_event_type(EVENT_TYPE_NAME)
-        .unwrap();
+    api_client.delete_event_type(EVENT_TYPE_NAME).unwrap();
 }
 
-fn consume(subscription_id: SubscriptionId) -> Result<(), Error> {
-    let config_builder = ConfigBuilder::default()
-        .nakadi_host("http://localhost:8080")
-        .subscription_id(subscription_id);
+fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Result<(), Error> {
+    let config_builder =
+        ::nakadion::streaming_client::ConfigBuilder::default().nakadi_host("http://localhost:8080");
 
-    let client = config_builder.build_client(AccessTokenProvider)?;
+    let streaming_client = config_builder.build_client(AccessTokenProvider)?;
 
     let handler_factory = DemoHandlerFactory {
         state: Arc::new(AtomicUsize::new(0)),
     };
 
-    let consumer = Nakadion::start(client, handler_factory, CommitStrategy::AllBatches)?;
+    let nakadion = Nakadion::start(
+        subscription_id,
+        streaming_client,
+        api_client,
+        handler_factory,
+        CommitStrategy::AllBatches,
+    )?;
 
     thread::sleep(Duration::from_secs(300));
 
-    consumer.stop();
+    nakadion.stop();
 
-    consumer.block();
+    nakadion.block();
     Ok(())
 }

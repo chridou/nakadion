@@ -114,19 +114,23 @@ fn consumer_loop<C, A, HF>(
         }
 
         info!("Connecting to stream");
-        let (stream_id, line_iterator) =
-            match connect(&streaming_client, Duration::from_secs(300), &lifecycle) {
-                Ok(v) => v,
-                Err(err) => {
-                    if err.is_permanent() {
-                        error!("Permanent connection error: {}", err);
-                        break;
-                    } else {
-                        warn!("Temporary connection error: {}", err);
-                        continue;
-                    }
+        let (stream_id, line_iterator) = match connect(
+            &streaming_client,
+            &subscription_id,
+            Duration::from_secs(300),
+            &lifecycle,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                if err.is_permanent() {
+                    error!("Permanent connection error: {}", err);
+                    break;
+                } else {
+                    warn!("Temporary connection error: {}", err);
+                    continue;
                 }
-            };
+            }
+        };
 
         info!("Connected to stream {}", stream_id);
 
@@ -205,6 +209,7 @@ fn send_line(dispatcher: &Dispatcher, line: RawLine) -> Result<(), String> {
 
 fn connect<C: StreamingClient>(
     client: &C,
+    subscription_id: &SubscriptionId,
     max_dur: Duration,
     lifecycle: &Lifecycle,
 ) -> Result<(StreamId, C::LineIterator), ConnectError> {
@@ -213,7 +218,7 @@ fn connect<C: StreamingClient>(
     loop {
         attempt += 1;
         let flow_id = FlowId::default();
-        match client.connect(flow_id.clone()) {
+        match client.connect(subscription_id, flow_id.clone()) {
             Ok(it) => return Ok(it),
             Err(err) => {
                 let sleep_dur_ms = *CONNECT_RETRY_BACKOFF_MS.get(attempt).unwrap_or(&30_000);

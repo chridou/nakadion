@@ -56,14 +56,13 @@ pub trait StreamingClient {
     type LineIterator: Iterator<Item = LineResult>;
     fn connect(
         &self,
+        subscription_id: &SubscriptionId,
         flow_id: FlowId,
     ) -> ::std::result::Result<(StreamId, Self::LineIterator), ConnectError>;
-
-    fn subscription_id(&self) -> &SubscriptionId;
 }
 
 /// Settings for establishing a connection to `Nakadi`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Maximum number of empty keep alive batches to get in a row before closing the
     /// connection. If 0 or undefined will send keep alive messages indefinitely.
@@ -107,9 +106,6 @@ pub struct Config {
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: String,
-    /// The subscription id to use
-    pub subscription_id: SubscriptionId,
-
     pub request_timeout: Duration,
 }
 
@@ -121,7 +117,6 @@ pub struct ConfigBuilder {
     pub batch_limit: Option<usize>,
     pub max_uncommitted_events: Option<usize>,
     pub nakadi_host: Option<String>,
-    pub subscription_id: Option<SubscriptionId>,
     pub request_timeout: Option<Duration>,
 }
 
@@ -135,7 +130,6 @@ impl Default for ConfigBuilder {
             batch_limit: None,
             max_uncommitted_events: None,
             nakadi_host: None,
-            subscription_id: None,
             request_timeout: None,
         }
     }
@@ -203,11 +197,6 @@ impl ConfigBuilder {
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub fn nakadi_host<T: Into<String>>(mut self, nakadi_host: T) -> ConfigBuilder {
         self.nakadi_host = Some(nakadi_host.into());
-        self
-    }
-    /// The subscription id to use
-    pub fn subscription_id(mut self, subscription_id: SubscriptionId) -> ConfigBuilder {
-        self.subscription_id = Some(subscription_id);
         self
     }
 
@@ -301,15 +290,6 @@ impl ConfigBuilder {
             );
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_SUBSCRIPTION_ID").ok() {
-            builder.subscription_id(SubscriptionId(env_val))
-        } else {
-            warn!(
-                "Environment variable 'NAKADION_SUBSCRIPTION_ID' not found. It will have \
-                 to be set manually."
-            );
-            builder
-        };
         Ok(builder)
     }
 
@@ -319,11 +299,6 @@ impl ConfigBuilder {
         } else {
             bail!("Nakadi host required");
         };
-        let subscription_id = if let Some(subscription_id) = self.subscription_id {
-            subscription_id
-        } else {
-            bail!("Subscription id host required");
-        };
         Ok(Config {
             stream_keep_alive_limit: self.stream_keep_alive_limit.unwrap_or(0),
             stream_limit: self.stream_keep_alive_limit.unwrap_or(0),
@@ -332,7 +307,6 @@ impl ConfigBuilder {
             batch_limit: self.batch_limit.unwrap_or(0),
             max_uncommitted_events: self.max_uncommitted_events.unwrap_or(0),
             nakadi_host: nakadi_host,
-            subscription_id: subscription_id,
             request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(300)),
         })
     }
@@ -356,10 +330,9 @@ impl ConfigBuilder {
 
 #[derive(Clone)]
 pub struct NakadiStreamingClient {
-    connect_url: String,
-    subscription_id: SubscriptionId,
     http_client: HttpClient,
     token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    config: Config,
 }
 
 impl NakadiStreamingClient {
@@ -374,8 +347,6 @@ impl NakadiStreamingClient {
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
     ) -> Result<NakadiStreamingClient, Error> {
-        let connect_url = create_connect_url(&config);
-
         let http_client = HttpClientBuilder::new()
             .timeout(config.request_timeout)
             .build()
@@ -383,21 +354,20 @@ impl NakadiStreamingClient {
 
         Ok(NakadiStreamingClient {
             http_client,
-            connect_url,
-            subscription_id: config.subscription_id,
             token_provider,
+            config,
         })
     }
 }
 
-fn create_connect_url(config: &Config) -> String {
+fn create_connect_url(config: &Config, subscription_id: &SubscriptionId) -> String {
     let mut connect_url = String::new();
     connect_url.push_str(&config.nakadi_host);
     if !connect_url.ends_with("/") {
         connect_url.push('/');
     }
     connect_url.push_str("subscriptions/");
-    connect_url.push_str(&config.subscription_id.0);
+    connect_url.push_str(&subscription_id.0);
     connect_url.push_str("/events");
 
     let mut connect_params = Vec::new();
@@ -444,8 +414,11 @@ impl StreamingClient for NakadiStreamingClient {
     type LineIterator = NakadiLineIterator;
     fn connect(
         &self,
+        subscription_id: &SubscriptionId,
         flow_id: FlowId,
     ) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
+        let connect_url = create_connect_url(&self.config, &subscription_id);
+
         let mut headers = Headers::new();
         if let Some(AccessToken(token)) = self.token_provider.get_token()? {
             headers.set(Authorization(Bearer { token }));
@@ -453,10 +426,7 @@ impl StreamingClient for NakadiStreamingClient {
 
         headers.set(XFlowId(flow_id.0.clone()));
 
-        let mut response = self.http_client
-            .get(&self.connect_url)
-            .headers(headers)
-            .send()?;
+        let mut response = self.http_client.get(&connect_url).headers(headers).send()?;
 
         match response.status() {
             StatusCode::Ok => {
@@ -521,10 +491,6 @@ impl StreamingClient for NakadiStreamingClient {
                 flow_id,
             )),
         }
-    }
-
-    fn subscription_id(&self) -> &SubscriptionId {
-        &self.subscription_id
     }
 }
 

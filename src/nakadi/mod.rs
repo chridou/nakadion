@@ -92,9 +92,9 @@ impl Drop for DropGuard {
 
 impl Nakadion {
     pub fn start<HF, C, A>(
+        subscription_id: SubscriptionId,
         streaming_client: C,
         api_client: A,
-        subscription_id: SubscriptionId,
         handler_factory: HF,
         commit_strategy: CommitStrategy,
     ) -> Result<Nakadion, Error>
