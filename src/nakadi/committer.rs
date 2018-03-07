@@ -5,11 +5,10 @@ use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
 use nakadi::CommitStrategy;
-use nakadi::client::{CommitError, CommitStatus};
+use nakadi::api_client::{ApiClient, CommitError, CommitStatus};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::Lifecycle;
-use nakadi::client::StreamingClient;
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
@@ -26,19 +25,23 @@ enum CommitterMessage {
 }
 
 impl Committer {
-    pub fn start<C>(client: C, strategy: CommitStrategy, stream_id: StreamId) -> Self
+    pub fn start<C>(
+        client: C,
+        strategy: CommitStrategy,
+        subscription_id: SubscriptionId,
+        stream_id: StreamId,
+    ) -> Self
     where
-        C: StreamingClient + Send + 'static,
+        C: ApiClient + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
         let lifecycle = Lifecycle::default();
 
-        let subscription_id = client.subscription_id().clone();
-
         start_commit_loop(
             receiver,
             strategy,
+            subscription_id.clone(),
             stream_id.clone(),
             client,
             lifecycle.clone(),
@@ -83,14 +86,22 @@ impl Committer {
 fn start_commit_loop<C>(
     receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
+    subscription_id: SubscriptionId,
     stream_id: StreamId,
     connector: C,
     lifecycle: Lifecycle,
 ) where
-    C: StreamingClient + Send + 'static,
+    C: ApiClient + Send + 'static,
 {
     thread::spawn(move || {
-        run_commit_loop(receiver, strategy, stream_id, connector, lifecycle);
+        run_commit_loop(
+            receiver,
+            strategy,
+            subscription_id,
+            stream_id,
+            connector,
+            lifecycle,
+        );
     });
 }
 
@@ -149,17 +160,18 @@ impl CommitEntry {
 fn run_commit_loop<C>(
     receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
+    subscription_id: SubscriptionId,
     stream_id: StreamId,
     client: C,
     lifecycle: Lifecycle,
 ) where
-    C: StreamingClient,
+    C: ApiClient,
 {
     let mut cursors = HashMap::new();
     loop {
         if lifecycle.abort_requested() {
             info!("Stream {} - Abort requested. Flushing cursors", stream_id);
-            flush_all_cursors::<_>(cursors, &stream_id, &client);
+            flush_all_cursors::<_>(cursors, &subscription_id, &stream_id, &client);
             break;
         }
 
@@ -185,12 +197,18 @@ fn run_commit_loop<C>(
                     "Stream {} - Commit channel disconnected. Flushing cursors.",
                     stream_id
                 );
-                flush_all_cursors::<_>(cursors, &stream_id, &client);
+                flush_all_cursors::<_>(cursors, &subscription_id, &stream_id, &client);
                 break;
             }
         }
 
-        if let Err(err) = flush_due_cursors(&mut cursors, &stream_id, &client, strategy) {
+        if let Err(err) = flush_due_cursors(
+            &mut cursors,
+            &subscription_id,
+            &stream_id,
+            &client,
+            strategy,
+        ) {
             error!("Stream {} - Failed to commit cursors: {}", stream_id, err);
             break;
         }
@@ -202,10 +220,11 @@ fn run_commit_loop<C>(
 
 fn flush_all_cursors<C>(
     all_cursors: HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
+    subscription_id: &SubscriptionId,
     stream_id: &StreamId,
     connector: &C,
 ) where
-    C: StreamingClient,
+    C: ApiClient,
 {
     let cursors_to_commit: Vec<_> = all_cursors
         .values()
@@ -214,7 +233,12 @@ fn flush_all_cursors<C>(
 
     let flow_id = FlowId::default();
 
-    match connector.commit(stream_id.clone(), &cursors_to_commit, flow_id.clone()) {
+    match connector.commit_cursors(
+        subscription_id,
+        stream_id,
+        &cursors_to_commit,
+        flow_id.clone(),
+    ) {
         Ok(CommitStatus::AllOffsetsIncreased) => {
             info!("Stream {} - All remaining offstets increased.", stream_id)
         }
@@ -235,12 +259,13 @@ fn flush_all_cursors<C>(
 
 fn flush_due_cursors<C>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
+    subscription_id: &SubscriptionId,
     stream_id: &StreamId,
     client: &C,
     strategy: CommitStrategy,
 ) -> Result<CommitStatus, CommitError>
 where
-    C: StreamingClient,
+    C: ApiClient,
 {
     let num_batches: usize = all_cursors.iter().map(|entry| entry.1.num_batches).sum();
     let num_events: usize = all_cursors.iter().map(|entry| entry.1.num_events).sum();
@@ -270,7 +295,12 @@ where
     let flow_id = FlowId::default();
 
     let status = if !cursors_to_commit.is_empty() {
-        client.commit(stream_id.clone(), &cursors_to_commit, flow_id.clone())?
+        client.commit_cursors(
+            subscription_id,
+            stream_id,
+            &cursors_to_commit,
+            flow_id.clone(),
+        )?
     } else {
         CommitStatus::NothingToCommit
     };

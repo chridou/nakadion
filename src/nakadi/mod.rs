@@ -1,6 +1,8 @@
 /// Describes what to do after a batch has been processed.
 ///
 /// Use to control what should happen next.
+use nakadi::model::SubscriptionId;
+use nakadi::api_client::ApiClient;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -9,18 +11,18 @@ use std::thread;
 use failure::*;
 
 use nakadi::handler::HandlerFactory;
-use nakadi::client::StreamingClient;
+use nakadi::streaming_client::StreamingClient;
 
 pub mod handler;
 pub mod consumer;
 pub mod model;
-pub mod client;
+pub mod streaming_client;
 pub mod committer;
 pub mod worker;
 pub mod batch;
 pub mod dispatcher;
-pub mod maintenance;
 pub mod publisher;
+pub mod api_client;
 
 /// Stragtegy for committing cursors
 #[derive(Clone, Copy)]
@@ -89,16 +91,25 @@ impl Drop for DropGuard {
 }
 
 impl Nakadion {
-    pub fn start<HF, C>(
-        client: C,
+    pub fn start<HF, C, A>(
+        streaming_client: C,
+        api_client: A,
+        subscription_id: SubscriptionId,
         handler_factory: HF,
         commit_strategy: CommitStrategy,
     ) -> Result<Nakadion, Error>
     where
         C: StreamingClient + Clone + Sync + Send + 'static,
+        A: ApiClient + Clone + Sync + Send + 'static,
         HF: HandlerFactory + Sync + Send + 'static,
     {
-        let consumer = consumer::Consumer::start(client, handler_factory, commit_strategy);
+        let consumer = consumer::Consumer::start(
+            streaming_client,
+            api_client,
+            subscription_id,
+            handler_factory,
+            commit_strategy,
+        );
 
         let guard = Arc::new(DropGuard { consumer });
         Ok(Nakadion { guard })

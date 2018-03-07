@@ -1,50 +1,309 @@
-use nakadi::model::SubscriptionId;
 use std::sync::Arc;
+use std::env;
 use std::time::Duration;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
+
+use auth::{AccessToken, ProvidesAccessToken, TokenError};
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 
-use reqwest::{Client as HttpClient, Response};
+use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
-use reqwest::header::{Authorization, Bearer, Headers};
+use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::*;
 
-use auth::{AccessToken, ProvidesAccessToken};
+header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
+header! { (XFlowId, "X-Flow-Id") => [String] }
 
-pub struct MaintenanceClient {
-    nakadi_base_url: String,
-    http_client: HttpClient,
-    token_provider: Arc<ProvidesAccessToken>,
+/// A client to the Nakadi Event Broker
+pub trait ApiClient {
+    fn commit_cursors<T: AsRef<[u8]>>(
+        &self,
+        subscription_id: &SubscriptionId,
+        stream_id: &StreamId,
+        cursors: &[T],
+        flow_id: FlowId,
+    ) -> ::std::result::Result<CommitStatus, CommitError>;
+
+    fn delete_event_type(&self, event_type_name: &str) -> Result<(), DeleteEventTypeError>;
+
+    fn create_event_type(
+        &self,
+        event_type: &EventTypeDefinition,
+    ) -> Result<(), CreateEventTypeError>;
+
+    fn create_subscription(
+        &self,
+        request: &CreateSubscriptionRequest,
+    ) -> Result<CreateSubscriptionStatus, CreateSubscriptionError>;
+
+    fn delete_subscription(&self, id: &SubscriptionId) -> Result<(), DeleteSubscriptionError>;
 }
 
-impl MaintenanceClient {
-    pub fn new<U: Into<String>, T: ProvidesAccessToken + 'static>(
-        nakadi_base_url: U,
+/// Settings for establishing a connection to `Nakadi`.
+#[derive(Debug)]
+pub struct Config {
+    pub nakadi_host: String,
+    pub request_timeout: Duration,
+}
+
+pub struct ConfigBuilder {
+    pub nakadi_host: Option<String>,
+    pub request_timeout: Option<Duration>,
+}
+
+impl Default for ConfigBuilder {
+    fn default() -> ConfigBuilder {
+        ConfigBuilder {
+            nakadi_host: None,
+            request_timeout: None,
+        }
+    }
+}
+
+impl ConfigBuilder {
+    /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
+    pub fn nakadi_host<T: Into<String>>(mut self, nakadi_host: T) -> ConfigBuilder {
+        self.nakadi_host = Some(nakadi_host.into());
+        self
+    }
+    pub fn request_timeout(mut self, request_timeout: Duration) -> ConfigBuilder {
+        self.request_timeout = Some(request_timeout);
+        self
+    }
+
+    /// Create a builder from environment variables.
+    ///
+    /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
+    ///
+    /// Variables:
+    ///
+    /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
+    pub fn from_env() -> Result<ConfigBuilder, Error> {
+        let builder = ConfigBuilder::default();
+        let builder = if let Some(env_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+            builder.nakadi_host(env_val)
+        } else {
+            warn!(
+                "Environment variable 'NAKADION_NAKADI_HOST' not found. It will have to be set \
+                 manually."
+            );
+            builder
+        };
+        Ok(builder)
+    }
+
+    pub fn build(self) -> Result<Config, Error> {
+        let nakadi_host = if let Some(nakadi_host) = self.nakadi_host {
+            nakadi_host
+        } else {
+            bail!("Nakadi host required");
+        };
+        Ok(Config {
+            nakadi_host: nakadi_host,
+            request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(300)),
+        })
+    }
+
+    pub fn build_client<T>(self, token_provider: T) -> Result<NakadiApiClient, Error>
+    where
+        T: ProvidesAccessToken + Send + Sync + 'static,
+    {
+        self.build_client_with_shared_access_token_provider(Arc::new(token_provider))
+    }
+
+    pub fn build_client_with_shared_access_token_provider(
+        self,
+        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    ) -> Result<NakadiApiClient, Error> {
+        let config = self.build().context("Could not build client config")?;
+
+        NakadiApiClient::with_shared_access_token_provider(config, token_provider)
+    }
+}
+
+#[derive(Clone)]
+pub struct NakadiApiClient {
+    nakadi_host: String,
+    http_client: HttpClient,
+    token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+}
+
+impl NakadiApiClient {
+    pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
+        config: Config,
         token_provider: T,
-    ) -> MaintenanceClient {
-        MaintenanceClient {
-            nakadi_base_url: nakadi_base_url.into(),
-            http_client: HttpClient::new(),
-            token_provider: Arc::new(token_provider),
+    ) -> Result<NakadiApiClient, Error> {
+        NakadiApiClient::with_shared_access_token_provider(config, Arc::new(token_provider))
+    }
+
+    pub fn with_shared_access_token_provider(
+        config: Config,
+        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    ) -> Result<NakadiApiClient, Error> {
+        let http_client = HttpClientBuilder::new()
+            .timeout(config.request_timeout)
+            .build()
+            .context("Could not create HTTP client")?;
+
+        Ok(NakadiApiClient {
+            nakadi_host: config.nakadi_host,
+            http_client,
+            token_provider,
+        })
+    }
+
+    pub fn attempt_commit<T: AsRef<[u8]>>(
+        &self,
+        url: &str,
+        stream_id: StreamId,
+        cursors: &[T],
+        flow_id: FlowId,
+    ) -> ::std::result::Result<CommitStatus, CommitError> {
+        let mut headers = Headers::new();
+        if let Some(AccessToken(token)) = self.token_provider.get_token()? {
+            headers.set(Authorization(Bearer { token }));
+        }
+
+        headers.set(XFlowId(flow_id.0.clone()));
+        headers.set(XNakadiStreamId(stream_id.0));
+        headers.set(ContentType::json());
+
+        let body = make_cursors_body(cursors);
+
+        let mut response = self.http_client
+            .post(url)
+            .headers(headers)
+            .body(body)
+            .send()?;
+
+        match response.status() {
+            // All cursors committed but at least one did not increase an offset.
+            StatusCode::Ok => Ok(CommitStatus::NotAllOffsetsIncreased),
+            // All cursors committed and all increased the offset.
+            StatusCode::NoContent => Ok(CommitStatus::AllOffsetsIncreased),
+            StatusCode::NotFound => Err(CommitError::SubscriptionNotFound(
+                format!(
+                    "{}: {}",
+                    StatusCode::NotFound,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::UnprocessableEntity => Err(CommitError::UnprocessableEntity(
+                format!(
+                    "{}: {}",
+                    StatusCode::UnprocessableEntity,
+                    read_response_body(&mut response)
+                ),
+                flow_id,
+            )),
+            StatusCode::Forbidden => Err(CommitError::Client(
+                format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakadion: Nakadi said forbidden.>"
+                ),
+                flow_id,
+            )),
+            other_status if other_status.is_client_error() => Err(CommitError::Client(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
+            other_status if other_status.is_server_error() => Err(CommitError::Server(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
+            other_status => Err(CommitError::Other(
+                format!("{}: {}", other_status, read_response_body(&mut response)),
+                flow_id,
+            )),
+        }
+    }
+}
+
+impl ApiClient for NakadiApiClient {
+    /*    fn stats(&self) -> ::std::result::Result<SubscriptionStats, StatsError> {
+        let mut headers = Headers::new();
+        if let Some(token) = self.token_provider.get_token()? {
+            headers.set(Authorization(Bearer { token: token.0 }));
+        };
+
+        let mut response = self.http_client
+            .get(&self.stats_url)
+            .headers(headers)
+            .send()?;
+        match response.status() {
+            StatusCode::Ok => {
+                let parsed = serde_json::from_reader(response)?;
+                Ok(parsed)
+            }
+            StatusCode::Forbidden => Err(StatsError::Client {
+                message: format!(
+                    "{}: {}",
+                    StatusCode::Forbidden,
+                    "<Nakadion: Nakadi said forbidden.>"
+                ),
+            }),
+            other_status if other_status.is_client_error() => Err(StatsError::Client {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status if other_status.is_server_error() => Err(StatsError::Server {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+            other_status => Err(StatsError::Other {
+                message: format!("{}: {}", other_status, read_response_body(&mut response)),
+            }),
+        }
+    }*/
+
+    fn commit_cursors<T: AsRef<[u8]>>(
+        &self,
+        subscription_id: &SubscriptionId,
+        stream_id: &StreamId,
+        cursors: &[T],
+        flow_id: FlowId,
+    ) -> ::std::result::Result<CommitStatus, CommitError> {
+        if cursors.is_empty() {
+            return Ok(CommitStatus::NothingToCommit);
+        }
+
+        let url = format!(
+            "{}/subscriptions/{}/cursors",
+            self.nakadi_host, subscription_id.0
+        );
+
+        let mut op = || {
+            self.attempt_commit(&url, stream_id.clone(), cursors, flow_id.clone())
+                .map_err(|err| match err {
+                    err @ CommitError::Client { .. } => BackoffError::Permanent(err),
+                    err => BackoffError::Transient(err),
+                })
+        };
+
+        let notify = |err, dur| {
+            warn!(
+                "Stream {} - Commit Error happened at {:?}: {}",
+                stream_id.clone(),
+                dur,
+                err
+            );
+        };
+
+        let mut backoff = ExponentialBackoff::default();
+
+        match op.retry_notify(&mut backoff, notify) {
+            Ok(x) => Ok(x),
+            Err(BackoffError::Transient(err)) => Err(err),
+            Err(BackoffError::Permanent(err)) => Err(err),
         }
     }
 
-    pub fn with_shared_access_token_provider<U: Into<String>>(
-        nakadi_base_url: U,
-        token_provider: Arc<ProvidesAccessToken>,
-    ) -> MaintenanceClient {
-        MaintenanceClient {
-            nakadi_base_url: nakadi_base_url.into(),
-            http_client: HttpClient::new(),
-            token_provider: token_provider,
-        }
-    }
-
-    pub fn delete_event_type(&self, event_type_name: &str) -> Result<(), DeleteEventTypeError> {
-        let url = format!("{}/event-types/{}", self.nakadi_base_url, event_type_name);
+    fn delete_event_type(&self, event_type_name: &str) -> Result<(), DeleteEventTypeError> {
+        let url = format!("{}/event-types/{}", self.nakadi_host, event_type_name);
 
         let mut op = || match delete_event_type(&self.http_client, &url, &*self.token_provider) {
             Ok(_) => Ok(()),
@@ -73,11 +332,11 @@ impl MaintenanceClient {
         }
     }
 
-    pub fn create_event_type(
+    fn create_event_type(
         &self,
         event_type: &EventTypeDefinition,
     ) -> Result<(), CreateEventTypeError> {
-        let url = format!("{}/event-types", self.nakadi_base_url);
+        let url = format!("{}/event-types", self.nakadi_host);
 
         let mut op = || match create_event_type(
             &self.http_client,
@@ -111,17 +370,91 @@ impl MaintenanceClient {
         }
     }
 
-    pub fn create_subscription(
+    fn create_subscription(
         &self,
         request: &CreateSubscriptionRequest,
     ) -> Result<CreateSubscriptionStatus, CreateSubscriptionError> {
-        let url = format!("{}/subscriptions", self.nakadi_base_url);
+        let url = format!("{}/subscriptions", self.nakadi_host);
         create_subscription(&self.http_client, &url, &*self.token_provider, request)
     }
 
-    pub fn delete_subscription(&self, id: &SubscriptionId) -> Result<(), DeleteSubscriptionError> {
-        let url = format!("{}/subscriptions/{}", self.nakadi_base_url, id.0);
+    fn delete_subscription(&self, id: &SubscriptionId) -> Result<(), DeleteSubscriptionError> {
+        let url = format!("{}/subscriptions/{}", self.nakadi_host, id.0);
         delete_subscription(&self.http_client, &url, &*self.token_provider)
+    }
+}
+
+fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
+    let bytes_required: usize = cursors.iter().map(|c| c.as_ref().len()).sum();
+    let mut body = Vec::with_capacity(bytes_required + 20);
+    body.extend(b"{items=[");
+    for i in 0..cursors.len() {
+        body.extend(cursors[i].as_ref().iter().cloned());
+        if i != cursors.len() - 1 {
+            body.push(b',');
+        }
+    }
+    body.extend(b"}]");
+    body
+}
+
+#[derive(Debug)]
+pub enum CommitStatus {
+    AllOffsetsIncreased,
+    NotAllOffsetsIncreased,
+    NothingToCommit,
+}
+
+#[derive(Fail, Debug)]
+pub enum CommitError {
+    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Subscription not found(FlowId: {}): {}", _1, _0)]
+    SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
+    UnprocessableEntity(String, FlowId),
+    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)] Server(String, FlowId),
+    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)] Client(String, FlowId),
+    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)] Other(String, FlowId),
+}
+
+#[derive(Fail, Debug)]
+pub enum StatsError {
+    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Server Error: {}", _0)] Server(String),
+    #[fail(display = "Client Error: {}", _0)] Client(String),
+    #[fail(display = "Parse Error: {}", _0)] Parse(String),
+    #[fail(display = "Other Error: {}", _0)] Other(String),
+}
+
+impl From<TokenError> for CommitError {
+    fn from(e: TokenError) -> CommitError {
+        CommitError::TokenError(format!("{}", e))
+    }
+}
+
+impl From<::reqwest::Error> for CommitError {
+    fn from(e: ::reqwest::Error) -> CommitError {
+        CommitError::Connection(format!("{}", e))
+    }
+}
+
+impl From<TokenError> for StatsError {
+    fn from(e: TokenError) -> StatsError {
+        StatsError::TokenError(format!("{}", e))
+    }
+}
+
+impl From<serde_json::error::Error> for StatsError {
+    fn from(e: serde_json::error::Error) -> StatsError {
+        StatsError::Parse(format!("{}", e))
+    }
+}
+
+impl From<::reqwest::Error> for StatsError {
+    fn from(e: ::reqwest::Error) -> StatsError {
+        StatsError::Connection(format!("{}", e))
     }
 }
 
@@ -309,27 +642,20 @@ pub struct Subscription {
 
 #[derive(Fail, Debug)]
 pub enum CreateSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)]
-    Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
     /// Already exists
     #[fail(display = "Unprocessable Entity: {}", _0)]
     UnprocessableEntity(String),
-    #[fail(display = "Bad request: {}", _0)]
-    BadRequest(String),
-    #[fail(display = "An error occured: {}", _0)]
-    Other(String),
+    #[fail(display = "Bad request: {}", _0)] BadRequest(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum DeleteSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)]
-    Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)]
-    Forbidden(String),
-    #[fail(display = "NotFound: {}", _0)]
-    NotFound(String),
-    #[fail(display = "An error occured: {}", _0)]
-    Other(String),
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
+    #[fail(display = "NotFound: {}", _0)] NotFound(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
 }
 
 #[derive(Debug, Clone)]
@@ -349,15 +675,12 @@ impl CreateSubscriptionStatus {
 
 #[derive(Fail, Debug)]
 pub enum CreateEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)]
-    Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
     /// Already exists
     #[fail(display = "Event type already exists: {}", _0)]
     Conflict(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)]
-    UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)]
-    Other(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
 }
 
 impl CreateEventTypeError {
@@ -373,12 +696,9 @@ impl CreateEventTypeError {
 
 #[derive(Fail, Debug)]
 pub enum DeleteEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)]
-    Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)]
-    Forbidden(String),
-    #[fail(display = "An error occured: {}", _0)]
-    Other(String),
+    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
+    #[fail(display = "An error occured: {}", _0)] Other(String),
 }
 
 impl DeleteEventTypeError {
@@ -555,8 +875,7 @@ pub struct EventTypeDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeSchema {
     pub version: Option<String>,
-    #[serde(rename = "type")]
-    pub schema_type: SchemaType,
+    #[serde(rename = "type")] pub schema_type: SchemaType,
     pub schema: String,
 }
 
@@ -598,4 +917,48 @@ pub struct EventTypeStatistics {
     pub message_size: usize,
     pub read_parallelism: u16,
     pub write_parallelism: u16,
+}
+
+pub mod stats {
+    /// Information on a partition
+    #[derive(Debug, Deserialize)]
+    pub struct PartitionInfo {
+        pub partition: String,
+        pub stream_id: String,
+        pub unconsumed_events: usize,
+    }
+
+    /// An `EventType` can be published on multiple partitions.
+    #[derive(Debug, Deserialize)]
+    pub struct EventTypeInfo {
+        pub event_type: String,
+        pub partitions: Vec<PartitionInfo>,
+    }
+
+    impl EventTypeInfo {
+        /// Returns the number of partitions this `EventType` is
+        /// published over.
+        pub fn num_partitions(&self) -> usize {
+            self.partitions.len()
+        }
+    }
+
+    /// A stream can provide multiple `EventTypes` where each of them can have
+    /// its own partitioning setup.
+    #[derive(Debug, Deserialize, Default)]
+    pub struct SubscriptionStats {
+        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
+    }
+
+    impl SubscriptionStats {
+        /// Returns the number of partitions of the `EventType`
+        /// that has the most partitions.
+        pub fn max_partitions(&self) -> usize {
+            self.event_types
+                .iter()
+                .map(|et| et.num_partitions())
+                .max()
+                .unwrap_or(0)
+        }
+    }
 }

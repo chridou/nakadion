@@ -1,4 +1,5 @@
-use nakadi::client::{ConnectError, LineResult, RawLine};
+use nakadi::api_client::ApiClient;
+use nakadi::streaming_client::{ConnectError, LineResult, RawLine};
 use nakadi::Lifecycle;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -6,7 +7,7 @@ use std::sync::Arc;
 
 use nakadi::CommitStrategy;
 use nakadi::handler::HandlerFactory;
-use nakadi::client::StreamingClient;
+use nakadi::streaming_client::StreamingClient;
 use nakadi::model::*;
 use nakadi::committer::Committer;
 use nakadi::dispatcher::Dispatcher;
@@ -24,21 +25,37 @@ const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
 #[derive(Clone)]
 pub struct Consumer {
     lifecycle: Lifecycle,
+    subscription_id: SubscriptionId,
 }
 
 impl Consumer {
-    pub fn start<C, HF>(client: C, handler_factory: HF, commit_strategy: CommitStrategy) -> Consumer
+    pub fn start<C, A, HF>(
+        streaming_client: C,
+        api_client: A,
+        subscription_id: SubscriptionId,
+        handler_factory: HF,
+        commit_strategy: CommitStrategy,
+    ) -> Consumer
     where
         C: StreamingClient + Clone + Send + 'static,
+        A: ApiClient + Clone + Send + 'static,
         HF: HandlerFactory + Send + Sync + 'static,
     {
         let lifecycle = Lifecycle::default();
 
         let consumer = Consumer {
             lifecycle: lifecycle.clone(),
+            subscription_id: subscription_id.clone(),
         };
 
-        start_consumer_loop(client, handler_factory, commit_strategy, lifecycle);
+        start_consumer_loop(
+            streaming_client,
+            api_client,
+            handler_factory,
+            commit_strategy,
+            subscription_id,
+            lifecycle,
+        );
 
         consumer
     }
@@ -52,25 +69,40 @@ impl Consumer {
     }
 }
 
-fn start_consumer_loop<C, HF>(
-    client: C,
+fn start_consumer_loop<C, A, HF>(
+    streaming_client: C,
+    api_client: A,
     handler_factory: HF,
     commit_strategy: CommitStrategy,
+    subscription_id: SubscriptionId,
     lifecycle: Lifecycle,
 ) where
     C: StreamingClient + Clone + Send + 'static,
+    A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
 {
-    thread::spawn(move || consumer_loop(client, handler_factory, commit_strategy, lifecycle));
+    thread::spawn(move || {
+        consumer_loop(
+            streaming_client,
+            api_client,
+            handler_factory,
+            commit_strategy,
+            subscription_id,
+            lifecycle,
+        )
+    });
 }
 
-fn consumer_loop<C, HF>(
-    client: C,
+fn consumer_loop<C, A, HF>(
+    streaming_client: C,
+    api_client: A,
     handler_factory: HF,
     commit_strategy: CommitStrategy,
+    subscription_id: SubscriptionId,
     lifecycle: Lifecycle,
 ) where
     C: StreamingClient + Clone + Send + 'static,
+    A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
 {
     let handler_factory = Arc::new(handler_factory);
@@ -83,7 +115,7 @@ fn consumer_loop<C, HF>(
 
         info!("Connecting to stream");
         let (stream_id, line_iterator) =
-            match connect(&client, Duration::from_secs(300), &lifecycle) {
+            match connect(&streaming_client, Duration::from_secs(300), &lifecycle) {
                 Ok(v) => v,
                 Err(err) => {
                     if err.is_permanent() {
@@ -98,7 +130,12 @@ fn consumer_loop<C, HF>(
 
         info!("Connected to stream {}", stream_id);
 
-        let committer = Committer::start(client.clone(), commit_strategy, stream_id.clone());
+        let committer = Committer::start(
+            api_client.clone(),
+            commit_strategy,
+            subscription_id.clone(),
+            stream_id.clone(),
+        );
 
         let dispatcher = Dispatcher::start(handler_factory.clone(), committer.clone());
 
