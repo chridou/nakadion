@@ -100,9 +100,6 @@ pub struct Config {
     /// The amount of uncommitted events Nakadi will stream before pausing the stream.
     /// When in paused state and commit comes - the stream will resume. Minimal value
     /// is 1.
-    ///
-    /// When using the concurrent worker you should adjust this value to safe your
-    /// workers from running dry.
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: String,
