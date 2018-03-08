@@ -22,12 +22,14 @@ pub mod dispatcher;
 pub mod publisher;
 pub mod api_client;
 pub mod events;
+pub mod metrics;
 
 use nakadi::model::SubscriptionId;
 use nakadi::api_client::{ApiClient, NakadiApiClient};
 use nakadi::handler::HandlerFactory;
 use nakadi::streaming_client::StreamingClient;
 use auth::ProvidesAccessToken;
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 /// Stragtegy for committing cursors
 #[derive(Debug, Clone, Copy)]
@@ -412,7 +414,7 @@ impl NakadionBuilder {
         })
     }
 
-    pub fn build_and_start<HF, P>(
+    pub fn build_and_start_without_metrics<HF, P>(
         self,
         handler_factory: HF,
         access_token_provider: P,
@@ -421,9 +423,32 @@ impl NakadionBuilder {
         HF: HandlerFactory + Sync + Send + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
+        self.build_and_start(
+            handler_factory,
+            access_token_provider,
+            DevNullMetricsCollector,
+        )
+    }
+
+    pub fn build_and_start<HF, P, M>(
+        self,
+        handler_factory: HF,
+        access_token_provider: P,
+        metrics_collector: M,
+    ) -> Result<Nakadion, Error>
+    where
+        HF: HandlerFactory + Sync + Send + 'static,
+        P: ProvidesAccessToken + Send + Sync + 'static,
+        M: MetricsCollector + Clone + Send + Sync + 'static,
+    {
         let config = self.build_config()?;
 
-        Nakadion::start(config, handler_factory, access_token_provider)
+        Nakadion::start(
+            config,
+            handler_factory,
+            access_token_provider,
+            metrics_collector,
+        )
     }
 }
 
@@ -432,17 +457,19 @@ pub struct Nakadion {
 }
 
 impl Nakadion {
-    pub fn start_with<HF, C, A>(
+    pub fn start_with<HF, C, A, M>(
         subscription_id: SubscriptionId,
         streaming_client: C,
         api_client: A,
         handler_factory: HF,
         commit_strategy: CommitStrategy,
+        metrics_collector: M,
     ) -> Result<Nakadion, Error>
     where
         C: StreamingClient + Clone + Sync + Send + 'static,
         A: ApiClient + Clone + Sync + Send + 'static,
         HF: HandlerFactory + Sync + Send + 'static,
+        M: MetricsCollector + Clone + Send + Sync + 'static,
     {
         let consumer = consumer::Consumer::start(
             streaming_client,
@@ -450,20 +477,23 @@ impl Nakadion {
             subscription_id,
             handler_factory,
             commit_strategy,
+            metrics_collector,
         );
 
         let guard = Arc::new(DropGuard { consumer });
         Ok(Nakadion { guard })
     }
 
-    pub fn start<HF, P>(
+    pub fn start<HF, P, M>(
         config: NakadionConfig,
         handler_factory: HF,
         access_token_provider: P,
+        metrics_collector: M,
     ) -> Result<Nakadion, Error>
     where
         HF: HandlerFactory + Sync + Send + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
+        M: MetricsCollector + Clone + Send + Sync + 'static,
     {
         let access_token_provider = Arc::new(access_token_provider);
 
@@ -515,6 +545,7 @@ impl Nakadion {
             streaming_client::NakadiStreamingClient::with_shared_access_token_provider(
                 streaming_client_config,
                 access_token_provider,
+                metrics_collector.clone(),
             )?;
 
         Nakadion::start_with(
@@ -523,6 +554,7 @@ impl Nakadion {
             api_client,
             handler_factory,
             config.commit_strategy,
+            metrics_collector,
         )
     }
 

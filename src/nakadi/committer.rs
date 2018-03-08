@@ -9,6 +9,7 @@ use nakadi::api_client::{ApiClient, CommitError, CommitStatus};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::Lifecycle;
+use nakadi::metrics::MetricsCollector;
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
@@ -25,14 +26,16 @@ enum CommitterMessage {
 }
 
 impl Committer {
-    pub fn start<C>(
+    pub fn start<C, M>(
         client: C,
         strategy: CommitStrategy,
         subscription_id: SubscriptionId,
         stream_id: StreamId,
+        metrics_collector: M,
     ) -> Self
     where
         C: ApiClient + Send + 'static,
+        M: MetricsCollector + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
@@ -45,6 +48,7 @@ impl Committer {
             stream_id.clone(),
             client,
             lifecycle.clone(),
+            metrics_collector,
         );
 
         Committer {
@@ -79,15 +83,17 @@ impl Committer {
     }
 }
 
-fn start_commit_loop<C>(
+fn start_commit_loop<C, M>(
     receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     connector: C,
     lifecycle: Lifecycle,
+    metrics_collector: M,
 ) where
     C: ApiClient + Send + 'static,
+    M: MetricsCollector + Send + 'static,
 {
     thread::spawn(move || {
         run_commit_loop(
@@ -97,6 +103,7 @@ fn start_commit_loop<C>(
             stream_id,
             connector,
             lifecycle,
+            metrics_collector,
         );
     });
 }
@@ -106,7 +113,8 @@ struct CommitEntry {
     num_batches: usize,
     num_events: usize,
     batch: Batch,
-    #[allow(unused)] first_cursor_received_at: Instant,
+    first_cursor_received_at: Instant,
+    current_cursor_received_at: Instant,
 }
 
 impl CommitEntry {
@@ -133,19 +141,23 @@ impl CommitEntry {
                 )
             }
         };
+        let received_at = batch.received_at;
         CommitEntry {
             commit_deadline,
             num_batches: 1,
             num_events: num_events_hint.unwrap_or(0),
             batch,
             first_cursor_received_at,
+            current_cursor_received_at: received_at,
         }
     }
 
     pub fn update(&mut self, next_batch: Batch, num_events_hint: Option<usize>) {
+        let received_at = next_batch.received_at;
         self.batch = next_batch;
         self.num_events += num_events_hint.unwrap_or(0);
         self.num_batches += 1;
+        self.current_cursor_received_at = received_at;
     }
 
     pub fn is_due_by_deadline(&self) -> bool {
@@ -153,15 +165,17 @@ impl CommitEntry {
     }
 }
 
-fn run_commit_loop<C>(
+fn run_commit_loop<C, M>(
     receiver: mpsc::Receiver<CommitterMessage>,
     strategy: CommitStrategy,
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     client: C,
     lifecycle: Lifecycle,
+    metrics_collector: M,
 ) where
     C: ApiClient,
+    M: MetricsCollector,
 {
     let mut cursors = HashMap::new();
     loop {
@@ -173,6 +187,7 @@ fn run_commit_loop<C>(
 
         match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(CommitterMessage::Commit(next_batch, num_events_hint)) => {
+                metrics_collector.committer_cursor_received(next_batch.received_at);
                 let mut key = (
                     next_batch.batch_line.partition().to_vec(),
                     next_batch.batch_line.event_type().to_vec(),
@@ -204,6 +219,7 @@ fn run_commit_loop<C>(
             &stream_id,
             &client,
             strategy,
+            &metrics_collector,
         ) {
             error!("Stream {} - Failed to commit cursors: {}", stream_id, err);
             break;
@@ -222,6 +238,8 @@ fn flush_all_cursors<C>(
 ) where
     C: ApiClient,
 {
+    // We are not interested in metrics here
+
     let cursors_to_commit: Vec<_> = all_cursors
         .values()
         .map(|v| v.batch.batch_line.cursor())
@@ -253,15 +271,17 @@ fn flush_all_cursors<C>(
     }
 }
 
-fn flush_due_cursors<C>(
+fn flush_due_cursors<C, M>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     subscription_id: &SubscriptionId,
     stream_id: &StreamId,
     client: &C,
     strategy: CommitStrategy,
+    metrics_collector: &M,
 ) -> Result<CommitStatus, CommitError>
 where
     C: ApiClient,
+    M: MetricsCollector,
 {
     let num_batches: usize = all_cursors.iter().map(|entry| entry.1.num_batches).sum();
     let num_events: usize = all_cursors.iter().map(|entry| entry.1.num_events).sum();
@@ -276,12 +296,17 @@ where
     let mut keys_to_commit: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     if commit_all {
         for (key, entry) in &*all_cursors {
+            metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
+            metrics_collector.committer_time_elapsed_until_commit(entry.first_cursor_received_at);
             cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
             keys_to_commit.push(key.clone());
         }
     } else {
         for (key, entry) in &*all_cursors {
             if entry.is_due_by_deadline() {
+                metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
+                metrics_collector
+                    .committer_time_elapsed_until_commit(entry.first_cursor_received_at);
                 cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
                 keys_to_commit.push(key.clone());
             }
@@ -291,12 +316,24 @@ where
     let flow_id = FlowId::default();
 
     let status = if !cursors_to_commit.is_empty() {
-        client.commit_cursors(
+        let start = Instant::now();
+        match client.commit_cursors(
             subscription_id,
             stream_id,
             &cursors_to_commit,
             flow_id.clone(),
-        )?
+        ) {
+            Ok(s) => {
+                metrics_collector.committer_cursor_commit_attempt(start);
+                metrics_collector.committer_cursor_committed(start);
+                s
+            }
+            Err(err) => {
+                metrics_collector.committer_cursor_commit_attempt(start);
+                metrics_collector.committer_cursor_commit_failed(start);
+                return Err(err);
+            }
+        }
     } else {
         CommitStatus::NothingToCommit
     };

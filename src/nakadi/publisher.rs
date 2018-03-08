@@ -49,6 +49,7 @@ impl NakadiPublisher {
         event_type: &str,
         bytes: Vec<u8>,
         flow_id: Option<FlowId>,
+        budget: Duration,
     ) -> Result<PublishStatus, PublishError> {
         let url = format!("{}/event-types/{}/events", self.nakadi_base_url, event_type);
 
@@ -76,7 +77,7 @@ impl NakadiPublisher {
         };
 
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(Duration::from_secs(5));
+        backoff.max_elapsed_time = Some(budget);
         backoff.initial_interval = Duration::from_millis(50);
         backoff.multiplier = 1.5;
 
@@ -92,12 +93,13 @@ impl NakadiPublisher {
         event_type: &str,
         events: &[T],
         flow_id: Option<FlowId>,
+        budget: Duration,
     ) -> Result<PublishStatus, PublishError> {
         let bytes = match serde_json::to_vec(events) {
             Ok(bytes) => bytes,
             Err(err) => return Err(PublishError::Serialization(err.to_string())),
         };
-        self.publish_raw(event_type, bytes, flow_id)
+        self.publish_raw(event_type, bytes, flow_id, budget)
     }
 }
 

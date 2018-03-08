@@ -195,7 +195,8 @@ fn consume() -> Result<(), Error> {
         .max_uncommitted_events(10000)
         .batch_limit(100);
 
-    let nakadion = nakadion_builder.build_and_start(handler_factory, AccessTokenProvider)?;
+    let nakadion =
+        nakadion_builder.build_and_start_without_metrics(handler_factory, AccessTokenProvider)?;
 
     thread::sleep(Duration::from_secs(90));
 
@@ -221,9 +222,12 @@ fn publish() {
                 let event = OutgoingEvent::new();
                 events.push(event);
             }
-            if let Err(err) =
-                publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
-            {
+            if let Err(err) = publisher.publish_events(
+                EVENT_TYPE_NAME,
+                &events,
+                Some(FlowId::default()),
+                Duration::from_millis(500),
+            ) {
                 error!("{}", err);
             }
         }

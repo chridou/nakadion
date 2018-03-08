@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use nakadi::metrics::MetricsCollector;
 
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
@@ -296,42 +297,68 @@ impl ConfigBuilder {
         })
     }
 
-    pub fn build_client<T>(self, token_provider: T) -> Result<NakadiStreamingClient, Error>
+    pub fn build_client<T, M>(
+        self,
+        token_provider: T,
+        metrics_collector: M,
+    ) -> Result<NakadiStreamingClient<M>, Error>
     where
         T: ProvidesAccessToken + Send + Sync + 'static,
+        M: MetricsCollector + Send + 'static,
     {
-        self.build_client_with_shared_access_token_provider(Arc::new(token_provider))
+        self.build_client_with_shared_access_token_provider(
+            Arc::new(token_provider),
+            metrics_collector,
+        )
     }
 
-    pub fn build_client_with_shared_access_token_provider(
+    pub fn build_client_with_shared_access_token_provider<M>(
         self,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
-    ) -> Result<NakadiStreamingClient, Error> {
+        metrics_collector: M,
+    ) -> Result<NakadiStreamingClient<M>, Error>
+    where
+        M: MetricsCollector + Send + 'static,
+    {
         let config = self.build().context("Could not build client config")?;
 
-        NakadiStreamingClient::with_shared_access_token_provider(config, token_provider)
+        NakadiStreamingClient::with_shared_access_token_provider(
+            config,
+            token_provider,
+            metrics_collector,
+        )
     }
 }
 
 #[derive(Clone)]
-pub struct NakadiStreamingClient {
+pub struct NakadiStreamingClient<M> {
     http_client: HttpClient,
     token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
     config: Config,
+    metrics_collector: M,
 }
 
-impl NakadiStreamingClient {
+impl<M> NakadiStreamingClient<M>
+where
+    M: MetricsCollector,
+{
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
         config: Config,
         token_provider: T,
-    ) -> Result<NakadiStreamingClient, Error> {
-        NakadiStreamingClient::with_shared_access_token_provider(config, Arc::new(token_provider))
+        metrics_collector: M,
+    ) -> Result<NakadiStreamingClient<M>, Error> {
+        NakadiStreamingClient::with_shared_access_token_provider(
+            config,
+            Arc::new(token_provider),
+            metrics_collector,
+        )
     }
 
     pub fn with_shared_access_token_provider(
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
-    ) -> Result<NakadiStreamingClient, Error> {
+        metrics_collector: M,
+    ) -> Result<NakadiStreamingClient<M>, Error> {
         let http_client = HttpClientBuilder::new()
             .timeout(None)
             .build()
@@ -341,6 +368,7 @@ impl NakadiStreamingClient {
             http_client,
             token_provider,
             config,
+            metrics_collector,
         })
     }
 }
@@ -395,7 +423,10 @@ fn create_connect_url(config: &Config, subscription_id: &SubscriptionId) -> Stri
     connect_url
 }
 
-impl StreamingClient for NakadiStreamingClient {
+impl<M> StreamingClient for NakadiStreamingClient<M>
+where
+    M: MetricsCollector,
+{
     type LineIterator = NakadiLineIterator;
     fn connect(
         &self,
@@ -410,6 +441,8 @@ impl StreamingClient for NakadiStreamingClient {
         }
 
         headers.set(XFlowId(flow_id.0.clone()));
+
+        self.metrics_collector.streaming_connect_attempt();
 
         let mut response = self.http_client.get(&connect_url).headers(headers).send()?;
 
@@ -431,50 +464,68 @@ impl StreamingClient for NakadiStreamingClient {
                 };
                 Ok((stream_id, NakadiLineIterator::new(response)))
             }
-            StatusCode::Forbidden => Err(ConnectError::Forbidden(
-                format!(
-                    "{}: {}",
-                    StatusCode::Forbidden,
-                    "Nakadion: Nakadi said forbidden."
-                ),
-                flow_id,
-            )),
-            StatusCode::Unauthorized => Err(ConnectError::Unauthorized(
-                format!(
-                    "{}: {}",
-                    StatusCode::Unauthorized,
-                    read_response_body(&mut response)
-                ),
-                flow_id,
-            )),
-            StatusCode::NotFound => Err(ConnectError::SubscriptionNotFound(
-                format!(
-                    "{}: {}",
-                    StatusCode::NotFound,
-                    read_response_body(&mut response)
-                ),
-                flow_id,
-            )),
-            StatusCode::BadRequest => Err(ConnectError::BadRequest(
-                format!(
-                    "{}: {}",
-                    StatusCode::BadRequest,
-                    read_response_body(&mut response)
-                ),
-                flow_id,
-            )),
-            StatusCode::Conflict => Err(ConnectError::Conflict(
-                format!(
-                    "{}: {}",
-                    StatusCode::Conflict,
-                    read_response_body(&mut response)
-                ),
-                flow_id,
-            )),
-            other_status => Err(ConnectError::Other(
-                format!("{}: {}", other_status, read_response_body(&mut response)),
-                flow_id,
-            )),
+            StatusCode::Forbidden => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::Forbidden(
+                    format!(
+                        "{}: {}",
+                        StatusCode::Forbidden,
+                        "Nakadion: Nakadi said forbidden."
+                    ),
+                    flow_id,
+                ))
+            }
+            StatusCode::Unauthorized => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::Unauthorized(
+                    format!(
+                        "{}: {}",
+                        StatusCode::Unauthorized,
+                        read_response_body(&mut response)
+                    ),
+                    flow_id,
+                ))
+            }
+            StatusCode::NotFound => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::SubscriptionNotFound(
+                    format!(
+                        "{}: {}",
+                        StatusCode::NotFound,
+                        read_response_body(&mut response)
+                    ),
+                    flow_id,
+                ))
+            }
+            StatusCode::BadRequest => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::BadRequest(
+                    format!(
+                        "{}: {}",
+                        StatusCode::BadRequest,
+                        read_response_body(&mut response)
+                    ),
+                    flow_id,
+                ))
+            }
+            StatusCode::Conflict => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::Conflict(
+                    format!(
+                        "{}: {}",
+                        StatusCode::Conflict,
+                        read_response_body(&mut response)
+                    ),
+                    flow_id,
+                ))
+            }
+            other_status => {
+                self.metrics_collector.streaming_connect_attempt_failed();
+                Err(ConnectError::Other(
+                    format!("{}: {}", other_status, read_response_body(&mut response)),
+                    flow_id,
+                ))
+            }
         }
     }
 }
@@ -489,14 +540,22 @@ fn read_response_body(response: &mut Response) -> String {
 
 #[derive(Fail, Debug)]
 pub enum ConnectError {
-    #[fail(display = "Token Error on connect: {}", _0)] Token(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String, FlowId),
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String, FlowId),
-    #[fail(display = "Bad request: {}", _0)] BadRequest(String, FlowId),
-    #[fail(display = "Conflict: {}", _0)] Conflict(String, FlowId),
-    #[fail(display = "Subscription not found: {}", _0)] SubscriptionNotFound(String, FlowId),
-    #[fail(display = "Other error: {}", _0)] Other(String, FlowId),
+    #[fail(display = "Token Error on connect: {}", _0)]
+    Token(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String, FlowId),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String, FlowId),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String, FlowId),
+    #[fail(display = "Conflict: {}", _0)]
+    Conflict(String, FlowId),
+    #[fail(display = "Subscription not found: {}", _0)]
+    SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Other error: {}", _0)]
+    Other(String, FlowId),
 }
 
 impl ConnectError {

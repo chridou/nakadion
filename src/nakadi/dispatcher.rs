@@ -1,15 +1,17 @@
 //! The processor orchestrates the workers
 
+use std::time::Duration;
+use std::thread;
+use std::sync::mpsc;
 use std::sync::Arc;
+
 use nakadi::Lifecycle;
 use nakadi::worker::Worker;
 use nakadi::model::PartitionId;
 use nakadi::committer::Committer;
 use nakadi::handler::HandlerFactory;
 use nakadi::batch::Batch;
-use std::time::Duration;
-use std::thread;
-use std::sync::mpsc;
+use nakadi::metrics::MetricsCollector;
 
 /// The dispatcher takes batch lines and sends them to the workers.
 pub struct Dispatcher {
@@ -19,9 +21,14 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub fn start<HF>(handler_factory: Arc<HF>, committer: Committer) -> Dispatcher
+    pub fn start<HF, M>(
+        handler_factory: Arc<HF>,
+        committer: Committer,
+        metrics_collector: M,
+    ) -> Dispatcher
     where
         HF: HandlerFactory + Send + Sync + 'static,
+        M: MetricsCollector + Clone + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
@@ -32,7 +39,13 @@ impl Dispatcher {
             sender,
         };
 
-        start_dispatcher_loop(receiver, lifecycle, handler_factory, committer);
+        start_dispatcher_loop(
+            receiver,
+            lifecycle,
+            handler_factory,
+            committer,
+            metrics_collector,
+        );
 
         handle
     }
@@ -57,24 +70,36 @@ impl Dispatcher {
     }
 }
 
-fn start_dispatcher_loop<HF>(
+fn start_dispatcher_loop<HF, M>(
     receiver: mpsc::Receiver<Batch>,
     lifecycle: Lifecycle,
     handler_factory: Arc<HF>,
     committer: Committer,
+    metrics_collector: M,
 ) where
     HF: HandlerFactory + Send + Sync + 'static,
+    M: MetricsCollector + Clone + Send + 'static,
 {
-    thread::spawn(move || dispatcher_loop(receiver, lifecycle, handler_factory, committer));
+    thread::spawn(move || {
+        dispatcher_loop(
+            receiver,
+            lifecycle,
+            handler_factory,
+            committer,
+            metrics_collector,
+        )
+    });
 }
 
-fn dispatcher_loop<HF>(
+fn dispatcher_loop<HF, M>(
     receiver: mpsc::Receiver<Batch>,
     lifecycle: Lifecycle,
     handler_factory: Arc<HF>,
     committer: Committer,
+    metrics_collector: M,
 ) where
     HF: HandlerFactory,
+    M: MetricsCollector + Clone + Send + 'static,
 {
     let stream_id = committer.stream_id().clone();
     let mut workers: Vec<Worker> = Vec::new();
@@ -131,7 +156,12 @@ fn dispatcher_loop<HF>(
                 stream_id, partition
             );
             let handler = handler_factory.create_handler(&partition);
-            let worker = Worker::start(handler, committer.clone(), partition.clone());
+            let worker = Worker::start(
+                handler,
+                committer.clone(),
+                partition.clone(),
+                metrics_collector.clone(),
+            );
             workers.push(worker);
             &workers[workers.len() - 1]
         };
