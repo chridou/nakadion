@@ -110,6 +110,7 @@ fn handler_loop<H, M>(
     M: MetricsCollector,
 {
     let stream_id = committer.stream_id().clone();
+    let mut handler = handler;
 
     info!(
         "Worker on stream '{}' for partition '{}': Started.",
@@ -142,9 +143,9 @@ fn handler_loop<H, M>(
                 Err(err) => {
                     error!(
                         "Worker on stream '{}' for partition '{}': Invalid event type. Stopping: {}",
-                     stream_id,
-                      partition,
-                       err);
+                        stream_id,
+                        partition,
+                        err);
                     break;
                 }
             };

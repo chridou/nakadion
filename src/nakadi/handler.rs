@@ -29,7 +29,7 @@ pub trait BatchHandler {
     /// Handle the events.
     ///
     /// Calling this method may never panic!
-    fn handle(&self, event_type: EventType, events: &[u8]) -> ProcessingStatus;
+    fn handle(&mut self, event_type: EventType, events: &[u8]) -> ProcessingStatus;
 }
 
 pub trait HandlerFactory {
@@ -44,7 +44,7 @@ pub enum TypedProcessingStatus {
 
 pub trait TypedBatchHandler {
     type Event: DeserializeOwned;
-    fn handle(&self, events: Vec<Self::Event>) -> TypedProcessingStatus;
+    fn handle(&mut self, events: Vec<Self::Event>) -> TypedProcessingStatus;
 }
 
 impl<T, E> BatchHandler for T
@@ -52,7 +52,7 @@ where
     T: TypedBatchHandler<Event = E>,
     E: DeserializeOwned,
 {
-    fn handle(&self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
+    fn handle(&mut self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
         let events: Vec<E> = match serde_json::from_slice(events) {
             Ok(events) => events,
             Err(err) => {

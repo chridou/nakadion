@@ -101,7 +101,7 @@ pub struct DemoHandler {
 
 impl TypedBatchHandler for DemoHandler {
     type Event = IncomingEvent;
-    fn handle(&self, events: Vec<IncomingEvent>) -> TypedProcessingStatus {
+    fn handle(&mut self, events: Vec<IncomingEvent>) -> TypedProcessingStatus {
         self.state.fetch_add(events.len(), Ordering::Relaxed);
         TypedProcessingStatus::Processed
     }
