@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.3.5"
+version = "0.5.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -11,21 +11,18 @@ repository = "https://github.com/chridou/nakadion"
 keywords = ["event", "broker", "distributed", "message", "nakadi"]
 
 [dependencies]
-log = "0.3"
-uuid = {version = "0.4", features=["serde"] }
+log = "0.4"
+uuid = {version = "0.5", features=["serde"] }
 url = { version = "1.4" }
-hyper = "0.10"
-hyper-native-tls = "0.2"
-derive_builder = "0.4"
-error-chain = "0.10"
+reqwest = "0.8"
+hyper = "0.11"
+failure = "0.1"
+backoff = "0.1"
 
-serde = "0.9"
-serde_derive = "0.9"
-serde_json = "0.9"
+serde = {version = "1.0", features = ["serde_derive"]}
+serde_json = "1.0"
 
-#metrics = "0.2"
-metrics = { git = "https://github.com/chridou/rust-metrics" }
-hdrsample = "3.0"
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-env_logger = "0.4"
+env_logger = "0.5"
