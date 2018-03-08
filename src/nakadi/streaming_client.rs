@@ -491,14 +491,22 @@ fn read_response_body(response: &mut Response) -> String {
 
 #[derive(Fail, Debug)]
 pub enum ConnectError {
-    #[fail(display = "Token Error on connect: {}", _0)] Token(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String, FlowId),
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String, FlowId),
-    #[fail(display = "Bad request: {}", _0)] BadRequest(String, FlowId),
-    #[fail(display = "Conflict: {}", _0)] Conflict(String, FlowId),
-    #[fail(display = "Subscription not found: {}", _0)] SubscriptionNotFound(String, FlowId),
-    #[fail(display = "Other error: {}", _0)] Other(String, FlowId),
+    #[fail(display = "Token Error on connect: {}", _0)]
+    Token(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String, FlowId),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String, FlowId),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String, FlowId),
+    #[fail(display = "Conflict: {}", _0)]
+    Conflict(String, FlowId),
+    #[fail(display = "Subscription not found: {}", _0)]
+    SubscriptionNotFound(String, FlowId),
+    #[fail(display = "Other error: {}", _0)]
+    Other(String, FlowId),
 }
 
 impl ConnectError {

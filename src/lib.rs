@@ -1,3 +1,6 @@
+//! WARNING! This is the fist iteration of a rewrite. API might change and
+//! features will be added. Documentation not yet updated!
+
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -26,8 +29,7 @@ pub use nakadi::consumer::*;
 pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
 pub use nakadi::streaming_client;
 pub use nakadi::api_client;
-pub use nakadi::CommitStrategy;
-pub use nakadi::Nakadion;
+pub use nakadi::{CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery};
 
 pub use nakadi::publisher;
 

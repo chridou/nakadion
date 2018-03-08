@@ -89,7 +89,7 @@ fn dispatcher_loop<HF>(
             break;
         }
 
-        let batch = match receiver.recv_timeout(Duration::from_millis(20)) {
+        let batch = match receiver.recv_timeout(Duration::from_millis(5)) {
             Ok(batch) => batch,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {

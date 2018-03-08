@@ -99,18 +99,11 @@ pub struct DemoHandler {
     pub state: Arc<AtomicUsize>,
 }
 
-impl BatchHandler for DemoHandler {
-    fn handle(&self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
-        let events: Vec<IncomingEvent> = match serde_json::from_slice(events) {
-            Ok(events) => events,
-            Err(err) => {
-                error!("{}", err);
-                return ProcessingStatus::failed(err.to_string());
-            }
-        };
-
+impl TypedBatchHandler for DemoHandler {
+    type Event = IncomingEvent;
+    fn handle(&self, events: Vec<IncomingEvent>) -> TypedProcessingStatus {
         self.state.fetch_add(events.len(), Ordering::Relaxed);
-        ProcessingStatus::processed(0)
+        TypedProcessingStatus::Processed
     }
 }
 
@@ -173,10 +166,7 @@ fn main() {
 
     publish();
 
-    if let Err(err) = consume(
-        subscription_status.subscription().id.clone(),
-        api_client.clone(),
-    ) {
+    if let Err(err) = consume() {
         error!("Aborting: {}", err);
     }
 
@@ -189,27 +179,23 @@ fn main() {
     api_client.delete_event_type(EVENT_TYPE_NAME).unwrap();
 }
 
-fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Result<(), Error> {
-    let config_builder = ::nakadion::streaming_client::ConfigBuilder::default()
-        .nakadi_host("http://localhost:8080")
-        .max_uncommitted_events(10000)
-        .batch_limit(100);
-
-    let streaming_client = config_builder.build_client(AccessTokenProvider)?;
-
+fn consume() -> Result<(), Error> {
     let count = Arc::new(AtomicUsize::new(0));
 
     let handler_factory = DemoHandlerFactory {
         state: count.clone(),
     };
 
-    let nakadion = Nakadion::start(
-        subscription_id,
-        streaming_client,
-        api_client,
-        handler_factory,
-        CommitStrategy::EveryNEvents(1000),
-    )?;
+    let nakadion_builder = NakadionBuilder::default()
+        .nakadi_host("http://localhost:8080")
+        .subscription_discovery(SubscriptionDiscovery::OwningApplication(
+            "test-suite".into(),
+            vec![EVENT_TYPE_NAME.into()],
+        ))
+        .max_uncommitted_events(10000)
+        .batch_limit(100);
+
+    let nakadion = nakadion_builder.build_and_start(handler_factory, AccessTokenProvider)?;
 
     thread::sleep(Duration::from_secs(90));
 
@@ -217,29 +203,31 @@ fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Resu
 
     nakadion.stop();
 
-    nakadion.block();
+    nakadion.block_until_stopped();
     Ok(())
 }
 
 fn publish() {
-    let publisher =
-        nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
+    thread::spawn(move || {
+        let publisher =
+            nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
 
-    let mut count = 0;
+        let mut count = 0;
 
-    for _ in 0..10_000 {
-        let mut events = Vec::new();
-        for _ in 0..100 {
-            count += 1;
-            let event = OutgoingEvent::new();
-            events.push(event);
+        for _ in 0..10_000 {
+            let mut events = Vec::new();
+            for _ in 0..100 {
+                count += 1;
+                let event = OutgoingEvent::new();
+                events.push(event);
+            }
+            if let Err(err) =
+                publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
+            {
+                error!("{}", err);
+            }
         }
-        if let Err(err) =
-            publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
-        {
-            error!("{}", err);
-        }
-    }
 
-    info!("{} events published", count);
+        info!("{} events published", count);
+    });
 }

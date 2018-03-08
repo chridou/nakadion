@@ -4,6 +4,7 @@ A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
 
 Nakadion uses the Subscription API of Nakadi.
 
+WARNING! This is the fist iteration of a rewrite. API might change and features will be added. Documentation not yet updated!
 
 ## Consuming
 
@@ -16,9 +17,9 @@ This mode of operation is simple, straight forward and should be sufficient for 
 
 ### Concurrent Consumption
 
-In this mode Nakadion will spawn a number of worker threads and distribute work among them based on 
+In this mode Nakadion will spawn a number of worker threads and distribute work among them based on
 the `partion id` of a batch. The workers are not dedidacted to a partition. Work is rather distributed based
-on a hash of the `partition id`. 
+on a hash of the `partition id`.
 
 ## Performance
 

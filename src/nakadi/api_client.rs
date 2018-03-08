@@ -100,7 +100,7 @@ impl ConfigBuilder {
                 .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?))
         } else {
             warn!(
-                "Environment variable 'NAKADION_REQUEST_TIMEOUT_MS' not found. It will have to be set \
+                "Environment variable 'NAKADION_REQUEST_TIMEOUT_MS' not found. It will have be set \
                  to the default."
             );
             builder
@@ -419,25 +419,36 @@ pub enum CommitStatus {
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Token Error on commit: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
     #[fail(display = "Subscription not found(FlowId: {}): {}", _1, _0)]
     SubscriptionNotFound(String, FlowId),
     #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
     UnprocessableEntity(String, FlowId),
-    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)] Server(String, FlowId),
-    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)] Client(String, FlowId),
-    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)] Other(String, FlowId),
+    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)]
+    Server(String, FlowId),
+    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)]
+    Client(String, FlowId),
+    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)]
+    Other(String, FlowId),
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Server Error: {}", _0)] Server(String),
-    #[fail(display = "Client Error: {}", _0)] Client(String),
-    #[fail(display = "Parse Error: {}", _0)] Parse(String),
-    #[fail(display = "Other Error: {}", _0)] Other(String),
+    #[fail(display = "Token Error on stats: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Server Error: {}", _0)]
+    Server(String),
+    #[fail(display = "Client Error: {}", _0)]
+    Client(String),
+    #[fail(display = "Parse Error: {}", _0)]
+    Parse(String),
+    #[fail(display = "Other Error: {}", _0)]
+    Other(String),
 }
 
 impl From<TokenError> for CommitError {
@@ -654,20 +665,27 @@ pub struct Subscription {
 
 #[derive(Fail, Debug)]
 pub enum CreateSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Unprocessable Entity: {}", _0)]
     UnprocessableEntity(String),
-    #[fail(display = "Bad request: {}", _0)] BadRequest(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum DeleteSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "NotFound: {}", _0)] NotFound(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "NotFound: {}", _0)]
+    NotFound(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 #[derive(Debug, Clone)]
@@ -687,12 +705,15 @@ impl CreateSubscriptionStatus {
 
 #[derive(Fail, Debug)]
 pub enum CreateEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Event type already exists: {}", _0)]
     Conflict(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)]
+    UnprocessableEntity(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl CreateEventTypeError {
@@ -708,9 +729,12 @@ impl CreateEventTypeError {
 
 #[derive(Fail, Debug)]
 pub enum DeleteEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl DeleteEventTypeError {
@@ -881,7 +905,8 @@ pub struct EventTypeDefinition {
     pub partition_strategy: Option<PartitionStrategy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility_mode: Option<CompatibilityMode>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub partition_key_fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_key_fields: Option<Vec<String>>,
     pub schema: EventTypeSchema,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_statistic: Option<EventTypeStatistics>,
@@ -890,7 +915,8 @@ pub struct EventTypeDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeSchema {
     pub version: Option<String>,
-    #[serde(rename = "type")] pub schema_type: SchemaType,
+    #[serde(rename = "type")]
+    pub schema_type: SchemaType,
     pub schema: String,
 }
 
@@ -962,7 +988,8 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")]
+        pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {
