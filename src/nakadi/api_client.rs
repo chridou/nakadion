@@ -877,10 +877,13 @@ pub struct EventTypeDefinition {
     pub owning_application: String,
     pub category: EventCategory,
     pub enrichment_strategies: Vec<EnrichmentStrategy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub partition_strategy: Option<PartitionStrategy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility_mode: Option<CompatibilityMode>,
-    pub partition_key_fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")] pub partition_key_fields: Option<Vec<String>>,
     pub schema: EventTypeSchema,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_statistic: Option<EventTypeStatistics>,
 }
 

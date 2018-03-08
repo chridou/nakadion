@@ -144,7 +144,12 @@ fn main() {
         partition_strategy: Some(PartitionStrategy::Hash),
         compatibility_mode: Some(CompatibilityMode::Forward),
         partition_key_fields: Some(vec!["fortune".into()]),
-        default_statistic: None,
+        default_statistic: Some(EventTypeStatistics {
+            messages_per_minute: 6000000,
+            message_size: 500,
+            read_parallelism: 16,
+            write_parallelism: 16,
+        }),
     };
 
     let api_client = ::nakadion::api_client::ConfigBuilder::default()
@@ -187,7 +192,7 @@ fn main() {
 fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Result<(), Error> {
     let config_builder = ::nakadion::streaming_client::ConfigBuilder::default()
         .nakadi_host("http://localhost:8080")
-        .max_uncommitted_events(1000)
+        .max_uncommitted_events(10000)
         .batch_limit(100);
 
     let streaming_client = config_builder.build_client(AccessTokenProvider)?;
@@ -203,7 +208,7 @@ fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Resu
         streaming_client,
         api_client,
         handler_factory,
-        CommitStrategy::EveryNBatches(10),
+        CommitStrategy::EveryNEvents(1000),
     )?;
 
     thread::sleep(Duration::from_secs(90));
@@ -217,28 +222,24 @@ fn consume(subscription_id: SubscriptionId, api_client: NakadiApiClient) -> Resu
 }
 
 fn publish() {
-    thread::spawn(move || {
-        let publisher =
-            nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
+    let publisher =
+        nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
 
-        let end = Instant::now() + Duration::from_secs(90);
+    let mut count = 0;
 
-        let mut count = 0;
-
-        while end > Instant::now() {
-            let mut events = Vec::new();
-            for _ in 0..100 {
-                count += 1;
-                let event = OutgoingEvent::new();
-                events.push(event);
-            }
-            if let Err(err) =
-                publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
-            {
-                error!("{}", err);
-            }
+    for _ in 0..10_000 {
+        let mut events = Vec::new();
+        for _ in 0..100 {
+            count += 1;
+            let event = OutgoingEvent::new();
+            events.push(event);
         }
+        if let Err(err) =
+            publisher.publish_events(EVENT_TYPE_NAME, &events, Some(FlowId::default()))
+        {
+            error!("{}", err);
+        }
+    }
 
-        info!("{} events published", count);
-    });
+    info!("{} events published", count);
 }

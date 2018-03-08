@@ -201,7 +201,6 @@ impl ConfigBuilder {
     /// Variables:
     ///
     /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
-    /// * NAKADION_SUBSCRIPTION_ID: See `ConnectorSettings::subscription_id`
     /// * NAKADION_MAX_UNCOMMITED_EVENTS: See
     /// `ConnectorSettings::max_uncommitted_events`
     /// * NAKADION_BATCH_LIMIT: See `ConnectorSettings::batch_limit`
