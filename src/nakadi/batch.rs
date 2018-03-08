@@ -18,11 +18,13 @@ impl BatchLine {
         Ok(BatchLine { bytes, items })
     }
 
+    #[allow(unused)]
     pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, String> {
         let bytes: Vec<_> = bytes.iter().cloned().collect();
         BatchLine::new((bytes))
     }
 
+    #[allow(unused)]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }

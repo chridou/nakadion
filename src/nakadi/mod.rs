@@ -165,10 +165,9 @@ impl FromStr for SubscriptionDiscovery {
             }
         } else if parts.len() == 3 && parts[0] == "owning_application" {
             let owning_application = parts[1].to_string();
-            let mut event_types = Vec::new();
-            let event_type_parts: Vec<_> = parts[2]
+            let event_types: Vec<_> = parts[2]
                 .split(' ')
-                .map(|s| s.trim())
+                .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
             Ok(SubscriptionDiscovery::OwningApplication(

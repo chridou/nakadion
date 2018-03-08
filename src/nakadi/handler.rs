@@ -57,7 +57,10 @@ where
             Ok(events) => events,
             Err(err) => {
                 return ProcessingStatus::Failed {
-                    reason: format!("Could not deserialize events: {}", err),
+                    reason: format!(
+                        "Could not deserialize events(event type: {}): {}",
+                        event_type.0, err
+                    ),
                 }
             }
         };

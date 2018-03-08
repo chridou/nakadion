@@ -106,7 +106,7 @@ struct CommitEntry {
     num_batches: usize,
     num_events: usize,
     batch: Batch,
-    first_cursor_received_at: Instant,
+    #[allow(unused)] first_cursor_received_at: Instant,
 }
 
 impl CommitEntry {
