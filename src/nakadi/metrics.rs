@@ -17,6 +17,8 @@ pub trait MetricsCollector {
     /// How old is this cursor when the committer received it?
     fn committer_cursor_received(&self, cursor_received_at_timestamp: Instant);
     fn committer_cursor_committed(&self, commit_attempt_started: Instant);
+    fn committer_batches_committed(&self, n: usize);
+    fn committer_events_committed(&self, n: usize);
     fn committer_cursor_commit_attempt(&self, commit_attempt_started: Instant);
     fn committer_cursor_commit_failed(&self, commit_attempt_started: Instant);
     /// How old is this cursor that is currently committed?
@@ -24,6 +26,7 @@ pub trait MetricsCollector {
     /// How match time has elapsed from the first cursor to be committed
     /// until the batch finally got committed?
     fn committer_time_elapsed_until_commit(&self, first_cursor_age: Instant);
+    fn committer_time_left_on_commit(&self, committed_at: Instant, deadline: Instant);
 }
 
 #[derive(Clone)]
@@ -45,8 +48,11 @@ impl MetricsCollector for DevNullMetricsCollector {
 
     fn committer_cursor_received(&self, _cursor_received_at_timestamp: Instant) {}
     fn committer_cursor_committed(&self, _commit_attempt_started: Instant) {}
+    fn committer_batches_committed(&self, _n: usize) {}
+    fn committer_events_committed(&self, _n: usize) {}
     fn committer_cursor_commit_attempt(&self, _commit_attempt_started: Instant) {}
     fn committer_cursor_commit_failed(&self, _commit_attempt_started: Instant) {}
     fn committer_cursor_age_at_commit(&self, _received_at_timestamp: Instant) {}
     fn committer_time_elapsed_until_commit(&self, _first_cursor_age: Instant) {}
+    fn committer_time_left_on_commit(&self, _committed_at: Instant, _deadline: Instant) {}
 }

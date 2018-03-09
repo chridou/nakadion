@@ -414,7 +414,7 @@ impl NakadionBuilder {
         })
     }
 
-    pub fn build_and_start_without_metrics<HF, P>(
+    pub fn build_and_start<HF, P>(
         self,
         handler_factory: HF,
         access_token_provider: P,
@@ -423,14 +423,14 @@ impl NakadionBuilder {
         HF: HandlerFactory + Sync + Send + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
-        self.build_and_start(
+        self.build_and_start_with_metrics(
             handler_factory,
             access_token_provider,
             DevNullMetricsCollector,
         )
     }
 
-    pub fn build_and_start<HF, P, M>(
+    pub fn build_and_start_with_metrics<HF, P, M>(
         self,
         handler_factory: HF,
         access_token_provider: P,

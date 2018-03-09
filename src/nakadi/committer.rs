@@ -294,19 +294,33 @@ where
 
     let mut cursors_to_commit: Vec<Vec<u8>> = Vec::new();
     let mut keys_to_commit: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    let mut num_batches_to_commit = 0;
+    let mut num_events_to_commit = 0;
     if commit_all {
         for (key, entry) in &*all_cursors {
+            num_batches_to_commit += entry.num_batches;
+            num_events_to_commit += entry.num_events;
             metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
             metrics_collector.committer_time_elapsed_until_commit(entry.first_cursor_received_at);
+            metrics_collector.committer_time_left_on_commit(
+                entry.first_cursor_received_at + Duration::from_secs(60),
+                Instant::now(),
+            );
             cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
             keys_to_commit.push(key.clone());
         }
     } else {
         for (key, entry) in &*all_cursors {
             if entry.is_due_by_deadline() {
+                num_batches_to_commit += entry.num_batches;
+                num_events_to_commit += entry.num_events;
                 metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
                 metrics_collector
                     .committer_time_elapsed_until_commit(entry.first_cursor_received_at);
+                metrics_collector.committer_time_left_on_commit(
+                    entry.first_cursor_received_at + Duration::from_secs(60),
+                    Instant::now(),
+                );
                 cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
                 keys_to_commit.push(key.clone());
             }
@@ -326,6 +340,8 @@ where
             Ok(s) => {
                 metrics_collector.committer_cursor_commit_attempt(start);
                 metrics_collector.committer_cursor_committed(start);
+                metrics_collector.committer_batches_committed(num_batches_to_commit);
+                metrics_collector.committer_events_committed(num_events_to_commit);
                 s
             }
             Err(err) => {
