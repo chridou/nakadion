@@ -300,7 +300,7 @@ where
         for (key, entry) in &*all_cursors {
             num_batches_to_commit += entry.num_batches;
             num_events_to_commit += entry.num_events;
-            metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
+            metrics_collector.committer_cursor_age_on_commit(entry.current_cursor_received_at);
             metrics_collector.committer_time_elapsed_until_commit(entry.first_cursor_received_at);
             metrics_collector.committer_time_left_on_commit(
                 entry.first_cursor_received_at + Duration::from_secs(60),
@@ -314,7 +314,7 @@ where
             if entry.is_due_by_deadline() {
                 num_batches_to_commit += entry.num_batches;
                 num_events_to_commit += entry.num_events;
-                metrics_collector.committer_cursor_age_at_commit(entry.current_cursor_received_at);
+                metrics_collector.committer_cursor_age_on_commit(entry.current_cursor_received_at);
                 metrics_collector
                     .committer_time_elapsed_until_commit(entry.first_cursor_received_at);
                 metrics_collector.committer_time_left_on_commit(

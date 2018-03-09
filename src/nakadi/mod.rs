@@ -31,6 +31,9 @@ use nakadi::streaming_client::StreamingClient;
 use auth::ProvidesAccessToken;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
 
+#[cfg(feature = "metrix")]
+use metrix::processor::AggregatesProcessors;
+
 /// Stragtegy for committing cursors
 #[derive(Debug, Clone, Copy)]
 pub enum CommitStrategy {
@@ -448,6 +451,29 @@ impl NakadionBuilder {
             handler_factory,
             access_token_provider,
             metrics_collector,
+        )
+    }
+
+    #[cfg(feature = "metrix")]
+    pub fn build_and_start_with_metrix<HF, P, T>(
+        self,
+        handler_factory: HF,
+        access_token_provider: P,
+        put_metrice_here: &mut T,
+    ) -> Result<Nakadion, Error>
+    where
+        HF: HandlerFactory + Sync + Send + 'static,
+        P: ProvidesAccessToken + Send + Sync + 'static,
+        T: AggregatesProcessors,
+    {
+        let metrix_collector = ::nakadi::metrics::MetrixCollector::new(put_metrice_here);
+        let config = self.build_config()?;
+
+        Nakadion::start(
+            config,
+            handler_factory,
+            access_token_provider,
+            metrix_collector,
         )
     }
 }

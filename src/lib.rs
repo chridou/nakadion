@@ -20,6 +20,9 @@ extern crate backoff;
 
 extern crate url;
 
+#[cfg(feature = "metrix")]
+extern crate metrix;
+
 pub mod auth;
 
 mod nakadi;
