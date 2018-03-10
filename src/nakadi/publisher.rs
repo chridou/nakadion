@@ -1,10 +1,10 @@
+//! Publish events to Nakadi
 use std::sync::Arc;
 use std::time::Duration;
 use std::io::Read;
 
 use serde::Serialize;
 use serde_json;
-
 use reqwest::{Client as HttpClient, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer};
@@ -15,6 +15,12 @@ use nakadi::model::FlowId;
 
 header! { (XFlowId, "X-Flow-Id") => [String] }
 
+/// Publishes events to `Nakadi`
+///
+/// The publisher is just a convinience struct
+/// and is not used for consuming a `Nakadi` stream.
+/// It is simply a helper for publishing to a `Nakadi`
+/// stream
 pub struct NakadiPublisher {
     nakadi_base_url: String,
     http_client: HttpClient,
@@ -22,6 +28,7 @@ pub struct NakadiPublisher {
 }
 
 impl NakadiPublisher {
+    /// Create a new `NakadiPublisher`
     pub fn new<U: Into<String>, T: ProvidesAccessToken + 'static>(
         nakadi_base_url: U,
         token_provider: T,
@@ -33,6 +40,7 @@ impl NakadiPublisher {
         }
     }
 
+    /// Create a new `NakadiPublisher`
     pub fn with_shared_access_token_provider<U: Into<String>>(
         nakadi_base_url: U,
         token_provider: Arc<ProvidesAccessToken>,
@@ -44,6 +52,10 @@ impl NakadiPublisher {
         }
     }
 
+    /// Publish events packed into a vector of bytes.
+    ///
+    /// The events must be encoded in a way that `Nakadi`
+    /// can understand.
     pub fn publish_raw(
         &self,
         event_type: &str,
@@ -88,6 +100,7 @@ impl NakadiPublisher {
         }
     }
 
+    /// Publish the given events to `Nakadi`
     pub fn publish_events<T: Serialize>(
         &self,
         event_type: &str,
@@ -155,12 +168,16 @@ fn read_response_body(response: &mut Response) -> String {
         .unwrap_or("<Could not read body.>".to_string())
 }
 
+/// A status for (almos) successful publishing
 #[derive(Debug)]
 pub enum PublishStatus {
+    /// All events were written send and accepted by `Nakadi`
     AllEventsPublished,
+    /// Not all events were accepted by `Nakadi`
     NotAllEventsPublished,
 }
 
+/// Errors that can happen when publishing to `Nakadi`.
 #[derive(Fail, Debug)]
 pub enum PublishError {
     #[fail(display = "Unauthorized(FlowId: {}): {}", _1, _0)]

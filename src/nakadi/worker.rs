@@ -1,15 +1,21 @@
-use nakadi::Lifecycle;
-use nakadi::model::PartitionId;
+//! Processing a partition
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use failure::*;
+
+use nakadi::Lifecycle;
+use nakadi::model::PartitionId;
 use nakadi::handler::{BatchHandler, ProcessingStatus};
 use nakadi::batch::Batch;
 use nakadi::model::EventType;
 use nakadi::committer::Committer;
 use nakadi::metrics::MetricsCollector;
 
+/// A worker is responsible to execute a handler on a given
+/// partition. A worker guarantees that its `BatchHandler`
+/// is always executed on the same thread.
 pub struct Worker {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
@@ -19,6 +25,9 @@ pub struct Worker {
 }
 
 impl Worker {
+    /// Start the worker.
+    ///
+    /// It will run until stop is called.
     pub fn start<H, M>(
         handler: H,
         committer: Committer,
@@ -51,23 +60,25 @@ impl Worker {
         handle
     }
 
+    /// Returns true if the `Worker` is still running
     pub fn running(&self) -> bool {
         self.lifecycle.running()
     }
 
+    /// Request the worker to stop.
+    ///
+    /// This does not necessarily cause the worker to stop
+    /// immediately. Poll `self::running()` until the worker has
+    /// stopped if you depend on the fact that the worker reales stopped working.
     pub fn stop(&self) {
         self.lifecycle.request_abort()
     }
 
-    pub fn process(&self, batch: Batch) -> Result<(), String> {
-        if let Err(err) = self.sender.send(batch) {
-            Err(format!(
-                "Could not process batch. Worker possibly closed: {}",
-                err
-            ))
-        } else {
-            Ok(())
-        }
+    /// Process the batch.
+    pub fn process(&self, batch: Batch) -> Result<(), Error> {
+        Ok(self.sender
+            .send(batch)
+            .context("Could not process batch. Worker possibly closed.")?)
     }
 
     pub fn partition(&self) -> &PartitionId {

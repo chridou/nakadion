@@ -1,3 +1,4 @@
+//! Some common types
 use std::fmt;
 
 use uuid::Uuid;

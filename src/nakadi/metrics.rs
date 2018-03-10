@@ -1,40 +1,79 @@
+//! Metrics collected by `Nakadion`
 use std::time::Instant;
 
 #[cfg(feature = "metrix")]
 pub use self::metrix::MetrixCollector;
 
+/// An interface for a `Nakadion` that `Nakadion` can use to notify
+/// on changing values and states.
 pub trait MetricsCollector {
+    /// A connect attempt for streaming has been made.
     fn streaming_connect_attempt(&self);
+
+    /// A connect attempt for streaming failed.
     fn streaming_connect_attempt_failed(&self);
 
+    /// A connect attempt the consumer requested succeeded.
+    ///
+    /// # Parameters
+    ///
+    /// * attempt_started: The timestampt when the attempt
+    /// to establish a connection was started
     fn consumer_connected(&self, attempt_started: Instant);
+
+    /// The instant of when the connection that just shut
+    /// down was initiated. Used to determine for how long Nakadion
+    /// was connected.
     fn consumer_connection_lifetime(&self, connected_since: Instant);
+    /// A line with the given number of bytes was reveived.
     fn consumer_line_received(&self, bytes: usize);
+    /// A line with an info field was received. The info
+    /// fieldhad bytes bytes..
     fn consumer_info_line_received(&self, bytes: usize);
+    /// A keep alive line with the given number of bytes was reveived.
     fn consumer_keep_alive_line_received(&self, bytes: usize);
+    /// A line of events with the given number of bytes was reveived.
     fn consumer_batch_line_received(&self, bytes: usize);
 
+    /// The number of workers currently processing partitions.
     fn dispatcher_current_workers(&self, num_workers: usize);
 
+    /// Events with a comined legth of `bayts` bytes have been
+    /// received.
     fn worker_events_received(&self, bytes: usize);
+    /// A batch has been prcessed where processing was started at 'started`.
     fn worker_batch_processed(&self, started: Instant);
+    /// The worker processed `n` events.
     fn worker_events_processed(&self, n: usize);
 
-    /// How old is this cursor when the committer received it?
+    /// Time elapsed from receiving the cursor from `Nakadi` until
+    /// it was send for being committed. This is most probably right
+    /// after events have been processed?
     fn committer_cursor_received(&self, cursor_received_at_timestamp: Instant);
-    fn committer_cursor_committed(&self, commit_attempt_started: Instant);
-    fn committer_batches_committed(&self, n: usize);
-    fn committer_events_committed(&self, n: usize);
+    /// A commit attempt has been made. It was started at `commit_attempt_started`.
+    /// No difference is made between success and failure.
     fn committer_cursor_commit_attempt(&self, commit_attempt_started: Instant);
+    /// A cursor has been committed and the instant when the commit attempt was started
+    /// is given.
+    fn committer_cursor_committed(&self, commit_attempt_started: Instant);
+    /// A cursor has not been committed and the instant when the commit attempt was started
+    /// is given.
     fn committer_cursor_commit_failed(&self, commit_attempt_started: Instant);
+    /// The number of batches that have been committed with the last cursor.
+    fn committer_batches_committed(&self, n: usize);
+    /// The number of events that have been committed with the last cursor.
+    fn committer_events_committed(&self, n: usize);
     /// How old is this cursor that is currently committed?
     fn committer_cursor_age_on_commit(&self, received_at_timestamp: Instant);
     /// How match time has elapsed from the first cursor to be committed
     /// until the batch finally got committed?
     fn committer_time_elapsed_until_commit(&self, first_cursor_age: Instant);
+    /// The time left when committing the event until the stream would have become
+    /// invalid.
     fn committer_time_left_on_commit(&self, committed_at: Instant, deadline: Instant);
 }
 
+/// Using this disables metrics collection.
 #[derive(Clone)]
 pub struct DevNullMetricsCollector;
 
@@ -118,6 +157,8 @@ mod metrix {
         TimeLeftOnCommit,
     }
 
+    /// A `MetricsCollector` that works with the [`metrix`](https://crates.io/crates/metrix)
+    ///  library
     #[derive(Clone)]
     pub struct MetrixCollector {
         connector: TelemetryTransmitterSync<ConnectorMetrics>,
@@ -128,6 +169,8 @@ mod metrix {
     }
 
     impl MetrixCollector {
+        /// Creates a new collector that
+        /// is attached to `add_metrics_to`.
         pub fn new<T>(add_metrics_to: &mut T) -> MetrixCollector
         where
             T: AggregatesProcessors,

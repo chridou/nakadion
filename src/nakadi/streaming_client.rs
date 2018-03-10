@@ -1,33 +1,39 @@
+/// Stream lines from a Nakadi subscription
 use std::sync::Arc;
 use std::env;
 use std::time::{Duration, Instant};
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
-
-use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
-use nakadi::metrics::MetricsCollector;
 
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, Headers};
 use failure::*;
 
+use auth::{AccessToken, ProvidesAccessToken, TokenError};
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};
+
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 header! { (XFlowId, "X-Flow-Id") => [String] }
 
 const LINE_SPLIT_BYTE: u8 = b'\n';
 
+/// A line as received from Nakadi plus a timestamp.
 pub struct RawLine {
+    /// The bytes reveived as a line from Nakadi
     pub bytes: Vec<u8>,
+    /// The timestamp when this line was received
     pub received_at: Instant,
 }
 
 pub type LineResult = ::std::result::Result<RawLine, IoError>;
 
+/// An iterator over lines received from Nakadi.
 pub struct NakadiLineIterator {
     lines: Split<BufReader<Response>>,
 }
 
+/// An iterator over lines `Nakadion` understands.
 impl NakadiLineIterator {
     pub fn new(response: Response) -> Self {
         let reader = BufReader::with_capacity(1024 * 1024, response);
@@ -50,9 +56,10 @@ impl Iterator for NakadiLineIterator {
     }
 }
 
-/// A client to the Nakadi Event Broker
+/// A client for connecting to a subscription on the Nakadi Event Broker
 pub trait StreamingClient {
     type LineIterator: Iterator<Item = LineResult>;
+    /// Establish a connection for stream consumption.
     fn connect(
         &self,
         subscription_id: &SubscriptionId,
@@ -104,6 +111,7 @@ pub struct Config {
     pub nakadi_host: String,
 }
 
+/// Builds a configuration for a `Config`.
 pub struct ConfigBuilder {
     pub stream_keep_alive_limit: Option<usize>,
     pub stream_limit: Option<usize>,
@@ -199,16 +207,16 @@ impl ConfigBuilder {
     ///
     /// Variables:
     ///
-    /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
+    /// * NAKADION_NAKADI_HOST: See `ConfigBuilder::nakadi_host`
     /// * NAKADION_MAX_UNCOMMITED_EVENTS: See
-    /// `ConnectorSettings::max_uncommitted_events`
-    /// * NAKADION_BATCH_LIMIT: See `ConnectorSettings::batch_limit`
+    /// `ConfigBuilder::max_uncommitted_events`
+    /// * NAKADION_BATCH_LIMIT: See `ConfigBuilder::batch_limit`
     /// * NAKADION_BATCH_FLUSH_TIMEOUT_SECS: See
-    /// `ConnectorSettings::batch_flush_timeout`
-    /// * NAKADION_STREAM_TIMEOUT_SECS: See `ConnectorSettings::stream_timeout`
-    /// * NAKADION_STREAM_LIMIT: See `ConnectorSettings::stream_limit`
+    /// `ConfigBuilder::batch_flush_timeout`
+    /// * NAKADION_STREAM_TIMEOUT_SECS: See `ConfigBuilder::stream_timeout`
+    /// * NAKADION_STREAM_LIMIT: See `ConfigBuilder::stream_limit`
     /// * NAKADION_STREAM_KEEP_ALIVE_LIMIT: See
-    /// `ConnectorSettings::stream_keep_alive_limit`
+    /// `ConfigBuilder::stream_keep_alive_limit`
     pub fn from_env() -> Result<ConfigBuilder, Error> {
         let builder = ConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
@@ -280,6 +288,7 @@ impl ConfigBuilder {
         Ok(builder)
     }
 
+    /// Build a `Config` from
     pub fn build(self) -> Result<Config, Error> {
         let nakadi_host = if let Some(nakadi_host) = self.nakadi_host {
             nakadi_host
@@ -297,6 +306,7 @@ impl ConfigBuilder {
         })
     }
 
+    /// Build a `NakadiStreamingClient` from this builder.
     pub fn build_client<T, M>(
         self,
         token_provider: T,
@@ -312,6 +322,7 @@ impl ConfigBuilder {
         )
     }
 
+    /// Build a `NakadiStreamingClient` from this builder.
     pub fn build_client_with_shared_access_token_provider<M>(
         self,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -330,6 +341,8 @@ impl ConfigBuilder {
     }
 }
 
+/// Connects to Nakadi via HTTP and creates an iterator of
+/// lines from the data received from Nakadi.
 #[derive(Clone)]
 pub struct NakadiStreamingClient<M> {
     http_client: HttpClient,
@@ -342,6 +355,7 @@ impl<M> NakadiStreamingClient<M>
 where
     M: MetricsCollector,
 {
+    /// Create a new `NakadiStreamingClient<M>`.
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
         config: Config,
         token_provider: T,
@@ -354,6 +368,19 @@ where
         )
     }
 
+    /// Create a new `NakadiStreamingClient<DevNullMetricsCollector>`.
+    pub fn without_metrics<T: ProvidesAccessToken + Send + Sync + 'static>(
+        config: Config,
+        token_provider: T,
+    ) -> Result<NakadiStreamingClient<DevNullMetricsCollector>, Error> {
+        NakadiStreamingClient::with_shared_access_token_provider(
+            config,
+            Arc::new(token_provider),
+            DevNullMetricsCollector,
+        )
+    }
+
+    /// Create a new `NakadiStreamingClient<M>`.
     pub fn with_shared_access_token_provider(
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -538,6 +565,8 @@ fn read_response_body(response: &mut Response) -> String {
         .unwrap_or("<Nakadion: Could not read body.>".to_string())
 }
 
+/// Errors that can happen when connectiong to Nakadi for
+/// extablishing a streaming connection.
 #[derive(Fail, Debug)]
 pub enum ConnectError {
     #[fail(display = "Token Error on connect: {}", _0)]
@@ -559,6 +588,8 @@ pub enum ConnectError {
 }
 
 impl ConnectError {
+    /// Returns false if this error can most possibly not
+    /// be mitigated by performing a retry.
     pub fn is_permanent(&self) -> bool {
         match *self {
             ConnectError::Forbidden(_, _) => true,
