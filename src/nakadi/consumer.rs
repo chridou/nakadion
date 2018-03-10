@@ -37,6 +37,7 @@ impl Consumer {
         handler_factory: HF,
         commit_strategy: CommitStrategy,
         metrics_collector: M,
+        min_idle_worker_lifetime: Option<Duration>,
     ) -> Consumer
     where
         C: StreamingClient + Clone + Send + 'static,
@@ -59,6 +60,7 @@ impl Consumer {
             subscription_id,
             lifecycle,
             metrics_collector,
+            min_idle_worker_lifetime,
         );
 
         consumer
@@ -81,6 +83,7 @@ fn start_consumer_loop<C, A, HF, M>(
     subscription_id: SubscriptionId,
     lifecycle: Lifecycle,
     metrics_collector: M,
+    min_idle_worker_lifetime: Option<Duration>,
 ) where
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
@@ -96,6 +99,7 @@ fn start_consumer_loop<C, A, HF, M>(
             subscription_id,
             lifecycle,
             metrics_collector,
+            min_idle_worker_lifetime,
         )
     });
 }
@@ -108,6 +112,7 @@ fn consumer_loop<C, A, HF, M>(
     subscription_id: SubscriptionId,
     lifecycle: Lifecycle,
     metrics_collector: M,
+    min_idle_worker_lifetime: Option<Duration>,
 ) where
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
@@ -146,6 +151,7 @@ fn consumer_loop<C, A, HF, M>(
         };
 
         info!("Connected to stream {}", stream_id);
+        let connected_since = Instant::now();
 
         let committer = Committer::start(
             api_client.clone(),
@@ -159,6 +165,7 @@ fn consumer_loop<C, A, HF, M>(
             handler_factory.clone(),
             committer.clone(),
             metrics_collector.clone(),
+            min_idle_worker_lifetime,
         );
 
         consume(
@@ -168,6 +175,8 @@ fn consumer_loop<C, A, HF, M>(
             lifecycle.clone(),
             &metrics_collector,
         );
+
+        metrics_collector.consumer_connection_lifetime(connected_since);
     }
 
     lifecycle.stopped();
@@ -236,7 +245,7 @@ where
     if let Some(info) = batch_line.info() {
         match ::std::str::from_utf8(info) {
             Ok(info) => {
-                metrics_collector.consumer_info_line_received(num_bytes);
+                metrics_collector.consumer_info_line_received(info.len());
                 info!("Received info: {}", info)
             }
             Err(err) => warn!("Received info line which is not UTF-8: {}", err),

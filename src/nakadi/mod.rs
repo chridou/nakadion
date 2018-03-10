@@ -32,7 +32,7 @@ use auth::ProvidesAccessToken;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 #[cfg(feature = "metrix")]
-use metrix::processor::AggregatesProcessors;
+use metrix::processor::{AggregatesProcessors, ProcessorMount};
 
 /// Stragtegy for committing cursors
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +233,8 @@ pub struct NakadionConfig {
     pub commit_strategy: CommitStrategy,
 
     pub subscription_discovery: SubscriptionDiscovery,
+
+    pub min_idle_worker_lifetime: Option<Duration>,
 }
 
 pub struct NakadionBuilder {
@@ -240,6 +242,7 @@ pub struct NakadionBuilder {
     pub request_timeout: Option<Duration>,
     pub commit_strategy: Option<CommitStrategy>,
     pub subscription_discovery: Option<SubscriptionDiscovery>,
+    pub min_idle_worker_lifetime: Option<Duration>,
 }
 
 impl Default for NakadionBuilder {
@@ -249,6 +252,7 @@ impl Default for NakadionBuilder {
             request_timeout: None,
             commit_strategy: None,
             subscription_discovery: None,
+            min_idle_worker_lifetime: None,
         }
     }
 }
@@ -336,6 +340,14 @@ impl NakadionBuilder {
         self
     }
 
+    pub fn min_idle_worker_lifetime(
+        mut self,
+        min_idle_worker_lifetime: Option<Duration>,
+    ) -> NakadionBuilder {
+        self.min_idle_worker_lifetime = min_idle_worker_lifetime;
+        self
+    }
+
     pub fn from_env() -> Result<NakadionBuilder, Error> {
         let streaming_client_builder = streaming_client::ConfigBuilder::from_env()?;
 
@@ -378,6 +390,19 @@ impl NakadionBuilder {
             builder
         };
 
+        let builder = if let Some(env_val) = env::var("NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS").ok()
+        {
+            builder.min_idle_worker_lifetime(Some(Duration::from_secs(env_val
+                .parse::<u64>()
+                .context("Could not parse 'NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS'")?)))
+        } else {
+            warn!(
+                "Environment variable 'NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS' not found. Using \
+                 default."
+            );
+            builder
+        };
+
         Ok(builder)
     }
 
@@ -414,6 +439,7 @@ impl NakadionBuilder {
             commit_strategy,
             subscription_discovery,
             nakadi_host: streaming_client_config.nakadi_host,
+            min_idle_worker_lifetime: self.min_idle_worker_lifetime,
         })
     }
 
@@ -455,18 +481,27 @@ impl NakadionBuilder {
     }
 
     #[cfg(feature = "metrix")]
-    pub fn build_and_start_with_metrix<HF, P, T>(
+    pub fn build_and_start_with_metrix<HF, P, T, G>(
         self,
         handler_factory: HF,
         access_token_provider: P,
-        put_metrice_here: &mut T,
+        put_metrics_here: &mut T,
+        named_metrics_group: Option<G>,
     ) -> Result<Nakadion, Error>
     where
         HF: HandlerFactory + Sync + Send + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
         T: AggregatesProcessors,
+        G: Into<String>,
     {
-        let metrix_collector = ::nakadi::metrics::MetrixCollector::new(put_metrice_here);
+        let metrix_collector = if let Some(group_name) = named_metrics_group {
+            let mut mount = ProcessorMount::new(group_name);
+            let collector = ::nakadi::metrics::MetrixCollector::new(&mut mount);
+            put_metrics_here.add_processor(mount);
+            collector
+        } else {
+            ::nakadi::metrics::MetrixCollector::new(put_metrics_here)
+        };
         let config = self.build_config()?;
 
         Nakadion::start(
@@ -490,6 +525,7 @@ impl Nakadion {
         handler_factory: HF,
         commit_strategy: CommitStrategy,
         metrics_collector: M,
+        min_idle_worker_lifetime: Option<Duration>,
     ) -> Result<Nakadion, Error>
     where
         C: StreamingClient + Clone + Sync + Send + 'static,
@@ -504,6 +540,7 @@ impl Nakadion {
             handler_factory,
             commit_strategy,
             metrics_collector,
+            min_idle_worker_lifetime,
         );
 
         let guard = Arc::new(DropGuard { consumer });
@@ -581,6 +618,7 @@ impl Nakadion {
             handler_factory,
             config.commit_strategy,
             metrics_collector,
+            config.min_idle_worker_lifetime,
         )
     }
 

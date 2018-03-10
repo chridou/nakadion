@@ -25,6 +25,7 @@ impl Dispatcher {
         handler_factory: Arc<HF>,
         committer: Committer,
         metrics_collector: M,
+        min_idle_worker_lifetime: Option<Duration>,
     ) -> Dispatcher
     where
         HF: HandlerFactory + Send + Sync + 'static,
@@ -45,6 +46,7 @@ impl Dispatcher {
             handler_factory,
             committer,
             metrics_collector,
+            min_idle_worker_lifetime,
         );
 
         handle
@@ -76,6 +78,7 @@ fn start_dispatcher_loop<HF, M>(
     handler_factory: Arc<HF>,
     committer: Committer,
     metrics_collector: M,
+    min_idle_worker_lifetime: Option<Duration>,
 ) where
     HF: HandlerFactory + Send + Sync + 'static,
     M: MetricsCollector + Clone + Send + 'static,
@@ -87,6 +90,7 @@ fn start_dispatcher_loop<HF, M>(
             handler_factory,
             committer,
             metrics_collector,
+            min_idle_worker_lifetime,
         )
     });
 }
@@ -97,18 +101,20 @@ fn dispatcher_loop<HF, M>(
     handler_factory: Arc<HF>,
     committer: Committer,
     metrics_collector: M,
+    _min_idle_worker_lifetime: Option<Duration>,
 ) where
     HF: HandlerFactory,
     M: MetricsCollector + Clone + Send + 'static,
 {
     let stream_id = committer.stream_id().clone();
     let mut workers: Vec<Worker> = Vec::new();
+    metrics_collector.dispatcher_current_workers(0);
 
     info!("Processor on stream '{}' Started.", committer.stream_id(),);
     loop {
         if lifecycle.abort_requested() {
             info!(
-                "Processor on stream '{}': Stop reqeusted externally.",
+                "Processor on stream '{}': Stop requested externally.",
                 stream_id
             );
             break;
@@ -163,6 +169,7 @@ fn dispatcher_loop<HF, M>(
                 metrics_collector.clone(),
             );
             workers.push(worker);
+            metrics_collector.dispatcher_current_workers(workers.len());
             &workers[workers.len() - 1]
         };
 
@@ -186,6 +193,8 @@ fn dispatcher_loop<HF, M>(
     while workers.iter().any(|w| w.running()) {
         thread::sleep(Duration::from_millis(10));
     }
+
+    metrics_collector.dispatcher_current_workers(0);
 
     info!("Processor on stream '{}': All wokers stopped.", stream_id);
 

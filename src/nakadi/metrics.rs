@@ -8,10 +8,13 @@ pub trait MetricsCollector {
     fn streaming_connect_attempt_failed(&self);
 
     fn consumer_connected(&self, attempt_started: Instant);
+    fn consumer_connection_lifetime(&self, connected_since: Instant);
     fn consumer_line_received(&self, bytes: usize);
     fn consumer_info_line_received(&self, bytes: usize);
     fn consumer_keep_alive_line_received(&self, bytes: usize);
     fn consumer_batch_line_received(&self, bytes: usize);
+
+    fn dispatcher_current_workers(&self, num_workers: usize);
 
     fn worker_events_received(&self, bytes: usize);
     fn worker_batch_processed(&self, started: Instant);
@@ -40,10 +43,13 @@ impl MetricsCollector for DevNullMetricsCollector {
     fn streaming_connect_attempt_failed(&self) {}
 
     fn consumer_connected(&self, _attempt_started: Instant) {}
+    fn consumer_connection_lifetime(&self, _connected_since: Instant) {}
     fn consumer_line_received(&self, _bytes: usize) {}
     fn consumer_info_line_received(&self, _bytes: usize) {}
     fn consumer_keep_alive_line_received(&self, _bytes: usize) {}
     fn consumer_batch_line_received(&self, _bytes: usize) {}
+
+    fn dispatcher_current_workers(&self, _num_workers: usize) {}
 
     fn worker_events_received(&self, _bytes: usize) {}
     fn worker_batch_processed(&self, _started: Instant) {}
@@ -79,10 +85,16 @@ mod metrix {
     #[derive(Clone, PartialEq, Eq)]
     enum ConsumerMetrics {
         Connected,
+        ConnectionLifetime,
         LineReceived,
         KeepAliveLineReceived,
         InfoLineReceived,
         BatchLineReceived,
+    }
+
+    #[derive(Clone, PartialEq, Eq)]
+    enum DispatcherMetrics {
+        NumWorkers,
     }
 
     #[derive(Clone, PartialEq, Eq)]
@@ -110,6 +122,7 @@ mod metrix {
     pub struct MetrixCollector {
         connector: TelemetryTransmitterSync<ConnectorMetrics>,
         consumer: TelemetryTransmitterSync<ConsumerMetrics>,
+        dispatcher: TelemetryTransmitterSync<DispatcherMetrics>,
         worker: TelemetryTransmitterSync<WorkerMetrics>,
         cursor: TelemetryTransmitterSync<CursorMetrics>,
     }
@@ -121,17 +134,20 @@ mod metrix {
         {
             let (connector_tx, connector_rx) = create_connector_metrics();
             let (consumer_tx, consumer_rx) = create_consumer_metrics();
+            let (dispatcher_tx, dispatcher_rx) = create_dispatcher_metrics();
             let (worker_tx, worker_rx) = create_worker_metrics();
             let (cursor_tx, cursor_rx) = create_cursor_metrics();
 
             add_metrics_to.add_processor(connector_rx);
             add_metrics_to.add_processor(consumer_rx);
+            add_metrics_to.add_processor(dispatcher_rx);
             add_metrics_to.add_processor(worker_rx);
             add_metrics_to.add_processor(cursor_rx);
 
             MetrixCollector {
                 connector: connector_tx,
                 consumer: consumer_tx,
+                dispatcher: dispatcher_tx,
                 worker: worker_tx,
                 cursor: cursor_tx,
             }
@@ -152,6 +168,10 @@ mod metrix {
             self.consumer
                 .measure_time(ConsumerMetrics::Connected, attempt_started);
         }
+        fn consumer_connection_lifetime(&self, connected_since: Instant) {
+            self.consumer
+                .measure_time(ConsumerMetrics::ConnectionLifetime, connected_since);
+        }
         fn consumer_line_received(&self, bytes: usize) {
             self.consumer
                 .observed_one_value_now(ConsumerMetrics::LineReceived, bytes as u64);
@@ -167,6 +187,11 @@ mod metrix {
         fn consumer_batch_line_received(&self, bytes: usize) {
             self.consumer
                 .observed_one_value_now(ConsumerMetrics::BatchLineReceived, bytes as u64);
+        }
+
+        fn dispatcher_current_workers(&self, num_workers: usize) {
+            self.dispatcher
+                .observed_one_value_now(DispatcherMetrics::NumWorkers, num_workers as u64);
         }
 
         fn worker_events_received(&self, bytes: usize) {
@@ -262,6 +287,10 @@ mod metrix {
         let connected_panel = Panel::with_name(ConsumerMetrics::Connected, "connected");
         add_counting_and_time_ms_instruments_to_cockpit(connected_panel, &mut cockpit);
 
+        let connection_lifetimes_panel =
+            Panel::with_name(ConsumerMetrics::ConnectionLifetime, "connection_lifetimes");
+        add_ms_histogram_instruments_to_cockpit(connection_lifetimes_panel, &mut cockpit);
+
         let line_received_panel = Panel::with_name(ConsumerMetrics::LineReceived, "lines");
         add_counting_and_value_instruments_to_cockpit(line_received_panel, &mut cockpit, "bytes");
 
@@ -270,7 +299,7 @@ mod metrix {
         add_counting_and_value_instruments_to_cockpit(
             info_line_received_panel,
             &mut cockpit,
-            "bytes",
+            "info_part_bytes",
         );
 
         let keep_alive_line_received_panel =
@@ -296,6 +325,23 @@ mod metrix {
         (tx.synced(), rx)
     }
 
+    fn create_dispatcher_metrics() -> (
+        TelemetryTransmitterSync<DispatcherMetrics>,
+        TelemetryProcessor<DispatcherMetrics>,
+    ) {
+        let mut cockpit: Cockpit<DispatcherMetrics> = Cockpit::without_name(None);
+
+        let mut num_workers_panel = Panel::new(DispatcherMetrics::NumWorkers);
+        num_workers_panel.set_gauge(Gauge::new_with_defaults("num_workers"));
+        cockpit.add_panel(num_workers_panel);
+
+        let (tx, rx) = TelemetryProcessor::new_pair("dispatcher");
+
+        tx.add_cockpit(cockpit);
+
+        (tx.synced(), rx)
+    }
+
     fn create_worker_metrics() -> (
         TelemetryTransmitterSync<WorkerMetrics>,
         TelemetryProcessor<WorkerMetrics>,
@@ -311,7 +357,7 @@ mod metrix {
 
         let events_processed_panel =
             Panel::with_name(WorkerMetrics::EventsProcessed, "events_processed");
-        add_counting_and_value_instruments_to_cockpit(events_processed_panel, &mut cockpit, "");
+        add_counting_instruments_to_cockpit(events_processed_panel, &mut cockpit);
 
         let events_per_batch_panel =
             Panel::with_name(WorkerMetrics::EventsProcesseBatchSize, "events_per_batch");
@@ -416,9 +462,19 @@ mod metrix {
     where
         L: Clone + Eq + Send + 'static,
     {
-        panel.set_value_scaling(ValueScaling::NanosToMillis);
+        panel.set_value_scaling(ValueScaling::NanosToMicros);
         panel.set_counter(Counter::new_with_defaults("count"));
         panel.set_histogram(Histogram::new_with_defaults("microseconds"));
+        cockpit.add_panel(panel);
+    }
+
+    fn add_ms_histogram_instruments_to_cockpit<L>(mut panel: Panel<L>, cockpit: &mut Cockpit<L>)
+    where
+        L: Clone + Eq + Send + 'static,
+    {
+        panel.set_value_scaling(ValueScaling::NanosToMillis);
+        panel.set_counter(Counter::new_with_defaults("count"));
+        panel.set_histogram(Histogram::new_with_defaults("milliseconds"));
         cockpit.add_panel(panel);
     }
 
