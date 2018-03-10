@@ -1,6 +1,6 @@
 //! The processor orchestrates the workers
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -101,14 +101,16 @@ fn dispatcher_loop<HF, M>(
     handler_factory: Arc<HF>,
     committer: Committer,
     metrics_collector: M,
-    _min_idle_worker_lifetime: Option<Duration>,
+    min_idle_worker_lifetime: Option<Duration>,
 ) where
     HF: HandlerFactory,
     M: MetricsCollector + Clone + Send + 'static,
 {
-    let stream_id = committer.stream_id().clone();
-    let mut workers: Vec<Worker> = Vec::new();
     metrics_collector.dispatcher_current_workers(0);
+
+    let stream_id = committer.stream_id().clone();
+    let mut workers: Vec<(Worker, Instant)> = Vec::with_capacity(32);
+    let mut idle_workers_last_checked = Instant::now();
 
     info!("Processor on stream '{}' Started.", committer.stream_id(),);
     loop {
@@ -117,7 +119,15 @@ fn dispatcher_loop<HF, M>(
                 "Processor on stream '{}': Stop requested externally.",
                 stream_id
             );
+
             break;
+        }
+
+        if idle_workers_last_checked.elapsed() >= Duration::from_secs(5) {
+            if let Some(min_idle_worker_lifetime) = min_idle_worker_lifetime {
+                workers = kill_idle_workers(workers, &metrics_collector, min_idle_worker_lifetime);
+                idle_workers_last_checked = Instant::now()
+            }
         }
 
         let batch = match receiver.recv_timeout(Duration::from_millis(5)) {
@@ -128,6 +138,7 @@ fn dispatcher_loop<HF, M>(
                     "Processor on stream '{}': Channel disconnected. Stopping.",
                     stream_id
                 );
+
                 break;
             }
         };
@@ -137,6 +148,7 @@ fn dispatcher_loop<HF, M>(
                 "Processor on stream '{}': Received a keep alive batch!. Stopping.",
                 stream_id
             );
+
             break;
         };
 
@@ -152,10 +164,12 @@ fn dispatcher_loop<HF, M>(
             }
         };
 
-        let worker_idx = workers.iter().position(|w| w.partition() == &partition);
+        let worker_idx = workers.iter().position(|w| w.0.partition() == &partition);
 
         let worker = if let Some(idx) = worker_idx {
-            &workers[idx]
+            let &mut (ref worker, ref mut last_used) = &mut workers[idx];
+            *last_used = Instant::now();
+            worker
         } else {
             info!(
                 "Processor on stream '{}': Creating new worker for partition {}",
@@ -168,9 +182,9 @@ fn dispatcher_loop<HF, M>(
                 partition.clone(),
                 metrics_collector.clone(),
             );
-            workers.push(worker);
+            workers.push((worker, Instant::now()));
             metrics_collector.dispatcher_current_workers(workers.len());
-            &workers[workers.len() - 1]
+            &workers[workers.len() - 1].0
         };
 
         if let Err(err) = worker.process(batch) {
@@ -183,14 +197,14 @@ fn dispatcher_loop<HF, M>(
         }
     }
 
-    workers.iter().for_each(|w| w.stop());
+    workers.iter().for_each(|w| w.0.stop());
 
     info!(
         "Processor on stream '{}': Waiting for workers to stop",
         stream_id
     );
 
-    while workers.iter().any(|w| w.running()) {
+    while workers.iter().any(|w| w.0.running()) {
         thread::sleep(Duration::from_millis(10));
     }
 
@@ -200,4 +214,33 @@ fn dispatcher_loop<HF, M>(
 
     lifecycle.stopped();
     info!("Processor on stream '{}': Stopped.", stream_id);
+}
+
+fn kill_idle_workers(
+    workers: Vec<(Worker, Instant)>,
+    metrics_collector: &MetricsCollector,
+    min_idle_worker_lifetime: Duration,
+) -> Vec<(Worker, Instant)> {
+    let mut survivors = Vec::new();
+    let mut stopped = Vec::new();
+
+    for (worker, last_used) in workers {
+        if last_used.elapsed() >= min_idle_worker_lifetime {
+            info!("Stopping idle worker");
+            worker.stop();
+            stopped.push(worker)
+        } else {
+            survivors.push((worker, last_used));
+        }
+    }
+
+    while stopped.iter().any(|w| w.running()) {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    if stopped.len() > 0 {
+        metrics_collector.dispatcher_current_workers(survivors.len());
+    }
+
+    survivors
 }
