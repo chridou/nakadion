@@ -449,7 +449,7 @@ mod metrix {
         cockpit.add_panel(cursors_received_panel);
 
         let cursors_committed_panel =
-            Panel::with_name(CursorMetrics::CursorReceived, "cursors_committed");
+            Panel::with_name(CursorMetrics::CursorCommitted, "cursors_committed");
         add_counting_and_time_us_instruments_to_cockpit(cursors_committed_panel, &mut cockpit);
 
         let batches_committed_panel =

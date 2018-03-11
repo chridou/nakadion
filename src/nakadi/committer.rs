@@ -303,8 +303,8 @@ where
             metrics_collector.committer_cursor_age_on_commit(entry.current_cursor_received_at);
             metrics_collector.committer_time_elapsed_until_commit(entry.first_cursor_received_at);
             metrics_collector.committer_time_left_on_commit(
-                entry.first_cursor_received_at + Duration::from_secs(60),
                 Instant::now(),
+                entry.first_cursor_received_at + Duration::from_secs(60),
             );
             cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
             keys_to_commit.push(key.clone());
@@ -318,8 +318,8 @@ where
                 metrics_collector
                     .committer_time_elapsed_until_commit(entry.first_cursor_received_at);
                 metrics_collector.committer_time_left_on_commit(
-                    entry.first_cursor_received_at + Duration::from_secs(60),
                     Instant::now(),
+                    entry.first_cursor_received_at + Duration::from_secs(60),
                 );
                 cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
                 keys_to_commit.push(key.clone());
@@ -331,11 +331,12 @@ where
 
     let status = if !cursors_to_commit.is_empty() {
         let start = Instant::now();
-        match client.commit_cursors(
+        match client.commit_cursors_budgeted(
             subscription_id,
             stream_id,
             &cursors_to_commit,
             flow_id.clone(),
+            Duration::from_secs(3),
         ) {
             Ok(s) => {
                 metrics_collector.committer_cursor_commit_attempt(start);

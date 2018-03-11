@@ -180,34 +180,38 @@ fn main() {
 
     thread::spawn(move || {
         let count = count.clone();
+        let start = Instant::now();
         loop {
-            info!("\nEvents consumed: {}", count.load(Ordering::Relaxed));
-            thread::sleep(Duration::from_secs(15));
+            if count.load(Ordering::Relaxed) == 1_000_000 {
+                info!(
+                    "==== >ALL EVENTS CONSUMED AFTER: {}",
+                    start.elapsed().as_secs()
+                );
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
         }
     });
 
     let snapshot = metrix_driver.snapshot(false);
-
     println!("METRICS 1\n\n\n{}\n\n\n", snapshot.to_default_json());
 
     thread::sleep(Duration::from_secs(30));
 
     let snapshot = metrix_driver.snapshot(false);
-
     println!("METRICS 2\n\n\n{}\n\n\n", snapshot.to_default_json());
-
-    let snapshot = metrix_driver.snapshot(false);
 
     thread::sleep(Duration::from_secs(30));
 
+    let snapshot = metrix_driver.snapshot(false);
     println!("METRICS 3\n\n\n{}\n\n\n", snapshot.to_default_json());
 
     nakadion.stop();
-
     nakadion.block_until_stopped();
 
-    thread::sleep(Duration::from_secs(300));
+    thread::sleep(Duration::from_secs(60));
 
+    let snapshot = metrix_driver.snapshot(false);
     println!("METRICS 4\n\n\n{}\n\n\n", snapshot.to_default_json());
 
     info!("Delete subscription");
@@ -234,7 +238,7 @@ fn consume<T: AggregatesProcessors>(
             "test-suite".into(),
             vec![EVENT_TYPE_NAME.into()],
         ))
-        .max_uncommitted_events(50000)
+        .max_uncommitted_events(60000)
         .set_min_idle_worker_lifetime(Duration::from_secs(15))
         .commit_strategy(CommitStrategy::EveryNBatches(400))
         .batch_flush_timeout(Duration::from_secs(1))
