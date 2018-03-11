@@ -3,6 +3,7 @@ extern crate env_logger;
 extern crate failure;
 #[macro_use]
 extern crate log;
+extern crate metrix;
 extern crate nakadion;
 #[macro_use]
 extern crate serde;
@@ -28,6 +29,9 @@ use nakadion::events::*;
 use nakadion::FlowId;
 use log::LevelFilter;
 use env_logger::Builder;
+
+use metrix::driver::TelemetryDriver;
+use metrix::processor::AggregatesProcessors;
 
 const EVENT_TYPE_NAME: &'static str = "my-event-type";
 
@@ -159,6 +163,7 @@ fn main() {
     let request = CreateSubscriptionRequest {
         owning_application: "test-suite".into(),
         event_types: vec![EVENT_TYPE_NAME.into()],
+        read_from: Some(ReadFrom::Begin),
     };
 
     let subscription_status = api_client.create_subscription(&request).unwrap();
@@ -166,9 +171,44 @@ fn main() {
 
     publish();
 
-    if let Err(err) = consume() {
-        error!("Aborting: {}", err);
-    }
+    let mut metrix_driver = TelemetryDriver::new(Some("test-suite"), None);
+
+    let (nakadion, count) = match consume(&mut metrix_driver) {
+        Err(err) => panic!("Aborting: {}", err),
+        Ok(n) => n,
+    };
+
+    thread::spawn(move || {
+        let count = count.clone();
+        loop {
+            info!("\nEvents consumed: {}", count.load(Ordering::Relaxed));
+            thread::sleep(Duration::from_secs(15));
+        }
+    });
+
+    let snapshot = metrix_driver.snapshot(false);
+
+    println!("METRICS 1\n\n\n{}\n\n\n", snapshot.to_default_json());
+
+    thread::sleep(Duration::from_secs(30));
+
+    let snapshot = metrix_driver.snapshot(false);
+
+    println!("METRICS 2\n\n\n{}\n\n\n", snapshot.to_default_json());
+
+    let snapshot = metrix_driver.snapshot(false);
+
+    thread::sleep(Duration::from_secs(30));
+
+    println!("METRICS 3\n\n\n{}\n\n\n", snapshot.to_default_json());
+
+    nakadion.stop();
+
+    nakadion.block_until_stopped();
+
+    thread::sleep(Duration::from_secs(300));
+
+    println!("METRICS 4\n\n\n{}\n\n\n", snapshot.to_default_json());
 
     info!("Delete subscription");
     api_client
@@ -179,7 +219,9 @@ fn main() {
     api_client.delete_event_type(EVENT_TYPE_NAME).unwrap();
 }
 
-fn consume() -> Result<(), Error> {
+fn consume<T: AggregatesProcessors>(
+    metrix_driver: &mut T,
+) -> Result<(Nakadion, Arc<AtomicUsize>), Error> {
     let count = Arc::new(AtomicUsize::new(0));
 
     let handler_factory = DemoHandlerFactory {
@@ -192,45 +234,43 @@ fn consume() -> Result<(), Error> {
             "test-suite".into(),
             vec![EVENT_TYPE_NAME.into()],
         ))
-        .max_uncommitted_events(10000)
+        .max_uncommitted_events(50000)
+        .set_min_idle_worker_lifetime(Duration::from_secs(15))
+        .commit_strategy(CommitStrategy::EveryNBatches(400))
+        .batch_flush_timeout(Duration::from_secs(1))
         .batch_limit(100);
 
-    let nakadion = nakadion_builder.build_and_start(handler_factory, AccessTokenProvider)?;
+    let nakadion = nakadion_builder.build_and_start_with_metrix(
+        handler_factory,
+        AccessTokenProvider,
+        metrix_driver,
+    )?;
 
-    thread::sleep(Duration::from_secs(90));
-
-    info!("Events consumed: {}", count.load(Ordering::Relaxed));
-
-    nakadion.stop();
-
-    nakadion.block_until_stopped();
-    Ok(())
+    Ok((nakadion, count))
 }
 
 fn publish() {
-    thread::spawn(move || {
-        let publisher =
-            nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
+    let publisher =
+        nakadion::publisher::NakadiPublisher::new("http://localhost:8080", AccessTokenProvider);
 
-        let mut count = 0;
+    let mut count = 0;
 
-        for _ in 0..10_000 {
-            let mut events = Vec::new();
-            for _ in 0..100 {
-                count += 1;
-                let event = OutgoingEvent::new();
-                events.push(event);
-            }
-            if let Err(err) = publisher.publish_events(
-                EVENT_TYPE_NAME,
-                &events,
-                Some(FlowId::default()),
-                Duration::from_millis(500),
-            ) {
-                error!("{}", err);
-            }
+    for _ in 0..10_000 {
+        let mut events = Vec::new();
+        for _ in 0..100 {
+            count += 1;
+            let event = OutgoingEvent::new();
+            events.push(event);
         }
+        if let Err(err) = publisher.publish_events(
+            EVENT_TYPE_NAME,
+            &events,
+            Some(FlowId::default()),
+            Duration::from_millis(500),
+        ) {
+            error!("{}", err);
+        }
+    }
 
-        info!("{} events published", count);
-    });
+    info!("{} events published", count);
 }

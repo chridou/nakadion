@@ -32,7 +32,7 @@ use auth::ProvidesAccessToken;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 #[cfg(feature = "metrix")]
-use metrix::processor::{AggregatesProcessors, ProcessorMount};
+use metrix::processor::AggregatesProcessors;
 
 /// Stragtegy for committing cursors
 #[derive(Debug, Clone, Copy)]
@@ -348,6 +348,14 @@ impl NakadionBuilder {
         self
     }
 
+    pub fn set_min_idle_worker_lifetime(
+        mut self,
+        min_idle_worker_lifetime: Duration,
+    ) -> NakadionBuilder {
+        self.min_idle_worker_lifetime = Some(min_idle_worker_lifetime);
+        self
+    }
+
     pub fn from_env() -> Result<NakadionBuilder, Error> {
         let streaming_client_builder = streaming_client::ConfigBuilder::from_env()?;
 
@@ -481,27 +489,18 @@ impl NakadionBuilder {
     }
 
     #[cfg(feature = "metrix")]
-    pub fn build_and_start_with_metrix<HF, P, T, G>(
+    pub fn build_and_start_with_metrix<HF, P, T>(
         self,
         handler_factory: HF,
         access_token_provider: P,
         put_metrics_here: &mut T,
-        named_metrics_group: Option<G>,
     ) -> Result<Nakadion, Error>
     where
         HF: HandlerFactory + Sync + Send + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
         T: AggregatesProcessors,
-        G: Into<String>,
     {
-        let metrix_collector = if let Some(group_name) = named_metrics_group {
-            let mut mount = ProcessorMount::new(group_name);
-            let collector = ::nakadi::metrics::MetrixCollector::new(&mut mount);
-            put_metrics_here.add_processor(mount);
-            collector
-        } else {
-            ::nakadi::metrics::MetrixCollector::new(put_metrics_here)
-        };
+        let metrix_collector = ::nakadi::metrics::MetrixCollector::new(put_metrics_here);
         let config = self.build_config()?;
 
         Nakadion::start(
@@ -579,6 +578,7 @@ impl Nakadion {
                 let request = api_client::CreateSubscriptionRequest {
                     owning_application: app,
                     event_types: event_types,
+                    read_from: None,
                 };
 
                 match api_client.create_subscription(&request)? {

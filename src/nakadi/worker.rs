@@ -162,7 +162,7 @@ fn handler_loop<H, M>(
             };
 
             batch.batch_line.events().map(|events| {
-                metrics_collector.worker_events_received(events.len());
+                metrics_collector.worker_events_bytes_received(events.len());
                 let start = Instant::now();
                 let res = handler.handle(event_type, events);
                 metrics_collector.worker_batch_processed(start);
@@ -175,7 +175,7 @@ fn handler_loop<H, M>(
                 ProcessingStatus::Processed(num_events_hint) => {
                     num_events_hint
                         .iter()
-                        .for_each(|n| metrics_collector.worker_events_processed(*n));
+                        .for_each(|n| metrics_collector.worker_events_in_same_batch_processed(*n));
                     match committer.commit(batch, num_events_hint) {
                         Ok(()) => continue,
                         Err(err) => {

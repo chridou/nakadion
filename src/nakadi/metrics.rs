@@ -40,11 +40,11 @@ pub trait MetricsCollector {
 
     /// Events with a comined legth of `bayts` bytes have been
     /// received.
-    fn worker_events_received(&self, bytes: usize);
-    /// A batch has been prcessed where processing was started at 'started`.
+    fn worker_events_bytes_received(&self, bytes: usize);
+    /// A batch has been processed where processing was started at 'started`.
     fn worker_batch_processed(&self, started: Instant);
-    /// The worker processed `n` events.
-    fn worker_events_processed(&self, n: usize);
+    /// The worker processed `n` events of the same batch.
+    fn worker_events_in_same_batch_processed(&self, n: usize);
 
     /// Time elapsed from receiving the cursor from `Nakadi` until
     /// it was send for being committed. This is most probably right
@@ -90,9 +90,9 @@ impl MetricsCollector for DevNullMetricsCollector {
 
     fn dispatcher_current_workers(&self, _num_workers: usize) {}
 
-    fn worker_events_received(&self, _bytes: usize) {}
+    fn worker_events_bytes_received(&self, _bytes: usize) {}
     fn worker_batch_processed(&self, _started: Instant) {}
-    fn worker_events_processed(&self, _n: usize) {}
+    fn worker_events_in_same_batch_processed(&self, _n: usize) {}
 
     fn committer_cursor_received(&self, _cursor_received_at_timestamp: Instant) {}
     fn committer_cursor_committed(&self, _commit_attempt_started: Instant) {}
@@ -107,12 +107,14 @@ impl MetricsCollector for DevNullMetricsCollector {
 
 #[cfg(feature = "metrix")]
 mod metrix {
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     use metrix::TelemetryTransmitterSync;
     use metrix::cockpit::*;
     use metrix::processor::*;
     use metrix::instruments::*;
+    use metrix::instruments::other_instruments::*;
+    use metrix::instruments::switches::*;
     use metrix::TransmitsTelemetryData;
 
     #[derive(Clone, PartialEq, Eq)]
@@ -141,7 +143,6 @@ mod metrix {
         EventBytesReceived,
         BatchProcessed,
         EventsProcessed,
-        EventsProcesseBatchSize,
     }
 
     #[derive(Clone, PartialEq, Eq)]
@@ -237,7 +238,7 @@ mod metrix {
                 .observed_one_value_now(DispatcherMetrics::NumWorkers, num_workers as u64);
         }
 
-        fn worker_events_received(&self, bytes: usize) {
+        fn worker_events_bytes_received(&self, bytes: usize) {
             self.worker
                 .observed_one_value_now(WorkerMetrics::EventBytesReceived, bytes as u64);
         }
@@ -245,11 +246,9 @@ mod metrix {
             self.worker
                 .measure_time(WorkerMetrics::BatchProcessed, started);
         }
-        fn worker_events_processed(&self, n: usize) {
+        fn worker_events_in_same_batch_processed(&self, n: usize) {
             self.worker
-                .observed_now(WorkerMetrics::EventsProcessed, n as u64);
-            self.worker
-                .observed_one_value_now(WorkerMetrics::EventsProcesseBatchSize, n as u64);
+                .observed_one_value_now(WorkerMetrics::EventsProcessed, n as u64);
         }
 
         fn committer_cursor_received(&self, cursor_received_at_timestamp: Instant) {
@@ -334,32 +333,52 @@ mod metrix {
             Panel::with_name(ConsumerMetrics::ConnectionLifetime, "connection_lifetimes");
         add_ms_histogram_instruments_to_cockpit(connection_lifetimes_panel, &mut cockpit);
 
-        let line_received_panel = Panel::with_name(ConsumerMetrics::LineReceived, "lines");
-        add_counting_and_value_instruments_to_cockpit(line_received_panel, &mut cockpit, "bytes");
+        let line_received_panel = Panel::with_name(ConsumerMetrics::LineReceived, "all_lines");
+        add_line_instruments_to_cockpit(line_received_panel, &mut cockpit);
 
         let info_line_received_panel =
             Panel::with_name(ConsumerMetrics::InfoLineReceived, "info_lines");
-        add_counting_and_value_instruments_to_cockpit(
-            info_line_received_panel,
-            &mut cockpit,
-            "info_part_bytes",
-        );
+        add_line_instruments_to_cockpit(info_line_received_panel, &mut cockpit);
 
         let keep_alive_line_received_panel =
             Panel::with_name(ConsumerMetrics::KeepAliveLineReceived, "keep_alive_lines");
-        add_counting_and_value_instruments_to_cockpit(
-            keep_alive_line_received_panel,
-            &mut cockpit,
-            "bytes",
-        );
+        add_line_instruments_to_cockpit(keep_alive_line_received_panel, &mut cockpit);
 
-        let batch_line_received_panel =
+        let mut batch_line_received_panel =
             Panel::with_name(ConsumerMetrics::BatchLineReceived, "batch_lines");
-        add_counting_and_value_instruments_to_cockpit(
-            batch_line_received_panel,
-            &mut cockpit,
-            "bytes",
-        );
+        let last_batch_line_received_tracker =
+            LastOccurrenceTracker::new_with_defaults("last_received_seconds_ago");
+        batch_line_received_panel.add_instrument(last_batch_line_received_tracker);
+        add_line_instruments_to_cockpit(batch_line_received_panel, &mut cockpit);
+
+        let mut alerts_panel = Panel::with_name(ConsumerMetrics::BatchLineReceived, "alerts");
+        let mut no_batches_for_one_minute_alert =
+            NonOccurrenceIndicator::new_with_defaults("no_batches_for_one_minute");
+        no_batches_for_one_minute_alert.set_if_not_happened_within(Duration::from_secs(60));
+        alerts_panel.add_instrument(no_batches_for_one_minute_alert);
+
+        let mut no_batches_for_two_minutes_alert =
+            NonOccurrenceIndicator::new_with_defaults("no_batches_for_two_minutes");
+        no_batches_for_two_minutes_alert.set_if_not_happened_within(Duration::from_secs(2 * 60));
+        alerts_panel.add_instrument(no_batches_for_two_minutes_alert);
+
+        let mut no_batches_for_five_minutes_alert =
+            NonOccurrenceIndicator::new_with_defaults("no_batches_for_five_minutes");
+        no_batches_for_five_minutes_alert.set_if_not_happened_within(Duration::from_secs(5 * 60));
+        alerts_panel.add_instrument(no_batches_for_five_minutes_alert);
+
+        let mut no_batches_for_ten_minutes_alert =
+            NonOccurrenceIndicator::new_with_defaults("no_batches_for_ten_minutes");
+        no_batches_for_ten_minutes_alert.set_if_not_happened_within(Duration::from_secs(10 * 60));
+        alerts_panel.add_instrument(no_batches_for_ten_minutes_alert);
+
+        let mut no_batches_for_fifteen_minutes_alert =
+            NonOccurrenceIndicator::new_with_defaults("no_batches_for_fifteen_minutes");
+        no_batches_for_fifteen_minutes_alert
+            .set_if_not_happened_within(Duration::from_secs(15 * 60));
+        alerts_panel.add_instrument(no_batches_for_fifteen_minutes_alert);
+
+        cockpit.add_panel(alerts_panel);
 
         let (tx, rx) = TelemetryProcessor::new_pair("consumer");
 
@@ -391,22 +410,24 @@ mod metrix {
     ) {
         let mut cockpit: Cockpit<WorkerMetrics> = Cockpit::without_name(None);
 
-        let event_bytes_panel = Panel::with_name(WorkerMetrics::EventBytesReceived, "event_bytes");
-        add_counting_and_value_instruments_to_cockpit(event_bytes_panel, &mut cockpit, "bytes");
+        let mut event_bytes_panel =
+            Panel::with_name(WorkerMetrics::EventBytesReceived, "event_bytes");
+        event_bytes_panel.add_instrument(ValueMeter::new_with_defaults("per_second"));
+        event_bytes_panel.set_histogram(Histogram::new_with_defaults("distribution"));
+        cockpit.add_panel(event_bytes_panel);
 
         let batches_processed_panel =
             Panel::with_name(WorkerMetrics::BatchProcessed, "batches_processed");
         add_counting_instruments_to_cockpit(batches_processed_panel, &mut cockpit);
 
-        let events_processed_panel =
+        let mut events_processed_panel =
             Panel::with_name(WorkerMetrics::EventsProcessed, "events_processed");
-        add_counting_instruments_to_cockpit(events_processed_panel, &mut cockpit);
+        events_processed_panel.add_instrument(ValueMeter::new_with_defaults("per_second"));
+        events_processed_panel.set_histogram(Histogram::new_with_defaults("batch_size"));
 
-        let events_per_batch_panel =
-            Panel::with_name(WorkerMetrics::EventsProcesseBatchSize, "events_per_batch");
-        add_histogram_instruments_to_cockpit(events_per_batch_panel, &mut cockpit, "batch_size");
+        cockpit.add_panel(events_processed_panel);
 
-        let (tx, rx) = TelemetryProcessor::new_pair("consumer");
+        let (tx, rx) = TelemetryProcessor::new_pair("worker");
 
         tx.add_cockpit(cockpit);
 
@@ -465,6 +486,17 @@ mod metrix {
         tx.add_cockpit(cockpit);
 
         (tx.synced(), rx)
+    }
+
+    fn add_line_instruments_to_cockpit<L>(mut panel: Panel<L>, cockpit: &mut Cockpit<L>)
+    where
+        L: Clone + Eq + Send + 'static,
+    {
+        panel.set_counter(Counter::new_with_defaults("count"));
+        panel.set_meter(Meter::new_with_defaults("per_second"));
+        panel.add_instrument(ValueMeter::new_with_defaults("bytes_per_second"));
+        panel.set_histogram(Histogram::new_with_defaults("bytes_distribution"));
+        cockpit.add_panel(panel);
     }
 
     fn add_counting_instruments_to_cockpit<L>(mut panel: Panel<L>, cockpit: &mut Cockpit<L>)

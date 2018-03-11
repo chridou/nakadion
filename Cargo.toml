@@ -21,6 +21,6 @@ backoff = "0.1"
 serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-metrix = { version = "0.5", optional = true }
+metrix = { version = "0.6", optional = true }
 [dev-dependencies]
 env_logger = "0.5"
