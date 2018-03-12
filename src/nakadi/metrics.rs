@@ -38,9 +38,9 @@ pub trait MetricsCollector {
     /// The number of workers currently processing partitions.
     fn dispatcher_current_workers(&self, num_workers: usize);
 
-    /// Events with a comined legth of `bayts` bytes have been
+    /// Events with a comined legth of `bytes` bytes have been
     /// received.
-    fn worker_events_bytes_received(&self, bytes: usize);
+    fn worker_batch_size_bytes(&self, bytes: usize);
     /// A batch has been processed where processing was started at 'started`.
     fn worker_batch_processed(&self, started: Instant);
     /// The worker processed `n` events of the same batch.
@@ -90,7 +90,7 @@ impl MetricsCollector for DevNullMetricsCollector {
 
     fn dispatcher_current_workers(&self, _num_workers: usize) {}
 
-    fn worker_events_bytes_received(&self, _bytes: usize) {}
+    fn worker_batch_size_bytes(&self, _bytes: usize) {}
     fn worker_batch_processed(&self, _started: Instant) {}
     fn worker_events_in_same_batch_processed(&self, _n: usize) {}
 
@@ -140,7 +140,7 @@ mod metrix {
 
     #[derive(Clone, PartialEq, Eq)]
     enum WorkerMetrics {
-        EventBytesReceived,
+        BatchSizeInBytes,
         BatchProcessed,
         EventsProcessed,
     }
@@ -238,9 +238,9 @@ mod metrix {
                 .observed_one_value_now(DispatcherMetrics::NumWorkers, num_workers as u64);
         }
 
-        fn worker_events_bytes_received(&self, bytes: usize) {
+        fn worker_batch_size_bytes(&self, bytes: usize) {
             self.worker
-                .observed_one_value_now(WorkerMetrics::EventBytesReceived, bytes as u64);
+                .observed_one_value_now(WorkerMetrics::BatchSizeInBytes, bytes as u64);
         }
         fn worker_batch_processed(&self, started: Instant) {
             self.worker
@@ -411,14 +411,14 @@ mod metrix {
         let mut cockpit: Cockpit<WorkerMetrics> = Cockpit::without_name(None);
 
         let mut event_bytes_panel =
-            Panel::with_name(WorkerMetrics::EventBytesReceived, "event_bytes");
-        event_bytes_panel.add_instrument(ValueMeter::new_with_defaults("per_second"));
-        event_bytes_panel.set_histogram(Histogram::new_with_defaults("distribution"));
+            Panel::with_name(WorkerMetrics::BatchSizeInBytes, "incoming_batches");
+        event_bytes_panel.add_instrument(ValueMeter::new_with_defaults("bytes_per_second"));
+        event_bytes_panel.set_histogram(Histogram::new_with_defaults("bytes_distribution"));
         cockpit.add_panel(event_bytes_panel);
 
         let batches_processed_panel =
             Panel::with_name(WorkerMetrics::BatchProcessed, "batches_processed");
-        add_counting_instruments_to_cockpit(batches_processed_panel, &mut cockpit);
+        add_counting_and_time_us_instruments_to_cockpit(batches_processed_panel, &mut cockpit);
 
         let mut events_processed_panel =
             Panel::with_name(WorkerMetrics::EventsProcessed, "events_processed");
@@ -552,30 +552,4 @@ mod metrix {
         panel.set_histogram(Histogram::new_with_defaults("milliseconds"));
         cockpit.add_panel(panel);
     }
-
-    fn add_histogram_instruments_to_cockpit<L>(
-        mut panel: Panel<L>,
-        cockpit: &mut Cockpit<L>,
-        count_unit: &str,
-    ) where
-        L: Clone + Eq + Send + 'static,
-    {
-        panel.set_counter(Counter::new_with_defaults("count"));
-        panel.set_histogram(Histogram::new_with_defaults(count_unit));
-        cockpit.add_panel(panel);
-    }
-
-    fn add_counting_and_value_instruments_to_cockpit<L>(
-        mut panel: Panel<L>,
-        cockpit: &mut Cockpit<L>,
-        count_unit: &str,
-    ) where
-        L: Clone + Eq + Send + 'static,
-    {
-        panel.set_counter(Counter::new_with_defaults("count"));
-        panel.set_meter(Meter::new_with_defaults("per_second"));
-        panel.set_histogram(Histogram::new_with_defaults(count_unit));
-        cockpit.add_panel(panel);
-    }
-
 }

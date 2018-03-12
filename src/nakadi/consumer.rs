@@ -123,11 +123,17 @@ fn consumer_loop<C, A, HF, M>(
 
     loop {
         if lifecycle.abort_requested() {
-            info!("Abort requested");
+            info!(
+                "[Consumer, subscription={}] Abort requested",
+                subscription_id
+            );
             break;
         }
 
-        info!("Connecting to stream");
+        info!(
+            "[Consumer, subscription={}] Connecting to stream",
+            subscription_id
+        );
         let start = Instant::now();
         let (stream_id, line_iterator) = match connect(
             &streaming_client,
@@ -141,16 +147,25 @@ fn consumer_loop<C, A, HF, M>(
             }
             Err(err) => {
                 if err.is_permanent() {
-                    error!("Permanent connection error: {}", err);
+                    error!(
+                        "[Consumer, subscription={}] Permanent connection error: {}",
+                        subscription_id, err
+                    );
                     break;
                 } else {
-                    warn!("Temporary connection error: {}", err);
+                    warn!(
+                        "[Consumer, subscription={}] Temporary connection error: {}",
+                        subscription_id, err
+                    );
                     continue;
                 }
             }
         };
 
-        info!("Connected to stream {}", stream_id);
+        info!(
+            "[Consumer, subscription={}] Connected to stream {}",
+            subscription_id, stream_id
+        );
         let connected_since = Instant::now();
 
         let committer = Committer::start(
@@ -181,7 +196,10 @@ fn consumer_loop<C, A, HF, M>(
 
     lifecycle.stopped();
 
-    info!("Nakadi consumer stopped");
+    info!(
+        "[Consumer, subscription={}] Nakadi consumer stopped",
+        subscription_id
+    );
 }
 
 fn consume<I, M>(

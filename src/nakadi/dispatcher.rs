@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use nakadi::Lifecycle;
 use nakadi::worker::Worker;
-use nakadi::model::PartitionId;
+use nakadi::model::{PartitionId, StreamId};
 use nakadi::committer::Committer;
 use nakadi::handler::HandlerFactory;
 use nakadi::batch::Batch;
@@ -112,11 +112,11 @@ fn dispatcher_loop<HF, M>(
     let mut workers: Vec<(Worker, Instant)> = Vec::with_capacity(32);
     let mut idle_workers_last_checked = Instant::now();
 
-    info!("Processor on stream '{}' Started.", committer.stream_id(),);
+    info!("[Dispatcher, stream={}] Started.", committer.stream_id(),);
     loop {
         if lifecycle.abort_requested() {
             info!(
-                "Processor on stream '{}': Stop requested externally.",
+                "[Dispatcher, stream={}] Stop requested externally.",
                 stream_id
             );
 
@@ -125,7 +125,12 @@ fn dispatcher_loop<HF, M>(
 
         if idle_workers_last_checked.elapsed() >= Duration::from_secs(5) {
             if let Some(min_idle_worker_lifetime) = min_idle_worker_lifetime {
-                workers = kill_idle_workers(workers, &metrics_collector, min_idle_worker_lifetime);
+                workers = kill_idle_workers(
+                    workers,
+                    &metrics_collector,
+                    min_idle_worker_lifetime,
+                    &stream_id,
+                );
                 idle_workers_last_checked = Instant::now()
             }
         }
@@ -135,7 +140,7 @@ fn dispatcher_loop<HF, M>(
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 info!(
-                    "Processor on stream '{}': Channel disconnected. Stopping.",
+                    "[Dispatcher, stream={}] Channel disconnected. Stopping.",
                     stream_id
                 );
 
@@ -145,7 +150,7 @@ fn dispatcher_loop<HF, M>(
 
         if batch.batch_line.events().is_none() {
             error!(
-                "Processor on stream '{}': Received a keep alive batch!. Stopping.",
+                "[Dispatcher, stream={}] Received a keep alive batch!. Stopping.",
                 stream_id
             );
 
@@ -156,7 +161,7 @@ fn dispatcher_loop<HF, M>(
             Ok(partition) => PartitionId(partition.into()),
             Err(err) => {
                 error!(
-                    "Processor on stream '{}': Partition id not UTF-8!. Stopping. - {}",
+                    "[Dispatcher, stream={}] Partition id not UTF-8!. Stopping. - {}",
                     stream_id, err
                 );
 
@@ -172,7 +177,7 @@ fn dispatcher_loop<HF, M>(
             worker
         } else {
             info!(
-                "Processor on stream '{}': Creating new worker for partition {}",
+                "[Dispatcher, stream={}] Creating new worker for partition {}",
                 stream_id, partition
             );
             let handler = handler_factory.create_handler(&partition);
@@ -189,7 +194,7 @@ fn dispatcher_loop<HF, M>(
 
         if let Err(err) = worker.process(batch) {
             error!(
-                "Processor on stream '{}': Worker did not accept batch. Stopping. - {}",
+                "[Dispatcher, stream={}] Worker did not accept batch. Stopping. - {}",
                 stream_id, err
             );
 
@@ -200,7 +205,7 @@ fn dispatcher_loop<HF, M>(
     workers.iter().for_each(|w| w.0.stop());
 
     info!(
-        "Processor on stream '{}': Waiting for workers to stop",
+        "[Dispatcher, stream={}] Waiting for workers to stop",
         stream_id
     );
 
@@ -210,23 +215,28 @@ fn dispatcher_loop<HF, M>(
 
     metrics_collector.dispatcher_current_workers(0);
 
-    info!("Processor on stream '{}': All wokers stopped.", stream_id);
+    info!("[Dispatcher, stream={}] All wokers stopped.", stream_id);
 
     lifecycle.stopped();
-    info!("Processor on stream '{}': Stopped.", stream_id);
+    info!("[Dispatcher, stream={}] Stopped.", stream_id);
 }
 
 fn kill_idle_workers(
     workers: Vec<(Worker, Instant)>,
     metrics_collector: &MetricsCollector,
     min_idle_worker_lifetime: Duration,
+    stream: &StreamId,
 ) -> Vec<(Worker, Instant)> {
     let mut survivors = Vec::new();
     let mut stopped = Vec::new();
 
     for (worker, last_used) in workers {
         if last_used.elapsed() >= min_idle_worker_lifetime {
-            info!("Stopping idle worker");
+            info!(
+                "[Dispatcher, stream={}] Stopping idle worker for partition '{}'",
+                stream,
+                worker.partition()
+            );
             worker.stop();
             stopped.push(worker)
         } else {

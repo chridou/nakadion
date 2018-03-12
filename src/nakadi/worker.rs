@@ -76,9 +76,10 @@ impl Worker {
 
     /// Process the batch.
     pub fn process(&self, batch: Batch) -> Result<(), Error> {
-        Ok(self.sender
-            .send(batch)
-            .context("Could not process batch. Worker possibly closed.")?)
+        Ok(self.sender.send(batch).context(format!(
+            "[Worker, partition={}] Could not process batch. Worker possibly closed.",
+            self.partition
+        ))?)
     }
 
     pub fn partition(&self) -> &PartitionId {
@@ -124,13 +125,13 @@ fn handler_loop<H, M>(
     let mut handler = handler;
 
     info!(
-        "Worker on stream '{}' for partition '{}': Started.",
+        "[Worker, stream={}, partition={}] Started.",
         stream_id, partition
     );
     loop {
         if lifecycle.abort_requested() {
             info!(
-                "Worker on stream '{}' for partition '{}': Stop reqeusted externally.",
+                "[Worker, stream={}, partition={}] Stop requested externally.",
                 stream_id, partition
             );
             break;
@@ -141,7 +142,7 @@ fn handler_loop<H, M>(
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 info!(
-                    "Worker on stream '{}' for partition '{}': Channel disconnected. Stopping.",
+                    "[Worker, stream={}, partition={}] Channel disconnected. Stopping.",
                     stream_id, partition
                 );
                 break;
@@ -153,16 +154,15 @@ fn handler_loop<H, M>(
                 Ok(et) => EventType::new(et),
                 Err(err) => {
                     error!(
-                        "Worker on stream '{}' for partition '{}': Invalid event type. Stopping: {}",
-                        stream_id,
-                        partition,
-                        err);
+                        "[Worker, stream={}, partition={}] Invalid event type. Stopping: {}",
+                        stream_id, partition, err
+                    );
                     break;
                 }
             };
 
             batch.batch_line.events().map(|events| {
-                metrics_collector.worker_events_bytes_received(events.len());
+                metrics_collector.worker_batch_size_bytes(events.len());
                 let start = Instant::now();
                 let res = handler.handle(event_type, events);
                 metrics_collector.worker_batch_processed(start);
@@ -180,7 +180,7 @@ fn handler_loop<H, M>(
                         Ok(()) => continue,
                         Err(err) => {
                             warn!(
-                                "Worker on stream '{}' for partition '{}': \
+                                "[Worker, stream={}, partition={}] \
                                  Failed to commit. Stopping: {}",
                                 stream_id, partition, err
                             );
@@ -190,7 +190,7 @@ fn handler_loop<H, M>(
                 }
                 ProcessingStatus::Failed { reason } => {
                     warn!(
-                        "Worker on stream '{}' for partition '{}' stopping: {}",
+                        "[Worker, stream={}, partition={}] Stopping for reason '{}'",
                         stream_id, partition, reason
                     );
                     break;
@@ -198,7 +198,7 @@ fn handler_loop<H, M>(
             }
         } else {
             warn!(
-                "Worker on stream '{}' for partition '{}': \
+                "[Worker, stream={}, partition={}] \
                  Received batch without events.",
                 stream_id, partition
             );
@@ -209,7 +209,7 @@ fn handler_loop<H, M>(
     lifecycle.stopped();
 
     info!(
-        "Worker on stream '{}' for partition '{}': Stopped.",
+        "[Worker, stream={}, partition={}] Stopped.",
         stream_id, partition
     );
 }
