@@ -64,7 +64,7 @@ impl Committer {
             .send(CommitterMessage::Commit(batch, num_events_hint))
             .map_err(|err| {
                 format!(
-                    "Stream '{}' - Could not accept commit request: {}",
+                    "[Committer, stream={}] Could not accept commit request: {}",
                     self.stream_id, err
                 )
             })
@@ -181,7 +181,7 @@ fn run_commit_loop<C, M>(
     loop {
         if lifecycle.abort_requested() {
             info!(
-                "[subscription='{}', stream={}'] Abort requested. Flushing cursors",
+                "[Committer, subscription={}, stream={}] Abort requested. Flushing cursors",
                 subscription_id, stream_id
             );
             flush_all_cursors::<_>(cursors, &subscription_id, &stream_id, &client);
@@ -208,8 +208,9 @@ fn run_commit_loop<C, M>(
             Err(mpsc::RecvTimeoutError::Timeout) => (),
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 warn!(
-                    "[subscription='{}', stream={}'] Commit channel disconnected. Flushing cursors.",
-                subscription_id, stream_id
+                    "[Committer, subscription={}, stream={}] Commit channel disconnected.\
+                     Flushing cursors.",
+                    subscription_id, stream_id
                 );
                 flush_all_cursors::<_>(cursors, &subscription_id, &stream_id, &client);
                 break;
@@ -225,7 +226,7 @@ fn run_commit_loop<C, M>(
             &metrics_collector,
         ) {
             error!(
-                "[subscription='{}', stream={}'] Failed to commit cursors: {}",
+                "[Committer, subscription={}, stream={}] Failed to commit cursors: {}",
                 subscription_id, stream_id, err
             );
             break;
@@ -234,7 +235,7 @@ fn run_commit_loop<C, M>(
 
     lifecycle.stopped();
     info!(
-        "[subscription='{}', stream={}'] Committer stopped.",
+        "[Committer, subscription={}, stream={}] Committer stopped.",
         subscription_id, stream_id
     );
 }
@@ -263,21 +264,22 @@ fn flush_all_cursors<C>(
         flow_id.clone(),
     ) {
         Ok(CommitStatus::AllOffsetsIncreased) => info!(
-            "[subscription='{}', stream={}', flow id='{}'] All remaining offstets\
+            "[Committer, subscription={}, stream={}, flow id={}] All remaining offstets\
              increased.",
             subscription_id, stream_id, flow_id
         ),
         Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
-            "[subscription='{}', stream={}', flow id='{}'] Not all remaining offstets increased.",
+            "[Committer, subscription={}, stream={}, flow id={}] Not all remaining\
+             offstets increased.",
             subscription_id, stream_id, flow_id
         ),
         Ok(CommitStatus::NothingToCommit) => info!(
-            "[subscription='{}', stream={}', flow id='{}'] There was nothing\
+            "[Committer, subscription={}, stream={}, flow id={}] There was nothing\
              to be finally committed.",
             subscription_id, stream_id, flow_id
         ),
         Err(err) => error!(
-            "[subscription='{}', stream={}', flow id='{}'] Failed to commit all\
+            "[Committer, subscription={}, stream={}, flow id={}] Failed to commit all\
              remaining cursors: {}",
             subscription_id, stream_id, flow_id, err
         ),
