@@ -70,7 +70,7 @@ impl FromStr for CommitStrategy {
             .filter(|s| !s.is_empty())
             .collect();
 
-        if parts.len() != 1 {
+        if parts.len() == 1 {
             match parts[0] {
                 "all-batches" => Ok(CommitStrategy::AllBatches),
                 "max-age" => Ok(CommitStrategy::MaxAge),

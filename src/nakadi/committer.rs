@@ -250,39 +250,46 @@ fn flush_all_cursors<C>(
 {
     // We are not interested in metrics here
 
-    let cursors_to_commit: Vec<_> = all_cursors
-        .values()
-        .map(|v| v.batch.batch_line.cursor())
-        .collect();
+    if all_cursors.is_empty() {
+        info!(
+            "[Committer, subscription={}, stream={}] No cursors to finally commit.",
+            subscription_id, stream_id
+        )
+    } else {
+        let cursors_to_commit: Vec<_> = all_cursors
+            .values()
+            .map(|v| v.batch.batch_line.cursor())
+            .collect();
 
-    let flow_id = FlowId::default();
+        let flow_id = FlowId::default();
 
-    match connector.commit_cursors(
-        subscription_id,
-        stream_id,
-        &cursors_to_commit,
-        flow_id.clone(),
-    ) {
-        Ok(CommitStatus::AllOffsetsIncreased) => info!(
-            "[Committer, subscription={}, stream={}, flow id={}] All remaining offstets\
-             increased.",
-            subscription_id, stream_id, flow_id
-        ),
-        Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
-            "[Committer, subscription={}, stream={}, flow id={}] Not all remaining\
-             offstets increased.",
-            subscription_id, stream_id, flow_id
-        ),
-        Ok(CommitStatus::NothingToCommit) => info!(
-            "[Committer, subscription={}, stream={}, flow id={}] There was nothing\
-             to be finally committed.",
-            subscription_id, stream_id, flow_id
-        ),
-        Err(err) => error!(
-            "[Committer, subscription={}, stream={}, flow id={}] Failed to commit all\
-             remaining cursors: {}",
-            subscription_id, stream_id, flow_id, err
-        ),
+        match connector.commit_cursors(
+            subscription_id,
+            stream_id,
+            &cursors_to_commit,
+            flow_id.clone(),
+        ) {
+            Ok(CommitStatus::AllOffsetsIncreased) => info!(
+                "[Committer, subscription={}, stream={}, flow id={}] All remaining offsets\
+                 increased.",
+                subscription_id, stream_id, flow_id
+            ),
+            Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
+                "[Committer, subscription={}, stream={}, flow id={}] Not all remaining\
+                 offstets increased.",
+                subscription_id, stream_id, flow_id
+            ),
+            Ok(CommitStatus::NothingToCommit) => info!(
+                "[Committer, subscription={}, stream={}, flow id={}] There was nothing\
+                 to be finally committed.",
+                subscription_id, stream_id, flow_id
+            ),
+            Err(err) => error!(
+                "[Committer, subscription={}, stream={}, flow id={}] Failed to commit all\
+                 remaining cursors: {}",
+                subscription_id, stream_id, flow_id, err
+            ),
+        }
     }
 }
 

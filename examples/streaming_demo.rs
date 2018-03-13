@@ -240,9 +240,9 @@ fn consume<T: AggregatesProcessors>(
         ))
         .max_uncommitted_events(60000)
         .set_min_idle_worker_lifetime(Duration::from_secs(15))
-        .commit_strategy(CommitStrategy::EveryNBatches(400))
+        .commit_strategy(CommitStrategy::EveryNBatches(200))
         .batch_flush_timeout(Duration::from_secs(1))
-        .batch_limit(100);
+        .batch_limit(50);
 
     let nakadion = nakadion_builder.build_and_start_with_metrix(
         handler_factory,
