@@ -46,11 +46,11 @@ pub enum CommitStrategy {
     AfterSeconds { seconds: u16 },
     Batches {
         after_batches: u32,
-        after_seconds: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")] after_seconds: Option<u16>,
     },
     Events {
         after_events: u32,
-        after_seconds: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")] after_seconds: Option<u16>,
     },
 }
 
