@@ -126,20 +126,34 @@ impl CommitEntry {
         let first_cursor_received_at = batch.received_at;
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
-            CommitStrategy::EveryNBatches(_) => {
-                batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET)
-            }
-            CommitStrategy::EveryNEvents(_) => {
-                batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET)
-            }
-            CommitStrategy::MaxAge => batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
-            CommitStrategy::EveryNSeconds(n) => {
-                let by_strategy = Instant::now() + Duration::from_secs(n as u64);
+            CommitStrategy::Batches {
+                after_seconds: Some(after_seconds),
+                ..
+            } => {
+                let by_strategy = Instant::now() + Duration::from_secs(after_seconds as u64);
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
                 )
             }
+            CommitStrategy::Events {
+                after_seconds: Some(after_seconds),
+                ..
+            } => {
+                let by_strategy = Instant::now() + Duration::from_secs(after_seconds as u64);
+                ::std::cmp::min(
+                    by_strategy,
+                    batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
+                )
+            }
+            CommitStrategy::AfterSeconds { seconds } => {
+                let by_strategy = Instant::now() + Duration::from_secs(seconds as u64);
+                ::std::cmp::min(
+                    by_strategy,
+                    batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
+                )
+            }
+            _ => batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
         };
         let received_at = batch.received_at;
         CommitEntry {
@@ -309,8 +323,9 @@ where
     let num_events: usize = all_cursors.iter().map(|entry| entry.1.num_events).sum();
 
     let commit_all = match strategy {
-        CommitStrategy::EveryNBatches(n) => num_batches >= n as usize,
-        CommitStrategy::EveryNEvents(n) => num_events >= n as usize,
+        CommitStrategy::AllBatches => true,
+        CommitStrategy::Batches { after_batches, .. } => num_batches >= after_batches as usize,
+        CommitStrategy::Events { after_events, .. } => num_events >= after_events as usize,
         _ => false,
     };
 

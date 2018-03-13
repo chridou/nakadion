@@ -240,7 +240,10 @@ fn consume<T: AggregatesProcessors>(
         ))
         .max_uncommitted_events(60000)
         .set_min_idle_worker_lifetime(Duration::from_secs(15))
-        .commit_strategy(CommitStrategy::EveryNBatches(200))
+        .commit_strategy(CommitStrategy::Batches {
+            after_batches: 200,
+            after_seconds: Some(5),
+        })
         .batch_flush_timeout(Duration::from_secs(1))
         .batch_limit(50);
 

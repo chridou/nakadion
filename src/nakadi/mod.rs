@@ -10,6 +10,7 @@ use std::fmt;
 use std::env;
 
 use failure::*;
+use serde_json;
 
 pub mod handler;
 pub mod consumer;
@@ -35,67 +36,22 @@ use metrics::{DevNullMetricsCollector, MetricsCollector};
 use metrix::processor::AggregatesProcessors;
 
 /// Stragtegy for committing cursors
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CommitStrategy {
     /// Commit all cursors immediately
     AllBatches,
     /// Commit as late as possile
-    MaxAge,
+    Latest,
     /// Commit latest after N seconds
-    EveryNSeconds(u16),
-    /// Commit latest after N batches
-    EveryNBatches(u16),
-    /// Commit latest after N events
-    EveryNEvents(u16),
-}
-
-impl fmt::Display for CommitStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            CommitStrategy::AllBatches => write!(f, "all-batches"),
-            CommitStrategy::MaxAge => write!(f, "max-age"),
-            CommitStrategy::EveryNSeconds(n) => write!(f, "every-n-seconds:{}", n),
-            CommitStrategy::EveryNBatches(n) => write!(f, "every-n-batches:{}", n),
-            CommitStrategy::EveryNEvents(n) => write!(f, "every-n-events:{}", n),
-        }
-    }
-}
-
-impl FromStr for CommitStrategy {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<_> = s.split(':')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if parts.len() == 1 {
-            match parts[0] {
-                "all-batches" => Ok(CommitStrategy::AllBatches),
-                "max-age" => Ok(CommitStrategy::MaxAge),
-                invalid => Err(format_err!(
-                    "'{}' is not a commit strategy discriminator",
-                    invalid
-                )),
-            }
-        } else if parts.len() == 2 {
-            let n: u16 = parts[1]
-                .parse::<u16>()
-                .context(format!("'{}' is not a commit strategy", s))?;
-            match parts[0] {
-                "every-n-seconds" => Ok(CommitStrategy::EveryNSeconds(n)),
-                "every-n-batches" => Ok(CommitStrategy::EveryNBatches(n)),
-                "every-n-events" => Ok(CommitStrategy::EveryNEvents(n)),
-                invalid => Err(format_err!(
-                    "'{}' is not a commit strategy discriminator",
-                    invalid
-                )),
-            }
-        } else {
-            Err(format_err!("'{}' is not a subscription discovery", s))
-        }
-    }
+    AfterSeconds { seconds: u16 },
+    Batches {
+        after_batches: u32,
+        after_seconds: Option<u16>,
+    },
+    Events {
+        after_events: u32,
+        after_seconds: Option<u16>,
+    },
 }
 
 #[derive(Clone)]
@@ -375,9 +331,9 @@ impl NakadionBuilder {
         };
 
         let builder = if let Some(env_val) = env::var("NAKADION_COMMIT_STRATEGY").ok() {
-            builder.commit_strategy(env_val
-                .parse::<CommitStrategy>()
-                .context("Could not parse 'NAKADION_COMMIT_STRATEGY'")?)
+            let commit_strategy = serde_json::from_str(&env_val)
+                .context("Could not parse 'NAKADION_COMMIT_STRATEGY'")?;
+            builder.commit_strategy(commit_strategy)
         } else {
             warn!(
                 "Environment variable 'NAKADION_COMMIT_STRATEGY' not found. It will be set \
