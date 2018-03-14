@@ -33,9 +33,15 @@ pub trait BatchHandler {
     fn handle(&mut self, event_type: EventType, events: &[u8]) -> ProcessingStatus;
 }
 
+#[derive(Debug, Fail)]
+#[fail(display = "{}", message)]
+pub struct CreateHandlerError {
+    pub message: String,
+}
+
 pub trait HandlerFactory {
     type Handler: BatchHandler + Send + 'static;
-    fn create_handler(&self, partition: &PartitionId) -> Self::Handler;
+    fn create_handler(&self, partition: &PartitionId) -> Result<Self::Handler, CreateHandlerError>;
 }
 
 pub enum TypedProcessingStatus {

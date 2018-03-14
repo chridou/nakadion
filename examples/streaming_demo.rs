@@ -90,12 +90,12 @@ pub struct DemoHandlerFactory {
 impl HandlerFactory for DemoHandlerFactory {
     type Handler = DemoHandler;
 
-    fn create_handler(&self, partition: &PartitionId) -> Self::Handler {
+    fn create_handler(&self, partition: &PartitionId) -> Result<Self::Handler, CreateHandlerError> {
         info!("Creating handler for {}", partition);
 
-        DemoHandler {
+        Ok(DemoHandler {
             state: self.state.clone(),
-        }
+        })
     }
 }
 

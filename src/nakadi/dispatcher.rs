@@ -180,7 +180,14 @@ fn dispatcher_loop<HF, M>(
                 "[Dispatcher, stream={}] Creating new worker for partition {}",
                 stream_id, partition
             );
-            let handler = handler_factory.create_handler(&partition);
+            let handler = match handler_factory.create_handler(&partition) {
+                Ok(handler) => handler,
+                Err(err) => {
+                    error!("Could not create handler: {}", err);
+                    break;
+                }
+            };
+
             let worker = Worker::start(
                 handler,
                 committer.clone(),
@@ -197,7 +204,6 @@ fn dispatcher_loop<HF, M>(
                 "[Dispatcher, stream={}] Worker did not accept batch. Stopping. - {}",
                 stream_id, err
             );
-
             break;
         }
     }

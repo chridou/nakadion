@@ -517,6 +517,7 @@ mod metrix {
         panel.set_value_scaling(ValueScaling::NanosToMicros);
         panel.set_counter(Counter::new_with_defaults("count"));
         panel.set_meter(Meter::new_with_defaults("per_second"));
+        panel.set_histogram(Histogram::new_with_defaults("time_us"));
         cockpit.add_panel(panel);
     }
 
