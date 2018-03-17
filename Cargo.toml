@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.7.7"
+version = "0.7.8"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -12,7 +12,7 @@ keywords = ["event", "broker", "distributed", "message", "nakadi"]
 
 [dependencies]
 log = "0.4"
-uuid = {version = "0.6", features=["serde"] }
+uuid = {version = "0.6", features=["serde", "v4"] }
 url = { version = "1.4" }
 reqwest = "0.8"
 hyper = "0.11"
@@ -22,5 +22,6 @@ serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 metrix = { version = "0.6", optional = true }
+
 [dev-dependencies]
 env_logger = "0.5"

@@ -116,13 +116,19 @@ impl FromStr for SubscriptionDiscovery {
             .filter(|s| !s.is_empty())
             .collect();
 
-        if parts.len() != 0 {
-            return Err(format_err!("'{}' is not a subscription discovery", s));
+        if parts.len() < 2 {
+            return Err(format_err!(
+                "'{}' is not a subscription discovery(less than 2 parts)",
+                s
+            ));
         } else if parts.len() == 2 {
             if parts[0] == "id" {
                 Ok(SubscriptionDiscovery::Id(SubscriptionId(parts[1].into())))
             } else {
-                return Err(format_err!("'{}' is not a subscription discovery", s));
+                return Err(format_err!(
+                    "'{}' is not a subscription discovery by subscription id",
+                    s
+                ));
             }
         } else if parts.len() == 3 && parts[0] == "owning_application" {
             let owning_application = parts[1].to_string();
