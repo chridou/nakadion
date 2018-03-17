@@ -12,7 +12,7 @@ keywords = ["event", "broker", "distributed", "message", "nakadi"]
 
 [dependencies]
 log = "0.4"
-uuid = {version = "0.5", features=["serde"] }
+uuid = {version = "0.6", features=["serde"] }
 url = { version = "1.4" }
 reqwest = "0.8"
 hyper = "0.11"
