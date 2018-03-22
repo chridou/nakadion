@@ -14,9 +14,21 @@ impl fmt::Display for SubscriptionId {
     }
 }
 
+impl SubscriptionId {
+    pub fn new<T: Into<String>>(id: T) -> SubscriptionId {
+        SubscriptionId(id.into())
+    }
+}
+
 /// A partition id that comes with a `Cursor`
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartitionId(pub String);
+
+impl PartitionId {
+    pub fn new<T: Into<String>>(id: T) -> PartitionId {
+        PartitionId(id.into())
+    }
+}
 
 impl fmt::Display for PartitionId {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {

@@ -245,10 +245,10 @@ mod metrix {
         }
 
         fn worker_worker_started(&self) {
-            self.observed_one_now(WorkerMetrics::WorkerStarted)
+            self.worker.observed_one_now(WorkerMetrics::WorkerStarted)
         }
         fn worker_worker_stopped(&self) {
-            self.observed_one_now(WorkerMetrics::WorkerStopped)
+            self.worker.observed_one_now(WorkerMetrics::WorkerStopped)
         }
         fn worker_batch_size_bytes(&self, bytes: usize) {
             self.worker
@@ -438,8 +438,8 @@ mod metrix {
         events_processed_panel.set_histogram(Histogram::new_with_defaults("batch_size"));
         cockpit.add_panel(events_processed_panel);
 
-        let mut worker_started_panel = Panel::without_name(WorkerMetrics::WorkerStarted);
-        let tracker = LastOccurrenceTracker::new_with_defaults("worker_started");
+        let mut worker_started_panel = Panel::new(WorkerMetrics::WorkerStarted);
+        let mut tracker = LastOccurrenceTracker::new_with_defaults("worker_started");
         tracker.set_title("Worker started");
         tracker.set_description(
             "A worker for a partition has been started within the last minute started",
@@ -447,8 +447,8 @@ mod metrix {
         worker_started_panel.add_instrument(tracker);
         cockpit.add_panel(worker_started_panel);
 
-        let mut worker_started_panel = Panel::without_name(WorkerMetrics::WorkerStopped);
-        let tracker = LastOccurrenceTracker::new_with_defaults("worker_stopped");
+        let mut worker_started_panel = Panel::new(WorkerMetrics::WorkerStopped);
+        let mut tracker = LastOccurrenceTracker::new_with_defaults("worker_stopped");
         tracker.set_title("Worker stopped");
         tracker.set_description(
             "A worker for a partition has been stopped within the last minute started",

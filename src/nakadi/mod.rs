@@ -94,6 +94,32 @@ pub enum SubscriptionDiscovery {
     Application(api::SubscriptionRequest),
 }
 
+#[test]
+fn discovery_serialize_existing_id() {
+    let discovery = SubscriptionDiscovery::ExistingId(SubscriptionId::new("abd"));
+
+    let json_str = serde_json::to_string(&discovery).unwrap();
+
+    assert_eq!(&json_str, "{\"ExistingId\":\"abd\"}");
+}
+
+#[test]
+fn discovery_serialize_application() {
+    let discovery = SubscriptionDiscovery::Application(api::SubscriptionRequest {
+        owning_application: "test_app".into(),
+        event_types: vec!["event_type_1".into()],
+        read_from: Some(api::ReadFrom::Begin),
+    });
+
+    let json_str = serde_json::to_string(&discovery).unwrap();
+
+    assert_eq!(
+        &json_str,
+        "{\"Application\":{\"owning_application\":\"test_app\",\
+         \"event_types\":[\"event_type_1\"],\"read_from\":\"begin\"}}"
+    );
+}
+
 impl fmt::Display for SubscriptionDiscovery {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
