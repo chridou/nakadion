@@ -128,6 +128,8 @@ fn handler_loop<H, M>(
         "[Worker, stream={}, partition={}] Started.",
         stream_id, partition
     );
+    metrics_collector.worker_worker_started();
+
     loop {
         if lifecycle.abort_requested() {
             info!(
@@ -207,6 +209,7 @@ fn handler_loop<H, M>(
     }
 
     lifecycle.stopped();
+    metrics_collector.worker_worker_stopped();
 
     info!(
         "[Worker, stream={}, partition={}] Stopped.",

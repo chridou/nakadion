@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::thread;
-use std::str::FromStr;
 use std::fmt;
 use std::env;
 
@@ -21,12 +20,12 @@ pub mod worker;
 pub mod batch;
 pub mod dispatcher;
 pub mod publisher;
-pub mod api_client;
+pub mod api;
 pub mod events;
 pub mod metrics;
 
 use nakadi::model::SubscriptionId;
-use nakadi::api_client::{ApiClient, NakadiApiClient};
+use nakadi::api::{ApiClient, NakadiApiClient};
 use nakadi::handler::HandlerFactory;
 use nakadi::streaming_client::StreamingClient;
 use auth::ProvidesAccessToken;
@@ -85,65 +84,19 @@ impl Default for Lifecycle {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SubscriptionDiscovery {
-    Id(SubscriptionId),
-    OwningApplication(String, Vec<String>),
+    /// Connect with an existing `SubscriptionId`
+    ExistingId(SubscriptionId),
+    /// Create a new subscription for the application
+    /// and if it already exists use
+    /// the existing subscription
+    Application(api::SubscriptionRequest),
 }
 
 impl fmt::Display for SubscriptionDiscovery {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SubscriptionDiscovery::Id(ref id) => write!(f, "id:{}", id.0),
-            SubscriptionDiscovery::OwningApplication(ref app, ref event_types) => {
-                let mut event_type_str = String::new();
-                for et in event_types {
-                    event_type_str.push_str(&et);
-                    event_type_str.push(' ');
-                }
-                write!(f, "owning_application:{}:{}", app, event_type_str)
-            }
-        }
-    }
-}
-
-impl FromStr for SubscriptionDiscovery {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<_> = s.split(':')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if parts.len() < 2 {
-            return Err(format_err!(
-                "'{}' is not a subscription discovery(less than 2 parts)",
-                s
-            ));
-        } else if parts.len() == 2 {
-            if parts[0] == "id" {
-                Ok(SubscriptionDiscovery::Id(SubscriptionId(parts[1].into())))
-            } else {
-                return Err(format_err!(
-                    "'{}' is not a subscription discovery by subscription id",
-                    s
-                ));
-            }
-        } else if parts.len() == 3 && parts[0] == "owning_application" {
-            let owning_application = parts[1].to_string();
-            let event_types: Vec<_> = parts[2]
-                .split(' ')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            Ok(SubscriptionDiscovery::OwningApplication(
-                owning_application,
-                event_types,
-            ))
-        } else {
-            return Err(format_err!("'{}' is not a subscription discovery", s));
-        }
+        write!(f, "{:?}", self)
     }
 }
 
@@ -349,9 +302,9 @@ impl NakadionBuilder {
         };
 
         let builder = if let Some(env_val) = env::var("NAKADION_SUBSCRIPTION_DISCOVERY").ok() {
-            builder.subscription_discovery(env_val
-                .parse::<SubscriptionDiscovery>()
-                .context("Could not parse 'NAKADION_SUBSCRIPTION_DISCOVERY'")?)
+            let discovery = serde_json::from_str(&env_val)
+                .context("Could not parse 'NAKADION_SUBSCRIPTION_DISCOVERY'")?;
+            builder.subscription_discovery(discovery)
         } else {
             warn!(
                 "Environment variable 'NAKADION_SUBSCRIPTION_DISCOVERY' not found. It must be set \
@@ -522,7 +475,7 @@ impl Nakadion {
         let access_token_provider = Arc::new(access_token_provider);
 
         let api_client = NakadiApiClient::with_shared_access_token_provider(
-            api_client::Config {
+            api::Config {
                 nakadi_host: config.nakadi_host.clone(),
                 request_timeout: config.request_timeout,
             },
@@ -535,20 +488,14 @@ impl Nakadion {
         );
 
         let subscription_id = match config.subscription_discovery {
-            SubscriptionDiscovery::Id(id) => id,
-            SubscriptionDiscovery::OwningApplication(app, event_types) => {
-                let request = api_client::CreateSubscriptionRequest {
-                    owning_application: app,
-                    event_types: event_types,
-                    read_from: None,
-                };
-
+            SubscriptionDiscovery::ExistingId(id) => id,
+            SubscriptionDiscovery::Application(request) => {
                 match api_client.create_subscription(&request)? {
-                    api_client::CreateSubscriptionStatus::Created(subscription) => {
+                    api::CreateSubscriptionStatus::Created(subscription) => {
                         info!("Created new subscription {}", subscription.id);
                         subscription.id
                     }
-                    api_client::CreateSubscriptionStatus::AlreadyExists(subscription) => {
+                    api::CreateSubscriptionStatus::AlreadyExists(subscription) => {
                         info!("Using already existing subscription {}", subscription.id);
                         subscription.id
                     }

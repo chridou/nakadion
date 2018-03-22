@@ -4,11 +4,10 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::time::{Duration, Instant};
 
-use nakadi::CommitStrategy;
-use nakadi::api_client::{ApiClient, CommitError, CommitStatus};
+use nakadi::{CommitStrategy, Lifecycle};
+use nakadi::api::{ApiClient, CommitError, CommitStatus};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::batch::Batch;
-use nakadi::Lifecycle;
 use nakadi::metrics::MetricsCollector;
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;

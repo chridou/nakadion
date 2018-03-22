@@ -1,13 +1,11 @@
-use nakadi::api_client::ApiClient;
-use nakadi::streaming_client::{ConnectError, LineResult, RawLine};
-use nakadi::Lifecycle;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 
-use nakadi::CommitStrategy;
+use nakadi::api::ApiClient;
+use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
+use nakadi::{CommitStrategy, Lifecycle};
 use nakadi::handler::HandlerFactory;
-use nakadi::streaming_client::StreamingClient;
 use nakadi::model::*;
 use nakadi::committer::Committer;
 use nakadi::dispatcher::Dispatcher;

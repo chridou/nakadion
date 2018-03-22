@@ -38,6 +38,8 @@ pub trait MetricsCollector {
     /// The number of workers currently processing partitions.
     fn dispatcher_current_workers(&self, num_workers: usize);
 
+    fn worker_worker_started(&self);
+    fn worker_worker_stopped(&self);
     /// Events with a comined legth of `bytes` bytes have been
     /// received.
     fn worker_batch_size_bytes(&self, bytes: usize);
@@ -90,6 +92,8 @@ impl MetricsCollector for DevNullMetricsCollector {
 
     fn dispatcher_current_workers(&self, _num_workers: usize) {}
 
+    fn worker_worker_started(&self) {}
+    fn worker_worker_stopped(&self) {}
     fn worker_batch_size_bytes(&self, _bytes: usize) {}
     fn worker_batch_processed(&self, _started: Instant) {}
     fn worker_events_in_same_batch_processed(&self, _n: usize) {}
@@ -140,6 +144,8 @@ mod metrix {
 
     #[derive(Clone, PartialEq, Eq)]
     enum WorkerMetrics {
+        WorkerStarted,
+        WorkerStopped,
         BatchSizeInBytes,
         BatchProcessed,
         EventsProcessed,
@@ -238,6 +244,12 @@ mod metrix {
                 .observed_one_value_now(DispatcherMetrics::NumWorkers, num_workers as u64);
         }
 
+        fn worker_worker_started(&self) {
+            self.observed_one_now(WorkerMetrics::WorkerStarted)
+        }
+        fn worker_worker_stopped(&self) {
+            self.observed_one_now(WorkerMetrics::WorkerStopped)
+        }
         fn worker_batch_size_bytes(&self, bytes: usize) {
             self.worker
                 .observed_one_value_now(WorkerMetrics::BatchSizeInBytes, bytes as u64);
@@ -424,10 +436,27 @@ mod metrix {
             Panel::with_name(WorkerMetrics::EventsProcessed, "events_processed");
         events_processed_panel.add_instrument(ValueMeter::new_with_defaults("per_second"));
         events_processed_panel.set_histogram(Histogram::new_with_defaults("batch_size"));
-
         cockpit.add_panel(events_processed_panel);
 
-        let (tx, rx) = TelemetryProcessor::new_pair("worker");
+        let mut worker_started_panel = Panel::without_name(WorkerMetrics::WorkerStarted);
+        let tracker = LastOccurrenceTracker::new_with_defaults("worker_started");
+        tracker.set_title("Worker started");
+        tracker.set_description(
+            "A worker for a partition has been started within the last minute started",
+        );
+        worker_started_panel.add_instrument(tracker);
+        cockpit.add_panel(worker_started_panel);
+
+        let mut worker_started_panel = Panel::without_name(WorkerMetrics::WorkerStopped);
+        let tracker = LastOccurrenceTracker::new_with_defaults("worker_stopped");
+        tracker.set_title("Worker stopped");
+        tracker.set_description(
+            "A worker for a partition has been stopped within the last minute started",
+        );
+        worker_started_panel.add_instrument(tracker);
+        cockpit.add_panel(worker_started_panel);
+
+        let (tx, rx) = TelemetryProcessor::new_pair("workers");
 
         tx.add_cockpit(cockpit);
 

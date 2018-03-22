@@ -16,15 +16,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
-use chrono::DateTime;
 use chrono::offset::Utc;
 use uuid::Uuid;
 
 use failure::Error;
 use nakadion::auth::*;
-use nakadion::api_client::*;
+use nakadion::api::*;
 use nakadion::*;
-use nakadion::streaming_client::*;
 use nakadion::events::*;
 use nakadion::FlowId;
 use log::LevelFilter;
@@ -149,7 +147,7 @@ fn main() {
         }),
     };
 
-    let api_client = ::nakadion::api_client::ConfigBuilder::default()
+    let api_client = ::nakadion::api::ConfigBuilder::default()
         .nakadi_host("http://localhost:8080")
         .build_client(AccessTokenProvider)
         .unwrap();
@@ -160,7 +158,7 @@ fn main() {
     }
 
     info!("Create subscription");
-    let request = CreateSubscriptionRequest {
+    let request = SubscriptionRequest {
         owning_application: "test-suite".into(),
         event_types: vec![EVENT_TYPE_NAME.into()],
         read_from: Some(ReadFrom::Begin),
@@ -234,10 +232,11 @@ fn consume<T: AggregatesProcessors>(
 
     let nakadion_builder = NakadionBuilder::default()
         .nakadi_host("http://localhost:8080")
-        .subscription_discovery(SubscriptionDiscovery::OwningApplication(
-            "test-suite".into(),
-            vec![EVENT_TYPE_NAME.into()],
-        ))
+        .subscription_discovery(SubscriptionDiscovery::Application(SubscriptionRequest {
+            owning_application: "test-suite".into(),
+            event_types: vec![EVENT_TYPE_NAME.into()],
+            read_from: Some(ReadFrom::Begin),
+        }))
         .max_uncommitted_events(60000)
         .set_min_idle_worker_lifetime(Duration::from_secs(15))
         .commit_strategy(CommitStrategy::Batches {
