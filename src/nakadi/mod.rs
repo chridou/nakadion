@@ -1,55 +1,63 @@
-/// Describes what to do after a batch has been processed.
-///
-/// Use to control what should happen next.
+use std::env;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 use std::thread;
-use std::fmt;
-use std::env;
+use std::time::Duration;
 
 use failure::*;
 use serde_json;
 
-pub mod handler;
-pub mod consumer;
-pub mod model;
-pub mod streaming_client;
-pub mod committer;
-pub mod worker;
-pub mod batch;
-pub mod dispatcher;
-pub mod publisher;
 pub mod api;
+pub mod batch;
+pub mod committer;
+pub mod consumer;
+pub mod dispatcher;
 pub mod events;
+pub mod handler;
 pub mod metrics;
+pub mod model;
+pub mod publisher;
+pub mod streaming_client;
+pub mod worker;
 
-use nakadi::model::SubscriptionId;
-use nakadi::api::{ApiClient, NakadiApiClient};
-use nakadi::handler::HandlerFactory;
-use nakadi::streaming_client::StreamingClient;
 use auth::ProvidesAccessToken;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
+use nakadi::api::{ApiClient, NakadiApiClient};
+use nakadi::handler::HandlerFactory;
+use nakadi::model::SubscriptionId;
+use nakadi::streaming_client::StreamingClient;
 
 #[cfg(feature = "metrix")]
 use metrix::processor::AggregatesProcessors;
 
-/// Stragtegy for committing cursors
+/// Strategy for committing cursors
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CommitStrategy {
     /// Commit all cursors immediately
     AllBatches,
     /// Commit as late as possile
     Latest,
-    /// Commit latest after N seconds
+    /// Commit latest after `seconds` seconds
     AfterSeconds { seconds: u16 },
+    /// Commit latest after `after_batches` batches have been
+    /// received or after `after_seconds` seconds have
+    /// elapsed
     Batches {
         after_batches: u32,
-        #[serde(skip_serializing_if = "Option::is_none")] after_seconds: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        after_seconds: Option<u16>,
     },
+    /// Commit latest after `after_events` events have been
+    /// received or after `after_seconds` seconds have
+    /// elapsed
+    ///
+    /// This requires the `BatchHandler` to return the number
+    /// of processed events to work properly.
     Events {
         after_events: u32,
-        #[serde(skip_serializing_if = "Option::is_none")] after_seconds: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        after_seconds: Option<u16>,
     },
 }
 
@@ -168,21 +176,30 @@ pub struct NakadionConfig {
     pub max_uncommitted_events: usize,
     /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: String,
-
+    /// The request timeout used when committing events
     pub request_timeout: Duration,
-
+    /// The `CommitStrategy` to use
     pub commit_strategy: CommitStrategy,
-
+    /// Used for discovering/creating the subscription to consume
     pub subscription_discovery: SubscriptionDiscovery,
-
+    /// The time after which a worker that received no events
+    /// will be shut down.
     pub min_idle_worker_lifetime: Option<Duration>,
 }
 
 pub struct NakadionBuilder {
+    /// The configuration of the streaming client used to connect to the stream.
+    ///
+    /// The defaults are defaults of `streaming_client::ConfigBuilder`
     pub streaming_client_builder: streaming_client::ConfigBuilder,
+    /// The request timeout used when committing events
     pub request_timeout: Option<Duration>,
+    /// The `CommitStrategy` to use for committing cursors
     pub commit_strategy: Option<CommitStrategy>,
+    /// Used for discovering/creating the subscription to consume
     pub subscription_discovery: Option<SubscriptionDiscovery>,
+    /// The time after which a worker that received no events
+    /// will be shut down. The default is to never shut down workers.
     pub min_idle_worker_lifetime: Option<Duration>,
 }
 
@@ -263,11 +280,14 @@ impl NakadionBuilder {
         self
     }
 
+    /// The request timeout used when committing events
     pub fn request_timeout(mut self, request_timeout: Duration) -> NakadionBuilder {
         self.request_timeout = Some(request_timeout);
         self
     }
 
+    /// The time after which a worker that received no events
+    /// will be shut down. The default is to never shut down workers.
     pub fn commit_strategy(mut self, commit_strategy: CommitStrategy) -> NakadionBuilder {
         self.commit_strategy = Some(commit_strategy);
         self
@@ -297,6 +317,29 @@ impl NakadionBuilder {
         self
     }
 
+    /// Create a new builder from environment variables.
+    ///
+    /// # Environment Variables:
+    ///
+    /// * `NAKADION_NAKADI_HOST`: See `NakadionBuilder::nakadi_host`
+    /// * `NAKADION_MAX_UNCOMMITED_EVENTS`: See
+    /// `NakadionBuilder::max_uncommitted_events`
+    /// * `NAKADION_BATCH_LIMIT`: See `NakadionBuilder::batch_limit`
+    /// * `NAKADION_BATCH_FLUSH_TIMEOUT_SECS`: See
+    /// `NakadionBuilder::batch_flush_timeout`
+    /// * `NAKADION_STREAM_TIMEOUT_SECS`: See `NakadionBuilder::stream_timeout`
+    /// * `NAKADION_STREAM_LIMIT`: See `NakadionBuilder::stream_limit`
+    /// * `NAKADION_STREAM_KEEP_ALIVE_LIMIT´: See
+    /// `NakadionBuilder::stream_keep_alive_limit`
+    /// * `NAKADION_REQUEST_TIMEOUT_MS`: See `NakadionBuilder::request_timeout`
+    /// * `NAKADION_COMMIT_STRATEGY`: See `NakadionBuilder::commit_strategy`
+    /// * `NAKADION_SUBSCRIPTION_DISCOVERY`: See `NakadionBuilder::subscription_discovery`
+    /// * `NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS`:
+    /// See `NakadionBuilder::min_idle_worker_lifetime`
+    ///
+    /// # Errors
+    ///
+    /// A value from an existing environment variable was not parsable
     pub fn from_env() -> Result<NakadionBuilder, Error> {
         let streaming_client_builder = streaming_client::ConfigBuilder::from_env()?;
 
@@ -355,6 +398,11 @@ impl NakadionBuilder {
         Ok(builder)
     }
 
+    /// Build a `NakadionConfig` from this builder
+    ///
+    /// # Errors
+    ///
+    /// Not all mandatory values have been set
     pub fn build_config(self) -> Result<NakadionConfig, Error> {
         let streaming_client_config = self.streaming_client_builder.build()?;
 
@@ -392,6 +440,14 @@ impl NakadionBuilder {
         })
     }
 
+    /// Build and start `Nakadion` from this builder
+    ///
+    /// No metrics will be collected.
+    ///
+    /// # Errors
+    ///
+    /// Not all mandatory values have been set or
+    /// creating `Nakadion` failed.
     pub fn build_and_start<HF, P>(
         self,
         handler_factory: HF,
@@ -408,6 +464,14 @@ impl NakadionBuilder {
         )
     }
 
+    /// Build and start `Nakadion` from this builder
+    ///
+    /// The given `MetricsCollector` will be used to collect metrics
+    ///
+    /// # Errors
+    ///
+    /// Not all mandatory values have been set or
+    /// creating `Nakadion` failed.
     pub fn build_and_start_with_metrics<HF, P, M>(
         self,
         handler_factory: HF,
@@ -429,6 +493,15 @@ impl NakadionBuilder {
         )
     }
 
+    /// Build and start `Nakadion` from this builder.
+    ///
+    /// Metrics will be collected using
+    /// [metrix](https://crates.io/crates/metrix)
+    ///
+    /// # Errors
+    ///
+    /// Not all mandatory values have been set or
+    /// creating `Nakadion` failed.
     #[cfg(feature = "metrix")]
     pub fn build_and_start_with_metrix<HF, P, T>(
         self,
@@ -453,11 +526,23 @@ impl NakadionBuilder {
     }
 }
 
+/// This struct represents Nakadion.
+///
+/// Once instatntiated it can only be used
+/// query its running state or to stop
+/// consuming events.
 pub struct Nakadion {
     guard: Arc<DropGuard>,
 }
 
 impl Nakadion {
+    /// Start with manually created components and parameter
+    ///
+    /// The `SubscriptionId` must be already known
+    ///
+    /// # Errors
+    ///
+    /// Nakadion could not be started.
     pub fn start_with<HF, C, A, M>(
         subscription_id: SubscriptionId,
         streaming_client: C,
@@ -487,6 +572,13 @@ impl Nakadion {
         Ok(Nakadion { guard })
     }
 
+    /// Start with the given configuration
+    /// and create all interally required components from the configuration
+    ///
+    /// # Errors
+    ///
+    /// Nakadion could not be started. This might be due to an
+    /// invalid configuration
     pub fn start<HF, P, M>(
         config: NakadionConfig,
         handler_factory: HF,
@@ -557,18 +649,24 @@ impl Nakadion {
         )
     }
 
+    /// Returns true if Nakadion is running
     pub fn running(&self) -> bool {
         self.guard.running()
     }
 
+    /// Stops Nakadion
     pub fn stop(&self) {
         self.guard.consumer.stop()
     }
 
+    /// Block the current thread until Nakadion has stopped
     pub fn block_until_stopped(&self) {
         self.block_until_stopped_with_interval(Duration::from_secs(1))
     }
 
+    /// Block the current thread until Nakadion has stopped.
+    ///
+    /// The state is polled at the given `poll_interval`.
     pub fn block_until_stopped_with_interval(&self, poll_interval: Duration) {
         while self.running() {
             thread::sleep(poll_interval);

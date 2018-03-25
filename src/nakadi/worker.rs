@@ -6,16 +6,16 @@ use std::time::{Duration, Instant};
 use failure::*;
 
 use nakadi::Lifecycle;
-use nakadi::model::PartitionId;
-use nakadi::handler::{BatchHandler, ProcessingStatus};
 use nakadi::batch::Batch;
-use nakadi::model::EventType;
 use nakadi::committer::Committer;
+use nakadi::handler::{BatchHandler, ProcessingStatus};
 use nakadi::metrics::MetricsCollector;
+use nakadi::model::EventType;
+use nakadi::model::PartitionId;
 
-/// A worker is responsible to execute a handler on a given
+/// A worker is responsible for executing a handler on a given
 /// partition. A worker guarantees that its `BatchHandler`
-/// is always executed on the same thread.
+/// is always executed on at most one thread at a time.
 pub struct Worker {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
@@ -27,7 +27,7 @@ pub struct Worker {
 impl Worker {
     /// Start the worker.
     ///
-    /// It will run until stop is called.
+    /// It will run until stop is called or the `BatchHandler` fails.
     pub fn start<H, M>(
         handler: H,
         committer: Committer,
@@ -82,6 +82,7 @@ impl Worker {
         ))?)
     }
 
+    // The partition this worker is processing
     pub fn partition(&self) -> &PartitionId {
         &self.partition
     }

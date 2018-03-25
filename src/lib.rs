@@ -27,13 +27,13 @@ pub mod auth;
 
 mod nakadi;
 
-pub use nakadi::handler::*;
+pub use nakadi::api;
 pub use nakadi::consumer;
+pub use nakadi::handler::*;
+pub use nakadi::metrics;
 pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
 pub use nakadi::streaming_client;
-pub use nakadi::api;
 pub use nakadi::{CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery};
-pub use nakadi::metrics;
 
 pub use nakadi::publisher;
 

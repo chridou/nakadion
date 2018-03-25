@@ -1,17 +1,17 @@
+use std::env;
+use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 /// Stream lines from a Nakadi subscription
 use std::sync::Arc;
-use std::env;
 use std::time::{Duration, Instant};
-use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 
-use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
+use failure::*;
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, Headers};
-use failure::*;
+use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 header! { (XFlowId, "X-Flow-Id") => [String] }
@@ -68,6 +68,9 @@ pub trait StreamingClient {
 }
 
 /// Settings for establishing a connection to `Nakadi`.
+///
+/// Please also read about
+/// [consuming events](http://nakadi.io/manual.html#/subscriptions/subscription_id/events_get)
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Maximum number of empty keep alive batches to get in a row before closing the
@@ -111,14 +114,47 @@ pub struct Config {
     pub nakadi_host: String,
 }
 
-/// Builds a configuration for a `Config`.
+/// A builder for a `Config`.
+///
+/// Please also read about
+/// [consuming events](http://nakadi.io/manual.html#/subscriptions/subscription_id/events_get)
 pub struct ConfigBuilder {
+    /// Maximum number of empty keep alive batches to get in a row before closing the
+    /// connection. If 0 or undefined will send keep alive messages indefinitely.
     pub stream_keep_alive_limit: Option<usize>,
+    /// Maximum number of `Event`s in this stream (over all partitions being streamed
+    /// in this
+    /// connection).
+    ///
+    /// * If 0 or undefined, will stream batches indefinitely.
+    /// * Stream initialization will fail if `stream_limit` is lower than `batch_limit`.
     pub stream_limit: Option<usize>,
+    /// Maximum time in seconds a stream will live before connection is closed by the
+    /// server.
+    ///
+    /// If 0 or unspecified will stream indefinitely.
+    /// If this timeout is reached, any pending messages (in the sense of
+    /// `stream_limit`)
+    /// will be flushed to the client.
+    /// Stream initialization will fail if `stream_timeout` is lower than
+    /// `batch_flush_timeout`.
     pub stream_timeout: Option<Duration>,
+    /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
+    ///
+    ///  * If the amount of buffered Events reaches `batch_limit`
+    /// before this `batch_flush_timeout` is reached, the messages are immediately
+    /// flushed to the client and batch flush timer is reset.
+    ///  * If 0 or undefined, will assume 30 seconds.
     pub batch_flush_timeout: Option<Duration>,
+    /// The amount of uncommitted events Nakadi will stream before pausing the stream.
+    /// When in paused state and commit comes - the stream will resume. Minimal value
+    /// is 1.
     pub batch_limit: Option<usize>,
+    /// The amount of uncommitted events Nakadi will stream before pausing the stream.
+    /// When in paused state and commit comes - the stream will resume. Minimal value
+    /// is 1.
     pub max_uncommitted_events: Option<usize>,
+    /// The URI prefix for the Nakadi Host, e.g. "https://my.nakadi.com"
     pub nakadi_host: Option<String>,
 }
 
@@ -188,9 +224,6 @@ impl ConfigBuilder {
     /// The amount of uncommitted events Nakadi will stream before pausing the stream.
     /// When in paused state and commit comes - the stream will resume. Minimal value
     /// is 1.
-    ///
-    /// When using the concurrent worker you should adjust this value to safe your
-    /// workers from running dry.
     pub fn max_uncommitted_events(mut self, max_uncommitted_events: usize) -> ConfigBuilder {
         self.max_uncommitted_events = Some(max_uncommitted_events);
         self
@@ -202,6 +235,8 @@ impl ConfigBuilder {
     }
 
     /// Create a builder from environment variables.
+    ///
+    /// # Environment Variables:
     ///
     /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
     ///
@@ -288,7 +323,11 @@ impl ConfigBuilder {
         Ok(builder)
     }
 
-    /// Build a `Config` from
+    /// Build a `Config` from this builder
+    ///
+    /// # Errors
+    ///
+    /// The Nakadi host was not specified.
     pub fn build(self) -> Result<Config, Error> {
         let nakadi_host = if let Some(nakadi_host) = self.nakadi_host {
             nakadi_host
@@ -306,7 +345,12 @@ impl ConfigBuilder {
         })
     }
 
-    /// Build a `NakadiStreamingClient` from this builder.
+    /// Build a `NakadiStreamingClient` from this builder
+    /// with an access token provider.
+    ///
+    /// # Errors
+    ///
+    /// The configuration was invalid.
     pub fn build_client<T, M>(
         self,
         token_provider: T,
@@ -322,7 +366,12 @@ impl ConfigBuilder {
         )
     }
 
-    /// Build a `NakadiStreamingClient` from this builder.
+    /// Build a `NakadiStreamingClient` from this builder using
+    /// an already shared access token provider.
+    ///
+    /// # Errors
+    ///
+    /// The configuration was invalid.
     pub fn build_client_with_shared_access_token_provider<M>(
         self,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -342,7 +391,7 @@ impl ConfigBuilder {
 }
 
 /// Connects to Nakadi via HTTP and creates an iterator of
-/// lines from the data received from Nakadi.
+/// lines from the data received from Nakadi over the network
 #[derive(Clone)]
 pub struct NakadiStreamingClient<M> {
     http_client: HttpClient,
@@ -368,7 +417,8 @@ where
         )
     }
 
-    /// Create a new `NakadiStreamingClient<DevNullMetricsCollector>`.
+    /// Create a new `NakadiStreamingClient<DevNullMetricsCollector>` that
+    /// does not collect any metrics.
     pub fn without_metrics<T: ProvidesAccessToken + Send + Sync + 'static>(
         config: Config,
         token_provider: T,
@@ -380,7 +430,7 @@ where
         )
     }
 
-    /// Create a new `NakadiStreamingClient<M>`.
+    /// Create a new `NakadiStreamingClient<M>` with a shared acess token provider.
     pub fn with_shared_access_token_provider(
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -588,7 +638,7 @@ pub enum ConnectError {
 }
 
 impl ConnectError {
-    /// Returns false if this error can most possibly not
+    /// Returns true if this error can most possibly not
     /// be mitigated by performing a retry.
     pub fn is_permanent(&self) -> bool {
         match *self {

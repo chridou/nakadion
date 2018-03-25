@@ -3,8 +3,15 @@ use std::fmt;
 
 use uuid::Uuid;
 
-/// A `SubscriptionId` is used to guarantee a continous flow of events for a
-/// client.
+/// A `SubscriptionId` is used to guarantee a continous flow of events for
+/// clients.
+///
+/// If an event type is streamed over multiple
+/// partitioned multiple clients can consume
+/// the event type.
+///
+/// For more information on event types and subscriptions
+/// see [subscriptions](http://nakadi.io/manual.html#using_consuming-events-hila)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubscriptionId(pub String);
 
@@ -20,11 +27,15 @@ impl SubscriptionId {
     }
 }
 
-/// A partition id that comes with a `Cursor`
+/// A partition id that comes with a cursor retrieved from a batch.
+///
+/// A `PartitionId` is passed to a `HandlerFactory` when
+/// creating a new `BatchHandler`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartitionId(pub String);
 
 impl PartitionId {
+    /// Create a new `PartitionId`
     pub fn new<T: Into<String>>(id: T) -> PartitionId {
         PartitionId(id.into())
     }
@@ -36,8 +47,13 @@ impl fmt::Display for PartitionId {
     }
 }
 
-/// A `StreamId` identifies a subscription. It must be provided for checkpointing with
+/// A `StreamId` identifies connection to a subscription.
+///
+/// It must be provided for committing
 /// a `Cursor`.
+///
+/// For more information on event types and subscriptions
+/// see [subscriptions](http://nakadi.io/manual.html#using_consuming-events-hila)
 #[derive(Clone, Debug)]
 pub struct StreamId(pub String);
 
@@ -53,8 +69,10 @@ impl fmt::Display for StreamId {
     }
 }
 
-/// A `StreamId` identifies a subscription. It must be provided for checkpointing with
-/// a `Cursor`.
+/// A `FlowId` helps when finding problems and tracing
+/// workflows. It is usually submitted when interacting
+/// with the Nakadi REST API but also contained
+/// in received event metadata.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FlowId(pub String);
 

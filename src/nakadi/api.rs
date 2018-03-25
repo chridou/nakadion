@@ -1,7 +1,16 @@
-use std::sync::Arc;
+//! Access to the REST API of Nakadi
+//!
+//! # Functionality
+//!
+//! * Commit cursors
+//! * Create a new event type
+//! * Delete an existing event type
+//! * Create a new Subscription or get an exiting subscription
+//! * Delete an existing subscription
 use std::env;
-use std::time::Duration;
 use std::io::Read;
+use std::sync::Arc;
+use std::time::Duration;
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
@@ -9,17 +18,31 @@ use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 
-use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
-use reqwest::StatusCode;
-use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::*;
+use reqwest::StatusCode;
+use reqwest::header::{Authorization, Bearer, ContentType, Headers};
+use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
 header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
 header! { (XFlowId, "X-Flow-Id") => [String] }
 
-/// A client to the Nakadi Event Broker
+/// A REST client for the Nakadi API.
+///
+/// This accesses the REST API only and does not provide
+/// functionality for streaming.
 pub trait ApiClient {
+    /// Commit the cursors encoded in the given
+    /// bytes.
+    ///
+    /// A commit can only be done on a valid stream identified by
+    /// its id.
+    ///
+    /// This method will retry for 500ms in case of a failure.
+    ///
+    /// # Errors
+    ///
+    /// The cursors could not be comitted.
     fn commit_cursors<T: AsRef<[u8]>>(
         &self,
         subscription_id: &SubscriptionId,
@@ -36,6 +59,18 @@ pub trait ApiClient {
         )
     }
 
+    /// Commit the cursors encoded in the given
+    /// bytes.
+    ///
+    /// A commit can only be done on a valid stream identified by
+    /// its id.
+    ///
+    /// This method will retry for the `Duration`
+    /// defined by `budget` in case of a failure.
+    ///
+    /// # Errors
+    ///
+    /// The cursors could not be comitted.
     fn commit_cursors_budgeted<T: AsRef<[u8]>>(
         &self,
         subscription_id: &SubscriptionId,
@@ -45,30 +80,61 @@ pub trait ApiClient {
         budget: Duration,
     ) -> ::std::result::Result<CommitStatus, CommitError>;
 
+    /// Deletes an event type.
+    ///
+    /// # Errors
+    ///
+    /// The event type could not be deleted.
     fn delete_event_type(&self, event_type_name: &str) -> Result<(), DeleteEventTypeError>;
 
+    /// Creates an event type defined by `EventTypeDefinition`.
+    ///
+    /// # Errors
+    ///
+    /// The event type could not be created.
     fn create_event_type(
         &self,
         event_type: &EventTypeDefinition,
     ) -> Result<(), CreateEventTypeError>;
 
+    /// Creates an new subscription defined by a `SubscriptionRequest`.
+    ///
+    /// Trying to create a `Subscription` that already existed is not
+    /// considered a failure. See `CreateSubscriptionStatus` for mor details.   
+    ///
+    /// # Errors
+    ///
+    /// The subscription could not be created.
     fn create_subscription(
         &self,
         request: &SubscriptionRequest,
     ) -> Result<CreateSubscriptionStatus, CreateSubscriptionError>;
 
+    /// Deletes a `Subscription` identified by a `SubscriptionId`.
+    ///
+    /// # Errors
+    ///
+    /// The subscription could not be deleted.
     fn delete_subscription(&self, id: &SubscriptionId) -> Result<(), DeleteSubscriptionError>;
 }
 
 /// Settings for establishing a connection to `Nakadi`.
+///
+/// You can use the `ConfigBuilder` in this module to easily
+/// create a configuration.
 #[derive(Debug)]
 pub struct Config {
+    /// The Nakadi host
     pub nakadi_host: String,
+    /// Timeout after which a conection to the REST API
+    /// is aborted. If `None` wait indefinitely.
     pub request_timeout: Duration,
 }
 
 pub struct ConfigBuilder {
+    /// The Nakadi host
     pub nakadi_host: Option<String>,
+    /// The request timeout when connecting to Nakadi
     pub request_timeout: Option<Duration>,
 }
 
@@ -76,7 +142,7 @@ impl Default for ConfigBuilder {
     fn default() -> ConfigBuilder {
         ConfigBuilder {
             nakadi_host: None,
-            request_timeout: None,
+            request_timeout: Some(Duration::from_secs(1)),
         }
     }
 }
@@ -87,6 +153,9 @@ impl ConfigBuilder {
         self.nakadi_host = Some(nakadi_host.into());
         self
     }
+
+    /// Timeout after which a conection to the REST API
+    /// is aborted. If `None` wait indefinitely
     pub fn request_timeout(mut self, request_timeout: Duration) -> ConfigBuilder {
         self.request_timeout = Some(request_timeout);
         self
@@ -94,12 +163,19 @@ impl ConfigBuilder {
 
     /// Create a builder from environment variables.
     ///
+    /// # Environment Variables:
+    ///
     /// For variables not found except 'NAKADION_NAKADI_HOST' a default will be set.
     ///
     /// Variables:
     ///
-    /// * NAKADION_NAKADI_HOST: See `ConnectorSettings::nakadi_host`
-    /// * NAKADION_REQUEST_TIMEOUT_MS:
+    /// * NAKADION_NAKADI_HOST: Host address of Nakadi. The host is mandatory.
+    /// * NAKADION_REQUEST_TIMEOUT_MS: Timeout in ms after which a conection to the REST API
+    /// is aborted. This is optional and defaults to 1 second.
+    ///
+    /// # Errors
+    ///
+    /// Fails if a value can not be parsed from an existing environment variable.
     pub fn from_env() -> Result<ConfigBuilder, Error> {
         let builder = ConfigBuilder::default();
         let builder = if let Some(env_val) = env::var("NAKADION_NAKADI_HOST").ok() {
@@ -125,6 +201,11 @@ impl ConfigBuilder {
         Ok(builder)
     }
 
+    /// Build a config from this builder.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `nakadi_host` is not set.
     pub fn build(self) -> Result<Config, Error> {
         let nakadi_host = if let Some(nakadi_host) = self.nakadi_host {
             nakadi_host
@@ -137,6 +218,13 @@ impl ConfigBuilder {
         })
     }
 
+    /// Directly build an API client from this builder.
+    ///
+    /// Takes ownership of the `token_provider`
+    ///
+    /// # Errors
+    ///
+    /// Fails if this builder is in an invalid state.
     pub fn build_client<T>(self, token_provider: T) -> Result<NakadiApiClient, Error>
     where
         T: ProvidesAccessToken + Send + Sync + 'static,
@@ -144,6 +232,13 @@ impl ConfigBuilder {
         self.build_client_with_shared_access_token_provider(Arc::new(token_provider))
     }
 
+    /// Directly build an API client builder.
+    ///
+    /// The `token_provider` can be a shared token provider.
+    ///
+    /// # Errors
+    ///
+    /// Fails if this builder is in an invalid state.
     pub fn build_client_with_shared_access_token_provider(
         self,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -154,6 +249,10 @@ impl ConfigBuilder {
     }
 }
 
+/// A REST client for the Nakadi API.
+///
+/// This accesses the REST API only and does not provide
+/// functionality for streaming.
 #[derive(Clone)]
 pub struct NakadiApiClient {
     nakadi_host: String,
@@ -162,6 +261,11 @@ pub struct NakadiApiClient {
 }
 
 impl NakadiApiClient {
+    /// Build a new client with an owned access token provider.
+    ///
+    /// # Errors
+    ///
+    /// Fails if no HTTP client could be created.
     pub fn new<T: ProvidesAccessToken + Send + Sync + 'static>(
         config: Config,
         token_provider: T,
@@ -169,6 +273,11 @@ impl NakadiApiClient {
         NakadiApiClient::with_shared_access_token_provider(config, Arc::new(token_provider))
     }
 
+    /// Build a new client with a shared access token provider.
+    ///
+    /// # Errors
+    ///
+    /// Fails if no HTTP client could be created.
     pub fn with_shared_access_token_provider(
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -185,7 +294,12 @@ impl NakadiApiClient {
         })
     }
 
-    pub fn attempt_commit<T: AsRef<[u8]>>(
+    /// Try to commit the cursors encoded in the given
+    /// bytes.
+    ///
+    /// A commit can only be done on a valid stream identified by
+    /// its id.
+    fn attempt_commit<T: AsRef<[u8]>>(
         &self,
         url: &str,
         stream_id: StreamId,
@@ -431,34 +545,53 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
     body
 }
 
+/// A commit attempt can result in multiple statusses
 #[derive(Debug)]
 pub enum CommitStatus {
+    /// All the cursors have been successfully committed
+    /// and all of them increased the offset of a cursor
     AllOffsetsIncreased,
+    /// All the cursors have been successfully committed
+    /// and at least one of them did not increase an offset.
+    ///
+    /// This usually happens when committing a keep alive line
     NotAllOffsetsIncreased,
+    /// There was nothing to commit.
     NothingToCommit,
 }
 
 #[derive(Fail, Debug)]
 pub enum CommitError {
-    #[fail(display = "Token Error on commit: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
+    #[fail(display = "Token Error on commit: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
     #[fail(display = "Subscription not found(FlowId: {}): {}", _1, _0)]
     SubscriptionNotFound(String, FlowId),
     #[fail(display = "Unprocessable Entity(FlowId: {}): {}", _1, _0)]
     UnprocessableEntity(String, FlowId),
-    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)] Server(String, FlowId),
-    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)] Client(String, FlowId),
-    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)] Other(String, FlowId),
+    #[fail(display = "Server Error(FlowId: {}): {}", _1, _0)]
+    Server(String, FlowId),
+    #[fail(display = "Client Error(FlowId: {}): {}", _1, _0)]
+    Client(String, FlowId),
+    #[fail(display = "Other Error(FlowId: {}): {}", _1, _0)]
+    Other(String, FlowId),
 }
 
 #[derive(Fail, Debug)]
 pub enum StatsError {
-    #[fail(display = "Token Error on stats: {}", _0)] TokenError(String),
-    #[fail(display = "Connection Error: {}", _0)] Connection(String),
-    #[fail(display = "Server Error: {}", _0)] Server(String),
-    #[fail(display = "Client Error: {}", _0)] Client(String),
-    #[fail(display = "Parse Error: {}", _0)] Parse(String),
-    #[fail(display = "Other Error: {}", _0)] Other(String),
+    #[fail(display = "Token Error on stats: {}", _0)]
+    TokenError(String),
+    #[fail(display = "Connection Error: {}", _0)]
+    Connection(String),
+    #[fail(display = "Server Error: {}", _0)]
+    Server(String),
+    #[fail(display = "Client Error: {}", _0)]
+    Client(String),
+    #[fail(display = "Parse Error: {}", _0)]
+    Parse(String),
+    #[fail(display = "Other Error: {}", _0)]
+    Other(String),
 }
 
 impl From<TokenError> for CommitError {
@@ -660,20 +793,44 @@ fn create_subscription(
     }
 }
 
+/// A request describing the subscription to be created.
+///
+/// The fields are described in more detail in
+/// the [Nakadi Documentation](http://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionRequest {
+    /// This is the application which owns the subscription.
     pub owning_application: String,
+    /// One or more event types that should
+    /// be steamed on the subscription.
     pub event_types: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub read_from: Option<ReadFrom>,
+    /// Defines the offset on the stream
+    /// when creating a subscription.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_from: Option<ReadFrom>,
 }
 
+/// The definition of an existing subscription
+///
+/// The fields are described in more detail in
+/// the [Nakadi Documentation](http://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Deserialize)]
 pub struct Subscription {
+    /// The `SubscriptionId` of the subscription
+    /// generated by Nakadi.
     pub id: SubscriptionId,
+    /// The owner of the subscription as defined
+    /// when the subscription was created.
     pub owning_application: String,
+    /// The event types that are streamed over this subscription
     pub event_types: Vec<String>,
 }
 
+/// An offset on the stream when creating a subscription.
+///
+/// The enum is described in more detail in
+/// the [Nakadi Documentation](http://nakadi.io/manual.html#definition_Subscription)
+/// as the `read_from` member.
 #[derive(Debug, Clone)]
 pub enum ReadFrom {
     Begin,
@@ -710,25 +867,39 @@ impl<'de> Deserialize<'de> for ReadFrom {
 
 #[derive(Fail, Debug)]
 pub enum CreateSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Unprocessable Entity: {}", _0)]
     UnprocessableEntity(String),
-    #[fail(display = "Bad request: {}", _0)] BadRequest(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Bad request: {}", _0)]
+    BadRequest(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 #[derive(Fail, Debug)]
 pub enum DeleteSubscriptionError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "NotFound: {}", _0)] NotFound(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "NotFound: {}", _0)]
+    NotFound(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
+/// The result of a successful request to create a subscription.
+///
+/// Creating a subscription is also considered successful if
+/// the subscription already existed at the time of the request.
 #[derive(Debug, Clone)]
 pub enum CreateSubscriptionStatus {
+    /// A subscription already existed and the `Subscription`
+    /// is contained
     AlreadyExists(Subscription),
+    /// The `Subscription` did not exist and was newly created.
     Created(Subscription),
 }
 
@@ -743,12 +914,15 @@ impl CreateSubscriptionStatus {
 
 #[derive(Fail, Debug)]
 pub enum CreateEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
     /// Already exists
     #[fail(display = "Event type already exists: {}", _0)]
     Conflict(String),
-    #[fail(display = "Unprocessable Entity: {}", _0)] UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unprocessable Entity: {}", _0)]
+    UnprocessableEntity(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl CreateEventTypeError {
@@ -764,9 +938,12 @@ impl CreateEventTypeError {
 
 #[derive(Fail, Debug)]
 pub enum DeleteEventTypeError {
-    #[fail(display = "Unauthorized: {}", _0)] Unauthorized(String),
-    #[fail(display = "Forbidden: {}", _0)] Forbidden(String),
-    #[fail(display = "An error occured: {}", _0)] Other(String),
+    #[fail(display = "Unauthorized: {}", _0)]
+    Unauthorized(String),
+    #[fail(display = "Forbidden: {}", _0)]
+    Forbidden(String),
+    #[fail(display = "An error occured: {}", _0)]
+    Other(String),
 }
 
 impl DeleteEventTypeError {
@@ -779,6 +956,9 @@ impl DeleteEventTypeError {
     }
 }
 
+/// The category of an event type.
+///
+/// For more information see [Event Type](http://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Copy)]
 pub enum EventCategory {
     Undefined,
@@ -817,6 +997,9 @@ impl<'de> Deserialize<'de> for EventCategory {
     }
 }
 
+/// The enrichment strategy of an event type.
+///
+/// For more information see [Event Type](http://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Copy)]
 pub enum EnrichmentStrategy {
     MetadataEnrichment,
@@ -851,6 +1034,9 @@ impl<'de> Deserialize<'de> for EnrichmentStrategy {
     }
 }
 
+/// The partition strategy of an event type.
+///
+/// For more information see [Event Type](http://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Copy)]
 pub enum PartitionStrategy {
     Random,
@@ -889,6 +1075,9 @@ impl<'de> Deserialize<'de> for PartitionStrategy {
     }
 }
 
+/// The compatibility mode of an event type.
+///
+/// For more information see [Event Type](http://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Copy)]
 pub enum CompatibilityMode {
     Compatible,
@@ -927,6 +1116,11 @@ impl<'de> Deserialize<'de> for CompatibilityMode {
     }
 }
 
+/// The definition of an event type.
+///
+/// These are the parameters used to create a new event type.
+///
+/// For more information see [Event Type](http://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeDefinition {
     pub name: String,
@@ -937,16 +1131,24 @@ pub struct EventTypeDefinition {
     pub partition_strategy: Option<PartitionStrategy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility_mode: Option<CompatibilityMode>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub partition_key_fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_key_fields: Option<Vec<String>>,
     pub schema: EventTypeSchema,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_statistic: Option<EventTypeStatistics>,
 }
 
+/// The schema definition of an event type.
+///
+/// These are part of the parametrs used to create a new event type.
+///
+/// For more information see
+/// [Event Type Schema](http://nakadi.io/manual.html#definition_EventTypeSchema)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeSchema {
     pub version: Option<String>,
-    #[serde(rename = "type")] pub schema_type: SchemaType,
+    #[serde(rename = "type")]
+    pub schema_type: SchemaType,
     pub schema: String,
 }
 
@@ -982,6 +1184,13 @@ impl<'de> Deserialize<'de> for SchemaType {
     }
 }
 
+/// Known statistics on an event type passed to Nakadi when creating
+/// an event.
+///
+/// These are part of the parametrs used to create a new event type.
+///
+/// For more information see
+/// [Event Type Statistics](http://nakadi.io/manual.html#definition_EventTypeStatistics)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeStatistics {
     pub messages_per_minute: usize,
@@ -1018,7 +1227,8 @@ pub mod stats {
     /// its own partitioning setup.
     #[derive(Debug, Deserialize, Default)]
     pub struct SubscriptionStats {
-        #[serde(rename = "items")] pub event_types: Vec<EventTypeInfo>,
+        #[serde(rename = "items")]
+        pub event_types: Vec<EventTypeInfo>,
     }
 
     impl SubscriptionStats {

@@ -25,6 +25,15 @@ pub trait ProvidesAccessToken {
     fn get_token(&self) -> Result<Option<AccessToken>, TokenError>;
 }
 
+/// Using this access token provider disables OAUTH.
+pub struct NoAuthAccessTokenProvider;
+
+impl ProvidesAccessToken for NoAuthAccessTokenProvider {
+    fn get_token(&self) -> Result<Option<AccessToken>, TokenError> {
+        None
+    }
+}
+
 #[derive(Fail, Debug, Clone)]
 pub enum TokenError {
     #[fail(display = "Client Error: {}", message)]
