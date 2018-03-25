@@ -10,23 +10,23 @@ extern crate serde;
 extern crate serde_json;
 extern crate uuid;
 
+use chrono::offset::Utc;
 use std::env;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
-use chrono::offset::Utc;
 use uuid::Uuid;
 
-use failure::Error;
-use nakadion::auth::*;
-use nakadion::api::*;
-use nakadion::*;
-use nakadion::events::*;
-use nakadion::FlowId;
-use log::LevelFilter;
 use env_logger::Builder;
+use failure::Error;
+use log::LevelFilter;
+use nakadion::FlowId;
+use nakadion::api::*;
+use nakadion::auth::*;
+use nakadion::events::*;
+use nakadion::*;
 
 use metrix::driver::TelemetryDriver;
 use metrix::processor::AggregatesProcessors;

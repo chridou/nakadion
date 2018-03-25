@@ -1,19 +1,23 @@
 //! The processor orchestrates the workers
 
-use std::time::{Duration, Instant};
-use std::thread;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use nakadi::Lifecycle;
-use nakadi::worker::Worker;
-use nakadi::model::{PartitionId, StreamId};
+use nakadi::batch::Batch;
 use nakadi::committer::Committer;
 use nakadi::handler::HandlerFactory;
-use nakadi::batch::Batch;
 use nakadi::metrics::MetricsCollector;
+use nakadi::model::{PartitionId, StreamId};
+use nakadi::worker::Worker;
 
 /// The dispatcher takes batch lines and sends them to the workers.
+///
+/// It is also responsible for creating and destroying workers.
+///
+/// The dispatcher uses its own background thread.
 pub struct Dispatcher {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,

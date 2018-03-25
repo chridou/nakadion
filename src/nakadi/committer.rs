@@ -1,17 +1,26 @@
-use std::sync::mpsc;
-use std::thread;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
-use nakadi::{CommitStrategy, Lifecycle};
 use nakadi::api::{ApiClient, CommitError, CommitStatus};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
 use nakadi::batch::Batch;
 use nakadi::metrics::MetricsCollector;
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use nakadi::{CommitStrategy, Lifecycle};
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
+/// The `Committer` keeps track of the cursors
+/// and commits them according to a
+/// `CommitStrategy`.
+///
+/// This basically means the `Committer` receives all cursors
+/// and most probably commits them delayed.
+///
+/// The `Committer` creates a background thread and works
+/// asynchronously to the event processing.
 #[derive(Clone)]
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
@@ -25,6 +34,8 @@ enum CommitterMessage {
 }
 
 impl Committer {
+    /// Start a new `Committer`. The committer uses
+    /// an `ApiClient` to commit commirsors.
     pub fn start<C, M>(
         client: C,
         strategy: CommitStrategy,
@@ -58,6 +69,9 @@ impl Committer {
         }
     }
 
+    /// Schedule a batch to be committed. The batch contains the cursor
+    /// and the `num_events_hint` is used to schedule commits based on
+    /// certain `CommitStrategy`s
     pub fn commit(&self, batch: Batch, num_events_hint: Option<usize>) -> Result<(), String> {
         self.sender
             .send(CommitterMessage::Commit(batch, num_events_hint))
@@ -73,10 +87,12 @@ impl Committer {
         &self.stream_id
     }
 
+    /// Is the committer still running?
     pub fn running(&self) -> bool {
         self.lifecycle.running()
     }
 
+    /// Order the committer to stop.
     pub fn stop(&self) {
         self.lifecycle.request_abort()
     }

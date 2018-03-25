@@ -1,14 +1,14 @@
 //! Publish events to Nakadi
+use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
-use std::io::Read;
 
-use serde::Serialize;
-use serde_json;
-use reqwest::{Client as HttpClient, Response};
+use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer};
-use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
+use reqwest::{Client as HttpClient, Response};
+use serde::Serialize;
+use serde_json;
 
 use auth::{AccessToken, ProvidesAccessToken};
 use nakadi::model::FlowId;
@@ -55,7 +55,12 @@ impl NakadiPublisher {
     /// Publish events packed into a vector of bytes.
     ///
     /// The events must be encoded in a way that `Nakadi`
-    /// can understand.
+    /// can understand and pass it`s valaditation mechanism
+    /// especially regarding schemas.
+    ///
+    /// The `budget` is the maximum `Duration` publishing events
+    /// is retried. This can lead to events being published multiple
+    /// times.
     pub fn publish_raw(
         &self,
         event_type: &str,
@@ -101,6 +106,10 @@ impl NakadiPublisher {
     }
 
     /// Publish the given events to `Nakadi`
+    ///
+    /// The `budget` is the maximum `Duration` publishing events
+    /// is retried. This can lead to events being published multiple
+    /// times.
     pub fn publish_events<T: Serialize>(
         &self,
         event_type: &str,
@@ -171,7 +180,7 @@ fn read_response_body(response: &mut Response) -> String {
 /// A status for (almos) successful publishing
 #[derive(Debug)]
 pub enum PublishStatus {
-    /// All events were written send and accepted by `Nakadi`
+    /// All events were written and accepted by `Nakadi`
     AllEventsPublished,
     /// Not all events were accepted by `Nakadi`
     NotAllEventsPublished,

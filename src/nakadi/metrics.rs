@@ -1,4 +1,18 @@
 //! Metrics collected by `Nakadion`
+//!
+//! A general interface for colleczing metrics is provided
+//! by Nakadion. nakadion will call the appropriate methods
+//! on the trait `MetricsCollector` when certain things
+//! happen within Nakadion.
+//!
+//! The trait `MetricsCollector` basically allows to attach
+//! any form of metrics collection as required by
+//! the application using Nakadion.
+//!
+//! When the feature `metrix` is enabled an implementation
+//! for `MetricsCollector` using [metrix](https://crates.io/crates/metrix)
+//! is provided and as are constructor
+//! functions for Nakadion.
 use std::time::Instant;
 
 #[cfg(feature = "metrix")]
@@ -38,7 +52,9 @@ pub trait MetricsCollector {
     /// The number of workers currently processing partitions.
     fn dispatcher_current_workers(&self, num_workers: usize);
 
+    /// A worker was started
     fn worker_worker_started(&self);
+    /// A worker was stopped
     fn worker_worker_stopped(&self);
     /// Events with a comined legth of `bytes` bytes have been
     /// received.
@@ -114,12 +130,12 @@ mod metrix {
     use std::time::{Duration, Instant};
 
     use metrix::TelemetryTransmitterSync;
+    use metrix::TransmitsTelemetryData;
     use metrix::cockpit::*;
-    use metrix::processor::*;
-    use metrix::instruments::*;
     use metrix::instruments::other_instruments::*;
     use metrix::instruments::switches::*;
-    use metrix::TransmitsTelemetryData;
+    use metrix::instruments::*;
+    use metrix::processor::*;
 
     #[derive(Clone, PartialEq, Eq)]
     enum ConnectorMetrics {

@@ -1,33 +1,38 @@
 # Nakadion
 
-A client for the [Nakadi](https://github.com/zalando/nakadi) Event Broker.
+A client for the [Nakadi](http://nakadi.io) Event Broker.
 
-Nakadion uses the Subscription API of Nakadi.
 
-WARNING! This is the fist iteration of a rewrite. API might change and features will be added. Documentation not yet updated!
+## Summary
 
-## Consuming
+Nakadion processes batches from Nakadi on a worker per partition basis. A worker is
+instantiated for each partion discovered. These workers are guaranteed to be run on
+one thread at a time. To process batches of events a handler factory has to be implemented
+which is creates handlers that are executed by the workers.
 
-Nakadion supports two modes of consuming events. A sequuential one and a cuncurrent one.
+Nakadion is almost completely configurable with environment variables.
 
-### Sequential Consumption
+## How to use
 
-In this mode Nakadion will read a batch from Nakadi then call a handler on theese and afterwards try to commit the batch.
-This mode of operation is simple, straight forward and should be sufficient for most scenarios.
+1. Implement a handler that contains all your batch processing logic
 
-### Concurrent Consumption
+2. Implement a handler factory that creates handlers for the workers.
 
-In this mode Nakadion will spawn a number of worker threads and distribute work among them based on
-the `partion id` of a batch. The workers are not dedidacted to a partition. Work is rather distributed based
-on a hash of the `partition id`.
+3. Configure Nakadion
+
+5. Hand your worker factory over to Nakadion
+
+6. Consume events!
 
 ## Performance
 
 This library is not meant to be used in a high performance scenario. It uses synchronous IO.
+Nevertheless it is easily possible to consume tens of thousands events per second depending
+on the complexity of your processing logic.
 
 ## Documentation
 
-Documenatation can be found at [docs.rs](https://docs.rs/nakadion)
+Detailed documenatation can be found at [docs.rs](https://docs.rs/nakadion)
 
 ## License
 

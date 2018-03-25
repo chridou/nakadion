@@ -1,3 +1,4 @@
+//! Optional OAUTH authorization for connecting to Nakadi
 use std::fmt;
 
 /// A token used for authentication against `Nakadi`.
@@ -23,6 +24,15 @@ impl fmt::Display for AccessToken {
 pub trait ProvidesAccessToken {
     /// Get a new `Token`. Return `None` to disable authentication.
     fn get_token(&self) -> Result<Option<AccessToken>, TokenError>;
+}
+
+/// Using this access token provider disables OAUTH.
+pub struct NoAuthAccessTokenProvider;
+
+impl ProvidesAccessToken for NoAuthAccessTokenProvider {
+    fn get_token(&self) -> Result<Option<AccessToken>, TokenError> {
+        Ok(None)
+    }
 }
 
 #[derive(Fail, Debug, Clone)]

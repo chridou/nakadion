@@ -1,26 +1,33 @@
+//! The consumer iterates over batches of events.
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use std::sync::Arc;
 
 use nakadi::api::ApiClient;
-use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
-use nakadi::{CommitStrategy, Lifecycle};
-use nakadi::handler::HandlerFactory;
-use nakadi::model::*;
+use nakadi::batch::{Batch, BatchLine};
 use nakadi::committer::Committer;
 use nakadi::dispatcher::Dispatcher;
-use nakadi::batch::{Batch, BatchLine};
+use nakadi::handler::HandlerFactory;
 use nakadi::metrics::MetricsCollector;
+use nakadi::model::*;
+use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
+use nakadi::{CommitStrategy, Lifecycle};
 
+/// Sequence of backoffs after failed commit attempts
 const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
     10, 50, 100, 500, 1000, 1000, 1000, 3000, 3000, 3000, 5000, 5000, 5000, 10_000, 10_000, 10_000,
     15_000, 15_000, 15_000,
 ];
 
-/// The consumer connects to the stream and sends batch lines to the processor.
+/// The consumer connects to the stream using a `StreamingClient` and then
+/// iterates over the batches.
 ///
-/// This is the top level component used by an application that wants to consume a
-/// Nakadi stream
+/// The consumer also manages connection attempts to the stream and reconnect.
+///
+/// This is the main component consuming batches and instatiation
+/// helper components for each newly connected stream.
+///
+/// The consumer creates a background thread.
 #[derive(Clone)]
 pub struct Consumer {
     lifecycle: Lifecycle,
@@ -28,6 +35,7 @@ pub struct Consumer {
 }
 
 impl Consumer {
+    /// Start a new `Consumer`
     pub fn start<C, A, HF, M>(
         streaming_client: C,
         api_client: A,
@@ -161,7 +169,7 @@ fn consumer_loop<C, A, HF, M>(
         };
 
         info!(
-            "[Consumer, subscription={}] Connected to stream {}",
+            "[Consumer, subscription={}, stream={}] Connected to a new stream.",
             subscription_id, stream_id
         );
         let connected_since = Instant::now();
@@ -183,10 +191,16 @@ fn consumer_loop<C, A, HF, M>(
 
         consume(
             line_iterator,
+            subscription_id.clone(),
+            stream_id.clone(),
             dispatcher,
             committer,
             lifecycle.clone(),
             &metrics_collector,
+        );
+        info!(
+            "[Consumer, subscription={}, stream={}] Stream ended.",
+            subscription_id, stream_id
         );
 
         metrics_collector.consumer_connection_lifetime(connected_since);
@@ -202,6 +216,8 @@ fn consumer_loop<C, A, HF, M>(
 
 fn consume<I, M>(
     line_iterator: I,
+    subscription_id: SubscriptionId,
+    stream_id: StreamId,
     dispatcher: Dispatcher,
     committer: Committer,
     lifecycle: Lifecycle,
@@ -212,41 +228,80 @@ fn consume<I, M>(
 {
     for line_result in line_iterator {
         if lifecycle.abort_requested() {
+            info!(
+                "[Consumer, subscription={}, stream={}] Abort requested",
+                subscription_id, stream_id
+            );
             break;
         }
         match line_result {
             Ok(raw_line) => {
-                if let Err(err) = send_line(&dispatcher, raw_line, metrics_collector) {
-                    error!("Could not process batch: {}", err);
+                if let Err(err) = send_line(
+                    &dispatcher,
+                    &subscription_id,
+                    &stream_id,
+                    raw_line,
+                    metrics_collector,
+                ) {
+                    error!(
+                        "[Consumer, subscription={}, stream={}] Could not process batch: {}",
+                        subscription_id, stream_id, err
+                    );
                     break;
                 }
             }
             Err(err) => {
-                error!("The connection broke: {}", err);
+                error!(
+                    "[Consumer, subscription={}, stream={}]The connection broke: {}",
+                    subscription_id, stream_id, err
+                );
                 break;
             }
         }
     }
 
-    info!("Stopping dispatcher");
+    info!(
+        "[Consumer, subscription={}, stream={}] Stream ended. Stopping components",
+        subscription_id, stream_id
+    );
+
+    info!(
+        "[Consumer, subscription={}, stream={}] Stopping dispatcher.",
+        subscription_id, stream_id
+    );
+
     dispatcher.stop();
 
     while dispatcher.is_running() {
         thread::sleep(Duration::from_millis(10));
     }
 
-    info!("Stopping commiter");
+    info!(
+        "[Consumer, subscription={}, stream={}] Dispatcher stopped.",
+        subscription_id, stream_id
+    );
+
+    info!(
+        "[Consumer, subscription={}, stream={}] Stopping committer",
+        subscription_id, stream_id
+    );
+
     committer.stop();
 
     while committer.running() {
         thread::sleep(Duration::from_millis(10));
     }
 
-    info!("Committer stopped");
+    info!(
+        "[Consumer, subscription={}, stream={}] Committer stopped.",
+        subscription_id, stream_id
+    );
 }
 
 fn send_line<M>(
     dispatcher: &Dispatcher,
+    subscription_id: &SubscriptionId,
+    stream_id: &StreamId,
     raw_line: RawLine,
     metrics_collector: &M,
 ) -> Result<(), String>
@@ -262,9 +317,16 @@ where
         match ::std::str::from_utf8(info) {
             Ok(info) => {
                 metrics_collector.consumer_info_line_received(info.len());
-                info!("Received info: {}", info)
+                info!(
+                    "[Consumer, subscription={}, stream={}] Received info: {}",
+                    subscription_id, stream_id, info
+                );
             }
-            Err(err) => warn!("Received info line which is not UTF-8: {}", err),
+            Err(err) => info!(
+                "[Consumer, subscription={}, stream={}] Received info line \
+                 which is not readable: {}",
+                subscription_id, stream_id, err
+            ),
         };
     }
 

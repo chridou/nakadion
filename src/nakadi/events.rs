@@ -1,9 +1,13 @@
+//! Helpers for defining events
 use chrono::DateTime;
 use chrono::offset::Utc;
 use uuid::Uuid;
 
 use nakadi::model::{FlowId, PartitionId};
 
+/// Metadata sent with an outgoing event
+///
+/// See [Event Metadata](http://nakadi.io/manual.html#definition_EventMetadata)
 #[derive(Debug, Clone, Serialize)]
 pub struct OutgoingMetadata {
     pub eid: Uuid,
@@ -15,6 +19,9 @@ pub struct OutgoingMetadata {
     pub partition: Option<PartitionId>,
 }
 
+/// Metadata retrievable from an incoming event.
+///
+/// See [Event Metadata](http://nakadi.io/manual.html#definition_EventMetadata)
 #[derive(Debug, Clone, Deserialize)]
 pub struct IncomingMetadata {
     pub eid: Uuid,
