@@ -107,6 +107,10 @@ pub enum TypedProcessingStatus {
 /// This is basically a convinience handler.
 ///
 /// The events must implement `serde`s `DeserializeOwned`.
+///
+/// # Hint
+///
+/// The `handle` method gets called on `&mut self`.
 pub trait TypedBatchHandler {
     type Event: DeserializeOwned;
     /// Execute the processing logic with a deserialized batch of events.

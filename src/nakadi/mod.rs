@@ -61,6 +61,7 @@ pub enum CommitStrategy {
     },
 }
 
+/// Track the "running state" of Nakadion.
 #[derive(Clone)]
 pub struct Lifecycle {
     state: Arc<(AtomicBool, AtomicBool)>,

@@ -1,3 +1,4 @@
+//! Optional OAUTH authorization for connecting to Nakadi
 use std::fmt;
 
 /// A token used for authentication against `Nakadi`.
@@ -30,7 +31,7 @@ pub struct NoAuthAccessTokenProvider;
 
 impl ProvidesAccessToken for NoAuthAccessTokenProvider {
     fn get_token(&self) -> Result<Option<AccessToken>, TokenError> {
-        None
+        Ok(None)
     }
 }
 

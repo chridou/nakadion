@@ -10,7 +10,7 @@ instantiated for each partion discovered. These workers are guaranteed to be run
 one thread at a time. To process batches of events a handler factory has to be implemented
 which is creates handlers that are executed by the workers.
 
-Nakadion is almost completely configurable by environment variables.
+Nakadion is almost completely configurable with environment variables.
 
 ## How to use
 
