@@ -93,13 +93,36 @@ impl Default for Lifecycle {
     }
 }
 
+/// Describes how `Nakadion` should resolve the `SubscriptionId` to
+/// connect to a subscription.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SubscriptionDiscovery {
     /// Connect with an existing `SubscriptionId`
+    ///
+    /// # Serialization
+    ///
+    /// ```javascript
+    /// { "ExistingId": "the_subscription_id" }
+    /// ```
     ExistingId(SubscriptionId),
     /// Create a new subscription for the application
     /// and if it already exists use
     /// the existing subscription
+    ///
+    /// # Serialization
+    ///
+    /// The fields inside the "Application" objects are
+    /// the fields of a deserialized `SubscriptionRequest`
+    ///
+    /// ```javascript
+    /// {
+    ///     "Application": {
+    ///         "owning_application": "test_app",
+    ///         "event_types": ["event_type_1"],
+    ///         "read_from": "end"
+    ///     }
+    /// }
+    /// ```
     Application(api::SubscriptionRequest),
 }
 

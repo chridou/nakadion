@@ -797,6 +797,16 @@ fn create_subscription(
 ///
 /// The fields are described in more detail in
 /// the [Nakadi Documentation](http://nakadi.io/manual.html#definition_Subscription)
+///
+/// # Serialization
+///
+/// ```javascript
+/// {
+///     "owning_application": "my_app",
+///     "event_types": ["my_event_type"],
+///     "read_from": "begin"
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionRequest {
     /// This is the application which owns the subscription.
@@ -833,7 +843,13 @@ pub struct Subscription {
 /// as the `read_from` member.
 #[derive(Debug, Clone)]
 pub enum ReadFrom {
+    /// Read from the beginning of the stream.
+    ///
+    /// Serialized as `begin`.
     Begin,
+    /// Read from the end of the stream.
+    ///
+    /// Serialized as `end`.
     End,
 }
 impl Serialize for ReadFrom {
