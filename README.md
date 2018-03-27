@@ -34,6 +34,12 @@ on the complexity of your processing logic.
 
 Detailed documenatation can be found at [docs.rs](https://docs.rs/nakadion)
 
+## Recent Changes
+
+* 0.8.3
+    * Added code examples to the documentation
+    * Added JSON serialization examples
+
 ## License
 
 Nakadion is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
