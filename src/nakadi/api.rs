@@ -798,7 +798,7 @@ fn create_subscription(
 /// The fields are described in more detail in
 /// the [Nakadi Documentation](http://nakadi.io/manual.html#definition_Subscription)
 ///
-/// # Serialization
+/// # Serialization(JSON)
 ///
 /// ```javascript
 /// {
@@ -845,11 +845,19 @@ pub struct Subscription {
 pub enum ReadFrom {
     /// Read from the beginning of the stream.
     ///
-    /// Serialized as `begin`.
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// "begin"
+    /// ```
     Begin,
     /// Read from the end of the stream.
     ///
-    /// Serialized as `end`.
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// "end"
+    /// ```
     End,
 }
 impl Serialize for ReadFrom {

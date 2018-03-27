@@ -1,3 +1,4 @@
+//! Connect to a stream and consume lines
 use std::env;
 use std::io::{BufRead, BufReader, Error as IoError, Read, Split};
 /// Stream lines from a Nakadi subscription

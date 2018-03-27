@@ -35,14 +35,47 @@ use metrix::processor::AggregatesProcessors;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CommitStrategy {
     /// Commit all cursors immediately
+    ///
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// "AllBatches"
+    /// ```
     AllBatches,
-    /// Commit as late as possile
+    /// Commit as late as possible
+    ///
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// "Latest"
+    /// ```
     Latest,
     /// Commit latest after `seconds` seconds
+    ///
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// {
+    ///     "AfterSeconds": {
+    ///         "seconds": 42
+    ///     }
+    /// }
+    /// ```
     AfterSeconds { seconds: u16 },
     /// Commit latest after `after_batches` batches have been
     /// received or after `after_seconds` seconds have
     /// elapsed
+    ///
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// {
+    ///     "Batches": {
+    ///         "after_batches": 12,
+    ///         "after_seconds": 13
+    ///     }
+    /// }
+    /// ```
     Batches {
         after_batches: u32,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -54,11 +87,79 @@ pub enum CommitStrategy {
     ///
     /// This requires the `BatchHandler` to return the number
     /// of processed events to work properly.
+    ///
+    /// # Serialization(JSON)
+    ///
+    /// ```javascript
+    /// {
+    ///     "Events": {
+    ///         "after_events": 12,
+    ///         "after_seconds": 13
+    ///     }
+    /// }
+    /// ```
     Events {
         after_events: u32,
         #[serde(skip_serializing_if = "Option::is_none")]
         after_seconds: Option<u16>,
     },
+}
+
+#[test]
+fn commit_strategy_serialize_all_batches() {
+    let strategy = CommitStrategy::AllBatches;
+
+    let json_str = serde_json::to_string(&strategy).unwrap();
+
+    assert_eq!(&json_str, "\"AllBatches\"");
+}
+
+#[test]
+fn commit_strategy_serialize_latest() {
+    let strategy = CommitStrategy::Latest;
+
+    let json_str = serde_json::to_string(&strategy).unwrap();
+
+    assert_eq!(&json_str, "\"Latest\"");
+}
+
+#[test]
+fn commit_strategy_serialize_after_seconds() {
+    let strategy = CommitStrategy::AfterSeconds { seconds: 42 };
+
+    let json_str = serde_json::to_string(&strategy).unwrap();
+
+    assert_eq!(&json_str, "{\"AfterSeconds\":{\"seconds\":42}}");
+}
+
+#[test]
+fn commit_strategy_serialize_batches() {
+    let strategy = CommitStrategy::Batches {
+        after_batches: 12,
+        after_seconds: Some(13),
+    };
+
+    let json_str = serde_json::to_string(&strategy).unwrap();
+
+    assert_eq!(
+        &json_str,
+        "{\"Batches\":{\"after_batches\":12,\"after_seconds\":13}}"
+    );
+}
+
+#[test]
+fn commit_strategy_serialize_events() {
+    let strategy = CommitStrategy::Events {
+        after_events: 34,
+        after_seconds: Some(59),
+    };
+
+    let json_str = serde_json::to_string(&strategy).unwrap();
+
+    assert_eq!(
+        &json_str,
+        "{\"Events\":{\"after_events\":34,\"after_seconds\":59}}"
+    );
 }
 
 /// Track the "running state" of Nakadion.
@@ -99,7 +200,7 @@ impl Default for Lifecycle {
 pub enum SubscriptionDiscovery {
     /// Connect with an existing `SubscriptionId`
     ///
-    /// # Serialization
+    /// # Serialization(JSON)
     ///
     /// ```javascript
     /// { "ExistingId": "the_subscription_id" }
@@ -109,7 +210,7 @@ pub enum SubscriptionDiscovery {
     /// and if it already exists use
     /// the existing subscription
     ///
-    /// # Serialization
+    /// # Serialization(JSON)
     ///
     /// The fields inside the "Application" objects are
     /// the fields of a deserialized `SubscriptionRequest`
@@ -211,6 +312,7 @@ pub struct NakadionConfig {
     pub min_idle_worker_lifetime: Option<Duration>,
 }
 
+/// Build a `NakadionConfig` or directly build and start `Nakadion`
 pub struct NakadionBuilder {
     /// The configuration of the streaming client used to connect to the stream.
     ///
@@ -356,8 +458,10 @@ impl NakadionBuilder {
     /// * `NAKADION_STREAM_KEEP_ALIVE_LIMIT´: See
     /// `NakadionBuilder::stream_keep_alive_limit`
     /// * `NAKADION_REQUEST_TIMEOUT_MS`: See `NakadionBuilder::request_timeout`
-    /// * `NAKADION_COMMIT_STRATEGY`: See `NakadionBuilder::commit_strategy`
-    /// * `NAKADION_SUBSCRIPTION_DISCOVERY`: See `NakadionBuilder::subscription_discovery`
+    /// * `NAKADION_COMMIT_STRATEGY`: See `NakadionBuilder::commit_strategy`.
+    /// Value must be the JSON representation of a `CommitStrategy`.
+    /// * `NAKADION_SUBSCRIPTION_DISCOVERY`: See `NakadionBuilder::subscription_discovery`.
+    /// Value must be the JSON representation of a `SubscriptionDiscovery`.
     /// * `NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS`:
     /// See `NakadionBuilder::min_idle_worker_lifetime`
     ///
