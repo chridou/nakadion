@@ -22,11 +22,137 @@
 //!
 //! ## How to use
 //!
-//! 1. Implement a `BatchHandler` that contains all your batch processing logic
-//! 2. Implement a `Handlerfactory` creates handlers for the workers.
-//! 3. Configure `Nakadion`
-//! 4. Hand your worker factory over to `Nakadion`
-//! 5. Consume events!
+//! 1. Do some imports
+//!
+//! ```
+//! use nakadion::*;
+//! use nakadion::auth::*;
+//! ```
+//!
+//! 2. Implement a `BatchHandler` that contains all your batch processing logic
+//!
+//! ```
+//! # use nakadion::*;
+//!
+//! // Use a struct to maintain state
+//! struct MyHandler {
+//!     pub count: i32,
+//! }
+//!
+//! // Implement the processing logic by implementing `BatchHandler`
+//! // Keep in mind that there is also `TypedBatchHandler` which can
+//! // deserialize the events.
+//! impl BatchHandler for MyHandler {
+//!     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+//!         self.count += 1;
+//!         ProcessingStatus::processed_no_hint()
+//!     }
+//! }
+//! ```
+//!
+//! 3. Implement a `Handlerfactory` that creates handlers for the workers.
+//!
+//! ```
+//! # use nakadion::*;
+//! # struct MyHandler {
+//! #    pub count: i32,
+//! # }
+//! # impl BatchHandler for MyHandler {
+//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+//! #        self.count += 1;
+//! #        ProcessingStatus::processed_no_hint()
+//! #    }
+//! # }
+//! // You could also maintain shared state in the `HandlerFactory`
+//! struct MyHandlerFactory;
+//!
+//! // Now we implement the trait `HandlerFactory` to control how
+//! // our `BatchHandler`s are created
+//! impl HandlerFactory for MyHandlerFactory {
+//!     type Handler = MyHandler;
+//!     fn create_handler(&self, _partition: &PartitionId)
+//!     -> Result<Self::Handler, CreateHandlerError> {
+//!         Ok(MyHandler{ count: 0 })
+//!     }
+//! }
+//!
+//! let handler_factory = MyHandlerFactory;
+//! ```
+//!
+//! 4. Configure `Nakadion` and the access token provider
+//!
+//! ```
+//! # use nakadion::*;
+//! # use nakadion::auth::*;
+//!
+//! // You only need this if you do not want to
+//! // create this from the environment
+//! use nakadion::api::SubscriptionRequest;
+//!
+//! // This can be configured via environment variables
+//! let subscription_discovery = SubscriptionDiscovery::Application(
+//!     SubscriptionRequest {
+//!         owning_application : "my_app".to_string(),
+//!         event_types: vec!["my_event_type".to_string()],
+//!         read_from: None,
+//!     }
+//! );
+//!
+//! // Create a builder and configure it
+//! let builder = NakadionBuilder::default()
+//!     .nakadi_host("https://my.nakadi.net")
+//!     .subscription_discovery(subscription_discovery);
+//!
+//! // We also need to tell Nakadion how to get tokens
+//! let token_provider = NoAuthAccessTokenProvider;
+//! ```
+//!
+//! 5. Start Nakadion
+//!
+//! ```no_run
+//! # use nakadion::*;
+//! # use nakadion::auth::*;
+//! # use nakadion::api::SubscriptionRequest;
+//! # struct MyHandler {
+//! #    pub count: i32,
+//! # }
+//! # impl BatchHandler for MyHandler {
+//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+//! #        self.count += 1;
+//! #        ProcessingStatus::processed_no_hint()
+//! #    }
+//! # }
+//! # struct MyHandlerFactory;
+//! # impl HandlerFactory for MyHandlerFactory {
+//! #    type Handler = MyHandler;
+//! #    fn create_handler(
+//! #        &self,
+//! #        _partition: &PartitionId,
+//! #    ) -> Result<Self::Handler, CreateHandlerError> {
+//! #        Ok(MyHandler{ count: 0 })
+//! #    }
+//! # }
+//! # let subscription_discovery = SubscriptionDiscovery::Application(
+//! #    SubscriptionRequest {
+//! #        owning_application : "my_app".to_string(),
+//! #        event_types: vec!["my_event_type".to_string()],
+//! #        read_from: None,
+//! #    }
+//! # );
+//! # let builder = NakadionBuilder::default()
+//! #    .nakadi_host("https://my.nakadi.net")
+//! #    .subscription_discovery(subscription_discovery);
+//! # let token_provider = NoAuthAccessTokenProvider;
+//! # let handler_factory = MyHandlerFactory;
+//!
+//! // Start Nakadion
+//! let nakadion = builder.build_and_start(handler_factory, token_provider).unwrap();
+//!
+//! // Nakadion will stop once the binding `nakadion` runs out of scope.
+//! // Nakadion can be cloned and also be stopped it manually
+//! // You can also let Nakadion block the current thread until it stops.
+//! nakadion.block_until_stopped();
+//! ```
 //!
 //! ## How Nakadion works
 //!
