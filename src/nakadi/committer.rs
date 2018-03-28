@@ -124,11 +124,19 @@ fn start_commit_loop<C, M>(
 }
 
 struct CommitEntry {
+    // timestamp when this entry was created
+    created_at: Instant,
+    // No matter how many batches/cursors are added, this is the deadline
     commit_deadline: Instant,
+    // The number of batches(cursors) that have been "updated" into this entry
     num_batches: usize,
+    // The number of events that have been updated into this entry
     num_events: usize,
+    // The last batch that created this entry
     batch: Batch,
+    // timestamp when the first cursor was received by Nakadion
     first_cursor_received_at: Instant,
+    // timestamp when the current cursor was received by Nakadion
     current_cursor_received_at: Instant,
 }
 
@@ -138,7 +146,6 @@ impl CommitEntry {
         strategy: CommitStrategy,
         num_events_hint: Option<usize>,
     ) -> CommitEntry {
-        let first_cursor_received_at = batch.received_at;
         let commit_deadline = match strategy {
             CommitStrategy::AllBatches => Instant::now(),
             CommitStrategy::Batches {
@@ -172,21 +179,21 @@ impl CommitEntry {
         };
         let received_at = batch.received_at;
         CommitEntry {
+            created_at: Instant::now(),
             commit_deadline,
             num_batches: 1,
             num_events: num_events_hint.unwrap_or(0),
             batch,
-            first_cursor_received_at,
+            first_cursor_received_at: received_at,
             current_cursor_received_at: received_at,
         }
     }
 
     pub fn update(&mut self, next_batch: Batch, num_events_hint: Option<usize>) {
-        let received_at = next_batch.received_at;
+        self.current_cursor_received_at = next_batch.received_at;
         self.batch = next_batch;
         self.num_events += num_events_hint.unwrap_or(0);
         self.num_batches += 1;
-        self.current_cursor_received_at = received_at;
     }
 
     pub fn is_due_by_deadline(&self) -> bool {
@@ -352,12 +359,7 @@ where
         for (key, entry) in &*all_cursors {
             num_batches_to_commit += entry.num_batches;
             num_events_to_commit += entry.num_events;
-            metrics_collector.committer_cursor_age_on_commit(entry.current_cursor_received_at);
-            metrics_collector.committer_time_elapsed_until_commit(entry.first_cursor_received_at);
-            metrics_collector.committer_time_left_on_commit(
-                Instant::now(),
-                entry.first_cursor_received_at + Duration::from_secs(60),
-            );
+            update_cursor_metrics(metrics_collector, entry);
             cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
             keys_to_commit.push(key.clone());
         }
@@ -366,13 +368,7 @@ where
             if entry.is_due_by_deadline() {
                 num_batches_to_commit += entry.num_batches;
                 num_events_to_commit += entry.num_events;
-                metrics_collector.committer_cursor_age_on_commit(entry.current_cursor_received_at);
-                metrics_collector
-                    .committer_time_elapsed_until_commit(entry.first_cursor_received_at);
-                metrics_collector.committer_time_left_on_commit(
-                    Instant::now(),
-                    entry.first_cursor_received_at + Duration::from_secs(60),
-                );
+                update_cursor_metrics(metrics_collector, entry);
                 cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
                 keys_to_commit.push(key.clone());
             }
@@ -412,4 +408,22 @@ where
     }
 
     Ok(status)
+}
+
+fn update_cursor_metrics<M>(metrics_collector: &M, entry: &CommitEntry)
+where
+    M: MetricsCollector,
+{
+    metrics_collector
+        .committer_first_cursor_age_on_commit(entry.first_cursor_received_at.elapsed());
+    metrics_collector
+        .committer_last_cursor_age_on_commit(entry.current_cursor_received_at.elapsed());
+    metrics_collector.committer_cursor_buffer_time(entry.created_at.elapsed());
+
+    let commit_deadline = entry.first_cursor_received_at + Duration::from_secs(60);
+    let now = Instant::now();
+    if commit_deadline >= now {
+        metrics_collector
+            .committer_time_left_on_commit_until_invalid(commit_deadline.duration_since(now));
+    }
 }

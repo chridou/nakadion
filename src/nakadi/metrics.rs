@@ -13,7 +13,7 @@
 //! for `MetricsCollector` using [metrix](https://crates.io/crates/metrix)
 //! is provided and as are constructor
 //! functions for Nakadion.
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "metrix")]
 pub use self::metrix::MetrixCollector;
@@ -81,14 +81,19 @@ pub trait MetricsCollector {
     fn committer_batches_committed(&self, n: usize);
     /// The number of events that have been committed with the last cursor.
     fn committer_events_committed(&self, n: usize);
+    /// How old is this cursor first(oldest) that is committed with the current cursor?
+    /// `received_at` is the timestamp when `Nakadion` received the batch
+    fn committer_first_cursor_age_on_commit(&self, age: Duration);
     /// How old is this cursor that is currently committed?
-    fn committer_cursor_age_on_commit(&self, received_at_timestamp: Instant);
-    /// How match time has elapsed from the first cursor to be committed
-    /// until the batch finally got committed?
-    fn committer_time_elapsed_until_commit(&self, first_cursor_age: Instant);
-    /// The time left when committing the event until the stream would have become
+    /// This is the cursor that also commits the previously buffered cursors.
+    /// `received_at` is the timestamp when `Nakadion` received the batch
+    fn committer_last_cursor_age_on_commit(&self, age: Duration);
+    /// How much time has elapsed from receiving intial cursor to be committed
+    /// until that cursor finally got committed?
+    fn committer_cursor_buffer_time(&self, time_buffered: Duration);
+    /// The time left when committing the cursor until the stream would have become
     /// invalid.
-    fn committer_time_left_on_commit(&self, committed_at: Instant, deadline: Instant);
+    fn committer_time_left_on_commit_until_invalid(&self, time_left: Duration);
 }
 
 /// Using this disables metrics collection.
@@ -120,9 +125,10 @@ impl MetricsCollector for DevNullMetricsCollector {
     fn committer_events_committed(&self, _n: usize) {}
     fn committer_cursor_commit_attempt(&self, _commit_attempt_started: Instant) {}
     fn committer_cursor_commit_failed(&self, _commit_attempt_started: Instant) {}
-    fn committer_cursor_age_on_commit(&self, _received_at_timestamp: Instant) {}
-    fn committer_time_elapsed_until_commit(&self, _first_cursor_age: Instant) {}
-    fn committer_time_left_on_commit(&self, _committed_at: Instant, _deadline: Instant) {}
+    fn committer_first_cursor_age_on_commit(&self, _age: Duration) {}
+    fn committer_last_cursor_age_on_commit(&self, _age: Duration) {}
+    fn committer_cursor_buffer_time(&self, _time_buffered: Duration) {}
+    fn committer_time_left_on_commit_until_invalid(&self, _time_left: Duration) {}
 }
 
 #[cfg(feature = "metrix")]
@@ -175,9 +181,10 @@ mod metrix {
         EventsCommitted,
         CursorCommitAttempt,
         CursorCommitAttemptFailed,
-        CursorAgeOnCommit,
-        TimeElapsedUntilCommit,
-        TimeLeftOnCommit,
+        FirstCursorAgeOnCommit,
+        LastCursorAgeOnCommit,
+        CursorBufferTime,
+        TimeLeftUntilInvalid,
     }
 
     /// A `MetricsCollector` that works with the [`metrix`](https://crates.io/crates/metrix)
@@ -309,20 +316,21 @@ mod metrix {
                 commit_attempt_started,
             );
         }
-        fn committer_cursor_age_on_commit(&self, received_at_timestamp: Instant) {
+        fn committer_first_cursor_age_on_commit(&self, age: Duration) {
             self.cursor
-                .measure_time(CursorMetrics::CursorAgeOnCommit, received_at_timestamp);
+                .observed_one_duration_now(CursorMetrics::FirstCursorAgeOnCommit, age);
         }
-        fn committer_time_elapsed_until_commit(&self, first_cursor_age: Instant) {
+        fn committer_last_cursor_age_on_commit(&self, age: Duration) {
             self.cursor
-                .measure_time(CursorMetrics::TimeElapsedUntilCommit, first_cursor_age);
+                .observed_one_duration_now(CursorMetrics::LastCursorAgeOnCommit, age);
         }
-        fn committer_time_left_on_commit(&self, committed_at: Instant, deadline: Instant) {
-            if committed_at <= deadline {
-                let time_left = deadline - committed_at;
-                self.cursor
-                    .observed_one_duration_now(CursorMetrics::TimeLeftOnCommit, time_left);
-            }
+        fn committer_cursor_buffer_time(&self, time_buffered: Duration) {
+            self.cursor
+                .observed_one_duration_now(CursorMetrics::CursorBufferTime, time_buffered);
+        }
+        fn committer_time_left_on_commit_until_invalid(&self, time_left: Duration) {
+            self.cursor
+                .observed_one_duration_now(CursorMetrics::TimeLeftUntilInvalid, time_left);
         }
     }
 
@@ -515,15 +523,42 @@ mod metrix {
         );
         add_counting_instruments_to_cockpit(commit_attempts_failed_panel, &mut cockpit);
 
-        let cursor_age_on_commit_panel =
-            Panel::with_name(CursorMetrics::CursorAgeOnCommit, "age_on_commit");
-        add_us_histogram_instruments_to_cockpit(cursor_age_on_commit_panel, &mut cockpit);
+        let mut first_cursor_age_on_commit_panel = Panel::with_name(
+            CursorMetrics::FirstCursorAgeOnCommit,
+            "first_cursor_age_on_commit",
+        );
+        first_cursor_age_on_commit_panel.set_description(
+            "The age of the first \
+             cursor(of maybe many subsequent cursors) to be \
+             committed when it was committed.",
+        );
+        add_us_histogram_instruments_to_cockpit(first_cursor_age_on_commit_panel, &mut cockpit);
 
-        let time_elapsed_panel =
-            Panel::with_name(CursorMetrics::TimeElapsedUntilCommit, "time_elapsed");
-        add_us_histogram_instruments_to_cockpit(time_elapsed_panel, &mut cockpit);
+        let mut last_cursor_age_on_commit_panel = Panel::with_name(
+            CursorMetrics::LastCursorAgeOnCommit,
+            "last_cursor_age_on_commit",
+        );
+        last_cursor_age_on_commit_panel.set_description(
+            "The age of the last \
+             cursor(of maybe many subsequent cursors) to be \
+             committed when it was committed.",
+        );
+        add_us_histogram_instruments_to_cockpit(last_cursor_age_on_commit_panel, &mut cockpit);
 
-        let time_left_panel = Panel::with_name(CursorMetrics::TimeLeftOnCommit, "time_left");
+        let mut cursor_buffer_time_panel =
+            Panel::with_name(CursorMetrics::CursorBufferTime, "cursor_buffer_time");
+        cursor_buffer_time_panel
+            .set_description("The time a cursor has been buffered until it was finally committed.");
+        add_us_histogram_instruments_to_cockpit(cursor_buffer_time_panel, &mut cockpit);
+
+        let mut time_left_panel = Panel::with_name(
+            CursorMetrics::TimeLeftUntilInvalid,
+            "Cursor_time_left_until_invalid",
+        );
+        time_left_panel.set_description(
+            "The time left after a commit until the \
+             stream would have become invalid(closed by Nakadi).",
+        );
         add_us_histogram_instruments_to_cockpit(time_left_panel, &mut cockpit);
 
         let (tx, rx) = TelemetryProcessor::new_pair("cursors");
