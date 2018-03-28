@@ -36,6 +36,8 @@ Detailed documenatation can be found at [docs.rs](https://docs.rs/nakadion)
 
 ## Recent Changes
 
+* 0.8.4
+    * Fixed and renamed metrics for cursor ages
 * 0.8.3
     * Added code examples to the documentation
     * Added JSON serialization examples
