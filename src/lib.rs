@@ -218,6 +218,23 @@
 //! Nakadion is not meant to be used in a high performance scenario. It uses synchronous IO.
 //! Nevertheless it is easily possible to consume tens of thousands events per second depending
 //! on the complexity of your processing logic.
+//!
+//! ## Recent Changes
+//!
+//! * 0.8.5
+//!     * Updated README.md
+//! * 0.8.4
+//!     * Fixed and renamed metrics for cursor ages
+//! * 0.8.3
+//!     * Added code examples to the documentation
+//!     * Added JSON serialization examples
+//!
+//! ## License
+//!
+//! Nakadion is distributed under the terms of both the MIT license and the Apache License (Version
+//! 2.0).
+//!
+//! See LICENSE-APACHE and LICENSE-MIT for details.
 #[macro_use]
 extern crate failure;
 #[macro_use]
