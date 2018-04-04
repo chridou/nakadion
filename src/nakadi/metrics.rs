@@ -553,7 +553,7 @@ mod metrix {
 
         let mut time_left_panel = Panel::with_name(
             CursorMetrics::TimeLeftUntilInvalid,
-            "Cursor_time_left_until_invalid",
+            "cursor_time_left_until_invalid",
         );
         time_left_panel.set_description(
             "The time left after a commit until the \
