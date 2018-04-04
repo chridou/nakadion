@@ -49,7 +49,7 @@ first to become comfortable with the concepts of Nakadi.
     }
     ```
 
-3. Implement a `Handlerfactory` that creates handlers for the workers.
+3. Implement a `HandlerFactory` that creates handlers for the workers.
 
     ```rust
     // You could also maintain shared state in the `HandlerFactory`

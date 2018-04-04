@@ -50,7 +50,7 @@
 //! }
 //! ```
 //!
-//! 3. Implement a `Handlerfactory` that creates handlers for the workers.
+//! 3. Implement a `HandlerFactory` that creates handlers for the workers.
 //!
 //! ```
 //! # use nakadion::*;
