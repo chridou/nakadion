@@ -96,18 +96,21 @@ fn start_consumer_loop<C, A, HF, M>(
     HF: HandlerFactory + Send + Sync + 'static,
     M: MetricsCollector + Clone + Send + 'static,
 {
-    thread::spawn(move || {
-        consumer_loop(
-            streaming_client,
-            api_client,
-            handler_factory,
-            commit_strategy,
-            subscription_id,
-            lifecycle,
-            metrics_collector,
-            min_idle_worker_lifetime,
-        )
-    });
+    let builder = thread::Builder::new().name("nakadion-consumer".into());
+    builder
+        .spawn(move || {
+            consumer_loop(
+                streaming_client,
+                api_client,
+                handler_factory,
+                commit_strategy,
+                subscription_id,
+                lifecycle,
+                metrics_collector,
+                min_idle_worker_lifetime,
+            )
+        })
+        .unwrap();
 }
 
 fn consumer_loop<C, A, HF, M>(
@@ -198,8 +201,9 @@ fn consumer_loop<C, A, HF, M>(
             lifecycle.clone(),
             &metrics_collector,
         );
+
         info!(
-            "[Consumer, subscription={}, stream={}] Stream ended.",
+            "[Consumer, subscription={}, stream={}] Stopped consuming batch lines.",
             subscription_id, stream_id
         );
 
@@ -236,7 +240,7 @@ fn consume<I, M>(
         }
         match line_result {
             Ok(raw_line) => {
-                if let Err(err) = send_line(
+                if let Err(err) = process_batch_line(
                     &dispatcher,
                     &subscription_id,
                     &stream_id,
@@ -244,7 +248,8 @@ fn consume<I, M>(
                     metrics_collector,
                 ) {
                     error!(
-                        "[Consumer, subscription={}, stream={}] Could not process batch: {}",
+                        "[Consumer, subscription={}, stream={}] Could not process batch line: \
+                         {}",
                         subscription_id, stream_id, err
                     );
                     break;
@@ -252,7 +257,7 @@ fn consume<I, M>(
             }
             Err(err) => {
                 error!(
-                    "[Consumer, subscription={}, stream={}]The connection broke: {}",
+                    "[Consumer, subscription={}, stream={}] The streaming connection broke: {}",
                     subscription_id, stream_id, err
                 );
                 break;
@@ -261,7 +266,8 @@ fn consume<I, M>(
     }
 
     info!(
-        "[Consumer, subscription={}, stream={}] Stream ended. Stopping components",
+        "[Consumer, subscription={}, stream={}] Stream consumption ended or aborted. \
+         Stopping components",
         subscription_id, stream_id
     );
 
@@ -298,7 +304,7 @@ fn consume<I, M>(
     );
 }
 
-fn send_line<M>(
+fn process_batch_line<M>(
     dispatcher: &Dispatcher,
     subscription_id: &SubscriptionId,
     stream_id: &StreamId,
@@ -322,7 +328,7 @@ where
                     subscription_id, stream_id, info
                 );
             }
-            Err(err) => info!(
+            Err(err) => warn!(
                 "[Consumer, subscription={}, stream={}] Received info line \
                  which is not readable: {}",
                 subscription_id, stream_id, err
@@ -336,10 +342,12 @@ where
         Ok(())
     } else {
         metrics_collector.consumer_batch_line_received(num_bytes);
-        dispatcher.process(Batch {
-            batch_line: batch_line,
-            received_at: raw_line.received_at,
-        })
+        dispatcher
+            .dispatch(Batch {
+                batch_line: batch_line,
+                received_at: raw_line.received_at,
+            })
+            .map_err(|err| format!("Dispatcher did not process batch: {}", err))
     }
 }
 

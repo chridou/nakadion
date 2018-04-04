@@ -72,12 +72,16 @@ impl Committer {
     /// Schedule a batch to be committed. The batch contains the cursor
     /// and the `num_events_hint` is used to schedule commits based on
     /// certain `CommitStrategy`s
-    pub fn commit(&self, batch: Batch, num_events_hint: Option<usize>) -> Result<(), String> {
+    pub fn request_commit(
+        &self,
+        batch: Batch,
+        num_events_hint: Option<usize>,
+    ) -> Result<(), String> {
         self.sender
             .send(CommitterMessage::Commit(batch, num_events_hint))
             .map_err(|err| {
                 format!(
-                    "[Committer, stream={}] Could not accept commit request: {}",
+                    "[Committer, stream={}] Could send commit request to worker thread: {}",
                     self.stream_id, err
                 )
             })
@@ -110,17 +114,20 @@ fn start_commit_loop<C, M>(
     C: ApiClient + Send + 'static,
     M: MetricsCollector + Send + 'static,
 {
-    thread::spawn(move || {
-        run_commit_loop(
-            receiver,
-            strategy,
-            subscription_id,
-            stream_id,
-            connector,
-            lifecycle,
-            metrics_collector,
-        );
-    });
+    let builder = thread::Builder::new().name("nakadion-committer".into());
+    builder
+        .spawn(move || {
+            run_commit_loop(
+                receiver,
+                strategy,
+                subscription_id,
+                stream_id,
+                connector,
+                lifecycle,
+                metrics_collector,
+            );
+        })
+        .unwrap();
 }
 
 struct CommitEntry {

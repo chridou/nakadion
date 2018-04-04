@@ -221,6 +221,12 @@
 //!
 //! ## Recent Changes
 //!
+//! * 0.8.7
+//!    * use named threads
+//!    * improved logging(especially on closed channels)
+//!    * renamed some internal methods
+//! * 0.8.6
+//!    * fixed metrics label for 'cursor_time_left_until_invalid'
 //! * 0.8.5
 //!     * Updated README.md
 //! * 0.8.4

@@ -77,7 +77,7 @@ impl Worker {
     /// Process the batch.
     pub fn process(&self, batch: Batch) -> Result<(), Error> {
         Ok(self.sender.send(batch).context(format!(
-            "[Worker, partition={}] Could not process batch. Worker possibly closed.",
+            "[Worker, partition={}] Could not send batch. Channel to worker thread disconnected.",
             self.partition
         ))?)
     }
@@ -99,16 +99,19 @@ fn start_handler_loop<H, M>(
     H: BatchHandler + Send + 'static,
     M: MetricsCollector + Send + 'static,
 {
-    thread::spawn(move || {
-        handler_loop(
-            receiver,
-            &lifecycle,
-            partition,
-            handler,
-            committer,
-            metrics_collector,
-        )
-    });
+    let builder = thread::Builder::new().name(format!("nakadion-worker-{}", partition));
+    builder
+        .spawn(move || {
+            handler_loop(
+                receiver,
+                &lifecycle,
+                partition,
+                handler,
+                committer,
+                metrics_collector,
+            )
+        })
+        .unwrap();
 }
 
 fn handler_loop<H, M>(
@@ -145,67 +148,69 @@ fn handler_loop<H, M>(
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 info!(
-                    "[Worker, stream={}, partition={}] Channel disconnected. Stopping.",
+                    "[Worker, stream={}, partition={}] Cannot receive more batches. \
+                     Channel disconnected. Stopping.",
                     stream_id, partition
                 );
                 break;
             }
         };
 
-        let maybe_a_handler_result = {
+        let handler_result = {
             let event_type = match batch.batch_line.event_type_str() {
                 Ok(et) => EventType::new(et),
                 Err(err) => {
                     error!(
-                        "[Worker, stream={}, partition={}] Invalid event type. Stopping: {}",
+                        "[Worker, stream={}, partition={}] Invalid event type str. Stopping: {}",
                         stream_id, partition, err
                     );
                     break;
                 }
             };
 
-            batch.batch_line.events().map(|events| {
-                metrics_collector.worker_batch_size_bytes(events.len());
-                let start = Instant::now();
-                let res = handler.handle(event_type, events);
-                metrics_collector.worker_batch_processed(start);
-                res
-            })
+            let events = if let Some(events) = batch.batch_line.events() {
+                events
+            } else {
+                warn!(
+                    "[Worker, stream={}, partition={}] \
+                     Received batch without events.",
+                    stream_id, partition
+                );
+                continue;
+            };
+
+            metrics_collector.worker_batch_size_bytes(events.len());
+            let start = Instant::now();
+            let handler_result = handler.handle(event_type, events);
+            metrics_collector.worker_batch_processed(start);
+            handler_result
         };
 
-        if let Some(handler_result) = maybe_a_handler_result {
-            match handler_result {
-                ProcessingStatus::Processed(num_events_hint) => {
-                    num_events_hint
-                        .iter()
-                        .for_each(|n| metrics_collector.worker_events_in_same_batch_processed(*n));
-                    match committer.commit(batch, num_events_hint) {
-                        Ok(()) => continue,
-                        Err(err) => {
-                            warn!(
-                                "[Worker, stream={}, partition={}] \
-                                 Failed to commit. Stopping: {}",
-                                stream_id, partition, err
-                            );
-                            break;
-                        }
+        match handler_result {
+            ProcessingStatus::Processed(num_events_hint) => {
+                num_events_hint
+                    .iter()
+                    .for_each(|n| metrics_collector.worker_events_in_same_batch_processed(*n));
+                match committer.request_commit(batch, num_events_hint) {
+                    Ok(()) => continue,
+                    Err(err) => {
+                        warn!(
+                            "[Worker, stream={}, partition={}] \
+                             Committer did not accept batch commit request. \
+                             Stopping: {}",
+                            stream_id, partition, err
+                        );
+                        break;
                     }
                 }
-                ProcessingStatus::Failed { reason } => {
-                    warn!(
-                        "[Worker, stream={}, partition={}] Stopping for reason '{}'",
-                        stream_id, partition, reason
-                    );
-                    break;
-                }
             }
-        } else {
-            warn!(
-                "[Worker, stream={}, partition={}] \
-                 Received batch without events.",
-                stream_id, partition
-            );
-            continue;
+            ProcessingStatus::Failed { reason } => {
+                warn!(
+                    "[Worker, stream={}, partition={}] Handler failed: {}",
+                    stream_id, partition, reason
+                );
+                break;
+            }
         }
     }
 

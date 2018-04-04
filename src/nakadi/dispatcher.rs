@@ -64,10 +64,10 @@ impl Dispatcher {
         self.lifecycle.request_abort()
     }
 
-    pub fn process(&self, batch: Batch) -> Result<(), String> {
+    pub fn dispatch(&self, batch: Batch) -> Result<(), String> {
         if let Err(err) = self.sender.send(batch) {
             Err(format!(
-                "Could not send batch. Worker possibly closed: {}",
+                "Could not send batch on channel to worker thread: {}",
                 err
             ))
         } else {
@@ -87,16 +87,19 @@ fn start_dispatcher_loop<HF, M>(
     HF: HandlerFactory + Send + Sync + 'static,
     M: MetricsCollector + Clone + Send + 'static,
 {
-    thread::spawn(move || {
-        dispatcher_loop(
-            receiver,
-            lifecycle,
-            handler_factory,
-            committer,
-            metrics_collector,
-            min_idle_worker_lifetime,
-        )
-    });
+    let builder = thread::Builder::new().name("nakadion-dispatcher".into());
+    builder
+        .spawn(move || {
+            dispatcher_loop(
+                receiver,
+                lifecycle,
+                handler_factory,
+                committer,
+                metrics_collector,
+                min_idle_worker_lifetime,
+            )
+        })
+        .unwrap();
 }
 
 fn dispatcher_loop<HF, M>(
@@ -184,6 +187,7 @@ fn dispatcher_loop<HF, M>(
                 "[Dispatcher, stream={}] Creating new worker for partition {}",
                 stream_id, partition
             );
+
             let handler = match handler_factory.create_handler(&partition) {
                 Ok(handler) => handler,
                 Err(err) => {
