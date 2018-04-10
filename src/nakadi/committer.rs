@@ -4,6 +4,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use failure::{Error, Fail};
+
 use nakadi::api::{ApiClient, CommitError, CommitStatus};
 use nakadi::batch::Batch;
 use nakadi::metrics::MetricsCollector;
@@ -76,14 +78,14 @@ impl Committer {
         &self,
         batch: Batch,
         num_events_hint: Option<usize>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         self.sender
             .send(CommitterMessage::Commit(batch, num_events_hint))
             .map_err(|err| {
-                format!(
-                    "[Committer, stream={}] Could send commit request to worker thread: {}",
-                    self.stream_id, err
-                )
+                err.context(format!(
+                    "[Committer, stream={}] Could not send commit message to the commit worker",
+                    self.stream_id
+                )).into()
             })
     }
 
@@ -252,7 +254,7 @@ fn run_commit_loop<C, M>(
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 warn!(
                     "[Committer, subscription={}, stream={}] Commit channel disconnected.\
-                     Flushing cursors.",
+                     Flushing all cursors before stopping.",
                     subscription_id, stream_id
                 );
                 flush_all_cursors::<_>(cursors, &subscription_id, &stream_id, &client);

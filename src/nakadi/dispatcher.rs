@@ -5,6 +5,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use failure::{Error, Fail};
+
 use nakadi::Lifecycle;
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;
@@ -64,15 +66,11 @@ impl Dispatcher {
         self.lifecycle.request_abort()
     }
 
-    pub fn dispatch(&self, batch: Batch) -> Result<(), String> {
-        if let Err(err) = self.sender.send(batch) {
-            Err(format!(
-                "Could not send batch on channel to worker thread: {}",
-                err
-            ))
-        } else {
-            Ok(())
-        }
+    pub fn dispatch(&self, batch: Batch) -> Result<(), Error> {
+        self.sender.send(batch).map_err(|err| {
+            err.context("[Dispatcher] Could not send message to the dispatcher worker")
+                .into()
+        })
     }
 }
 

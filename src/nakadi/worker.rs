@@ -76,10 +76,12 @@ impl Worker {
 
     /// Process the batch.
     pub fn process(&self, batch: Batch) -> Result<(), Error> {
-        Ok(self.sender.send(batch).context(format!(
+        self.sender.send(batch).map_err(|err| {
+            err.context(format!(
             "[Worker, partition={}] Could not send batch. Channel to worker thread disconnected.",
             self.partition
-        ))?)
+        )).into()
+        })
     }
 
     // The partition this worker is processing
