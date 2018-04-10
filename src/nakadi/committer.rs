@@ -161,7 +161,7 @@ impl CommitEntry {
                 after_seconds: Some(after_seconds),
                 ..
             } => {
-                let by_strategy = Instant::now() + Duration::from_secs(after_seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(after_seconds as u64);
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
@@ -171,14 +171,14 @@ impl CommitEntry {
                 after_seconds: Some(after_seconds),
                 ..
             } => {
-                let by_strategy = Instant::now() + Duration::from_secs(after_seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(after_seconds as u64);
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
                 )
             }
             CommitStrategy::AfterSeconds { seconds } => {
-                let by_strategy = Instant::now() + Duration::from_secs(seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(seconds as u64);
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
@@ -262,7 +262,7 @@ fn run_commit_loop<C, M>(
             }
         }
 
-        if let Err(err) = flush_due_cursors(
+        match flush_due_cursors(
             &mut cursors,
             &subscription_id,
             &stream_id,
@@ -270,11 +270,18 @@ fn run_commit_loop<C, M>(
             strategy,
             &metrics_collector,
         ) {
-            error!(
-                "[Committer, subscription={}, stream={}] Failed to commit cursors: {}",
-                subscription_id, stream_id, err
-            );
-            break;
+            Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
+                "[Committer, subscription={}, stream={}] Not all cursors were increased.",
+                subscription_id, stream_id
+            ),
+            Err(err) => {
+                error!(
+                    "[Committer, subscription={}, stream={}] Failed to commit cursors: {}",
+                    subscription_id, stream_id, err
+                );
+                break;
+            }
+            _ => {}
         }
     }
 

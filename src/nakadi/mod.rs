@@ -50,7 +50,7 @@ pub enum CommitStrategy {
     /// "Latest"
     /// ```
     Latest,
-    /// Commit latest after `seconds` seconds
+    /// Commit latest after `seconds` seconds since a batch was received.
     ///
     /// # Serialization(JSON)
     ///
@@ -64,7 +64,7 @@ pub enum CommitStrategy {
     AfterSeconds { seconds: u16 },
     /// Commit latest after `after_batches` batches have been
     /// received or after `after_seconds` seconds have
-    /// elapsed
+    /// elapsed since a batch was received.
     ///
     /// # Serialization(JSON)
     ///
@@ -83,7 +83,7 @@ pub enum CommitStrategy {
     },
     /// Commit latest after `after_events` events have been
     /// received or after `after_seconds` seconds have
-    /// elapsed
+    /// elapsed since a batch was received.
     ///
     /// This requires the `BatchHandler` to return the number
     /// of processed events to work properly.
@@ -765,6 +765,8 @@ impl Nakadion {
                 access_token_provider,
                 metrics_collector.clone(),
             )?;
+
+        info!("Commit stragtegy is {:?}", config.commit_strategy);
 
         Nakadion::start_with(
             subscription_id,

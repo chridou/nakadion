@@ -203,7 +203,7 @@
 //! `Nakadion` also logs a message each time a new worker is created and each time a worker is
 //! shut down.
 //!
-//! Othrwise `Nakadion` only logs problems and errors.
+//! Otherwise `Nakadion` only logs problems and errors.
 //!
 //! So in the end your log files will not be flodded with messages from `Nakadion`.
 //!
@@ -221,6 +221,9 @@
 //!
 //! ## Recent Changes
 //!
+//! * 0.8.8
+//!    * Relevant cursor age in commit strategy is the batch age
+//!    * improved internal error handling
 //! * 0.8.7
 //!    * use named threads
 //!    * improved logging(especially on closed channels)
