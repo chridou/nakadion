@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use failure::{Error, Fail};
+use cancellation_token::*;
 
+use nakadi::CommitStrategy;
 use nakadi::api::{ApiClient, CommitError, CommitStatus};
 use nakadi::batch::Batch;
 use nakadi::metrics::MetricsCollector;
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
-use nakadi::{CommitStrategy, Lifecycle};
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
@@ -27,7 +29,7 @@ const CURSOR_COMMIT_OFFSET: u64 = 55;
 pub struct Committer {
     sender: mpsc::Sender<CommitterMessage>,
     stream_id: StreamId,
-    lifecycle: Lifecycle,
+    lifecycle: Arc<CancellationTokenSource>,
     subscription_id: SubscriptionId,
 }
 
@@ -51,7 +53,7 @@ impl Committer {
     {
         let (sender, receiver) = mpsc::channel();
 
-        let lifecycle = Lifecycle::default();
+        let lifecycle = Arc::new(CancellationTokenSource::default());
 
         start_commit_loop(
             receiver,
@@ -59,7 +61,7 @@ impl Committer {
             subscription_id.clone(),
             stream_id.clone(),
             client,
-            lifecycle.clone(),
+            lifecycle.auto_token(),
             metrics_collector,
         );
 
@@ -94,13 +96,13 @@ impl Committer {
     }
 
     /// Is the committer still running?
-    pub fn running(&self) -> bool {
-        self.lifecycle.running()
+    pub fn is_running(&self) -> bool {
+        !(self.lifecycle.is_any_cancelled())
     }
 
     /// Order the committer to stop.
     pub fn stop(&self) {
-        self.lifecycle.request_abort()
+        self.lifecycle.request_cancellation()
     }
 }
 
@@ -110,7 +112,7 @@ fn start_commit_loop<C, M>(
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     connector: C,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     metrics_collector: M,
 ) where
     C: ApiClient + Send + 'static,
@@ -216,7 +218,7 @@ fn run_commit_loop<C, M>(
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     client: C,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     metrics_collector: M,
 ) where
     C: ApiClient,
@@ -224,7 +226,7 @@ fn run_commit_loop<C, M>(
 {
     let mut cursors = HashMap::new();
     loop {
-        if lifecycle.abort_requested() {
+        if lifecycle.cancellation_requested() {
             info!(
                 "[Committer, subscription={}, stream={}] Abort requested. Flushing cursors",
                 subscription_id, stream_id
@@ -262,7 +264,7 @@ fn run_commit_loop<C, M>(
             }
         }
 
-        match flush_due_cursors(
+        match flush_if_due(
             &mut cursors,
             &subscription_id,
             &stream_id,
@@ -276,7 +278,7 @@ fn run_commit_loop<C, M>(
             ),
             Err(err) => {
                 error!(
-                    "[Committer, subscription={}, stream={}] Failed to commit cursors: {}",
+                    "[Committer, subscription={}, stream={}] Aborting. Failed to commit cursors: {}",
                     subscription_id, stream_id, err
                 );
                 break;
@@ -285,7 +287,6 @@ fn run_commit_loop<C, M>(
         }
     }
 
-    lifecycle.stopped();
     info!(
         "[Committer, subscription={}, stream={}] Committer stopped.",
         subscription_id, stream_id
@@ -345,7 +346,7 @@ fn flush_all_cursors<C>(
     }
 }
 
-fn flush_due_cursors<C, M>(
+fn flush_if_due<C, M>(
     all_cursors: &mut HashMap<(Vec<u8>, Vec<u8>), CommitEntry>,
     subscription_id: &SubscriptionId,
     stream_id: &StreamId,
@@ -360,34 +361,24 @@ where
     let num_batches: usize = all_cursors.iter().map(|entry| entry.1.num_batches).sum();
     let num_events: usize = all_cursors.iter().map(|entry| entry.1.num_events).sum();
 
-    let commit_all = match strategy {
+    let commit_by_other_than_deadline = match strategy {
         CommitStrategy::AllBatches => true,
         CommitStrategy::Batches { after_batches, .. } => num_batches >= after_batches as usize,
         CommitStrategy::Events { after_events, .. } => num_events >= after_events as usize,
         _ => false,
     };
 
+    let commit_by_deadline = all_cursors.values().any(|entry| entry.is_due_by_deadline());
+
     let mut cursors_to_commit: Vec<Vec<u8>> = Vec::new();
-    let mut keys_to_commit: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     let mut num_batches_to_commit = 0;
     let mut num_events_to_commit = 0;
-    if commit_all {
-        for (key, entry) in &*all_cursors {
+    if commit_by_deadline || commit_by_other_than_deadline {
+        for entry in all_cursors.values() {
             num_batches_to_commit += entry.num_batches;
             num_events_to_commit += entry.num_events;
             update_cursor_metrics(metrics_collector, entry);
             cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
-            keys_to_commit.push(key.clone());
-        }
-    } else {
-        for (key, entry) in &*all_cursors {
-            if entry.is_due_by_deadline() {
-                num_batches_to_commit += entry.num_batches;
-                num_events_to_commit += entry.num_events;
-                update_cursor_metrics(metrics_collector, entry);
-                cursors_to_commit.push(entry.batch.batch_line.cursor().to_vec());
-                keys_to_commit.push(key.clone());
-            }
         }
     }
 
@@ -400,13 +391,14 @@ where
             stream_id,
             &cursors_to_commit,
             flow_id.clone(),
-            Duration::from_secs(3),
+            Duration::from_secs(5),
         ) {
             Ok(s) => {
                 metrics_collector.committer_cursor_commit_attempt(start);
                 metrics_collector.committer_cursor_committed(start);
                 metrics_collector.committer_batches_committed(num_batches_to_commit);
                 metrics_collector.committer_events_committed(num_events_to_commit);
+                all_cursors.clear();
                 s
             }
             Err(err) => {
@@ -418,10 +410,6 @@ where
     } else {
         CommitStatus::NothingToCommit
     };
-
-    for key in keys_to_commit {
-        all_cursors.remove(&key);
-    }
 
     Ok(status)
 }

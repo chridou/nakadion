@@ -6,8 +6,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use failure::{Error, Fail};
+use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
 
-use nakadi::Lifecycle;
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;
 use nakadi::handler::HandlerFactory;
@@ -23,7 +23,7 @@ use nakadi::worker::Worker;
 pub struct Dispatcher {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
-    lifecycle: Lifecycle,
+    lifecycle: CancellationTokenSource,
 }
 
 impl Dispatcher {
@@ -39,16 +39,18 @@ impl Dispatcher {
     {
         let (sender, receiver) = mpsc::channel();
 
-        let lifecycle = Lifecycle::default();
+        let lifecycle = CancellationTokenSource::default();
+
+        let cancellation_token = lifecycle.auto_token();
 
         let handle = Dispatcher {
-            lifecycle: lifecycle.clone(),
+            lifecycle: lifecycle,
             sender,
         };
 
         start_dispatcher_loop(
             receiver,
-            lifecycle,
+            cancellation_token,
             handler_factory,
             committer,
             metrics_collector,
@@ -59,11 +61,11 @@ impl Dispatcher {
     }
 
     pub fn is_running(&self) -> bool {
-        self.lifecycle.running()
+        !self.lifecycle.is_any_cancelled()
     }
 
     pub fn stop(&self) {
-        self.lifecycle.request_abort()
+        self.lifecycle.request_cancellation()
     }
 
     pub fn dispatch(&self, batch: Batch) -> Result<(), Error> {
@@ -76,7 +78,7 @@ impl Dispatcher {
 
 fn start_dispatcher_loop<HF, M>(
     receiver: mpsc::Receiver<Batch>,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     handler_factory: Arc<HF>,
     committer: Committer,
     metrics_collector: M,
@@ -102,7 +104,7 @@ fn start_dispatcher_loop<HF, M>(
 
 fn dispatcher_loop<HF, M>(
     receiver: mpsc::Receiver<Batch>,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     handler_factory: Arc<HF>,
     committer: Committer,
     metrics_collector: M,
@@ -119,9 +121,18 @@ fn dispatcher_loop<HF, M>(
 
     info!("[Dispatcher, stream={}] Started.", committer.stream_id(),);
     loop {
-        if lifecycle.abort_requested() {
+        if lifecycle.cancellation_requested() {
             info!(
                 "[Dispatcher, stream={}] Stop requested externally.",
+                stream_id
+            );
+
+            break;
+        }
+
+        if !committer.is_running() {
+            error!(
+                "[Dispatcher, stream={}] Comitter not running. Aborting.",
                 stream_id
             );
 
@@ -182,17 +193,25 @@ fn dispatcher_loop<HF, M>(
             worker
         } else {
             info!(
-                "[Dispatcher, stream={}] Creating new worker for partition {}",
+                "[Dispatcher, stream={}, partition={}] Creating new handler",
                 stream_id, partition
             );
 
             let handler = match handler_factory.create_handler(&partition) {
                 Ok(handler) => handler,
                 Err(err) => {
-                    error!("Could not create handler: {}", err);
+                    error!(
+                        "[Dispatcher, stream={}, partition={}] Handler factory failed: {}",
+                        stream_id, partition, err
+                    );
                     break;
                 }
             };
+
+            info!(
+                "[Dispatcher, stream={}, partition={}] New handler  created. Starting worker.",
+                stream_id, partition
+            );
 
             let worker = Worker::start(
                 handler,
@@ -207,8 +226,8 @@ fn dispatcher_loop<HF, M>(
 
         if let Err(err) = worker.process(batch) {
             error!(
-                "[Dispatcher, stream={}] Worker did not accept batch. Stopping. - {}",
-                stream_id, err
+                "[Dispatcher, stream={}, partition={}] Worker did not accept batch. Stopping. - {}",
+                stream_id, partition, err
             );
             break;
         }
@@ -229,7 +248,6 @@ fn dispatcher_loop<HF, M>(
 
     info!("[Dispatcher, stream={}] All wokers stopped.", stream_id);
 
-    lifecycle.stopped();
     info!("[Dispatcher, stream={}] Stopped.", stream_id);
 }
 
@@ -245,7 +263,7 @@ fn kill_idle_workers(
     for (worker, last_used) in workers {
         if last_used.elapsed() >= min_idle_worker_lifetime {
             info!(
-                "[Dispatcher, stream={}] Stopping idle worker for partition '{}'",
+                "[Dispatcher, stream={}, partition={}] Stopping idle worker.'",
                 stream,
                 worker.partition()
             );

@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
+
 use nakadi::api::ApiClient;
 use nakadi::batch::{Batch, BatchLine};
 use nakadi::committer::Committer;
@@ -11,7 +13,7 @@ use nakadi::handler::HandlerFactory;
 use nakadi::metrics::MetricsCollector;
 use nakadi::model::*;
 use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
-use nakadi::{CommitStrategy, Lifecycle};
+use nakadi::CommitStrategy;
 
 /// Sequence of backoffs after failed commit attempts
 const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
@@ -28,9 +30,8 @@ const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
 /// helper components for each newly connected stream.
 ///
 /// The consumer creates a background thread.
-#[derive(Clone)]
 pub struct Consumer {
-    lifecycle: Lifecycle,
+    lifecycle: CancellationTokenSource,
     subscription_id: SubscriptionId,
 }
 
@@ -51,10 +52,12 @@ impl Consumer {
         HF: HandlerFactory + Send + Sync + 'static,
         M: MetricsCollector + Clone + Send + 'static,
     {
-        let lifecycle = Lifecycle::default();
+        let lifecycle = CancellationTokenSource::default();
+
+        let cancellation_token = lifecycle.auto_token();
 
         let consumer = Consumer {
-            lifecycle: lifecycle.clone(),
+            lifecycle: lifecycle,
             subscription_id: subscription_id.clone(),
         };
 
@@ -64,7 +67,7 @@ impl Consumer {
             handler_factory,
             commit_strategy,
             subscription_id,
-            lifecycle,
+            cancellation_token,
             metrics_collector,
             min_idle_worker_lifetime,
         );
@@ -73,11 +76,11 @@ impl Consumer {
     }
 
     pub fn running(&self) -> bool {
-        self.lifecycle.running()
+        !self.lifecycle.is_any_cancelled()
     }
 
     pub fn stop(&self) {
-        self.lifecycle.request_abort()
+        self.lifecycle.request_cancellation()
     }
 }
 
@@ -87,7 +90,7 @@ fn start_consumer_loop<C, A, HF, M>(
     handler_factory: HF,
     commit_strategy: CommitStrategy,
     subscription_id: SubscriptionId,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     metrics_collector: M,
     min_idle_worker_lifetime: Option<Duration>,
 ) where
@@ -119,7 +122,7 @@ fn consumer_loop<C, A, HF, M>(
     handler_factory: HF,
     commit_strategy: CommitStrategy,
     subscription_id: SubscriptionId,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     metrics_collector: M,
     min_idle_worker_lifetime: Option<Duration>,
 ) where
@@ -131,7 +134,7 @@ fn consumer_loop<C, A, HF, M>(
     let handler_factory = Arc::new(handler_factory);
 
     loop {
-        if lifecycle.abort_requested() {
+        if lifecycle.cancellation_requested() {
             info!(
                 "[Consumer, subscription={}] Abort requested",
                 subscription_id
@@ -198,7 +201,7 @@ fn consumer_loop<C, A, HF, M>(
             stream_id.clone(),
             dispatcher,
             committer,
-            lifecycle.clone(),
+            &lifecycle,
             &metrics_collector,
         );
 
@@ -210,10 +213,8 @@ fn consumer_loop<C, A, HF, M>(
         metrics_collector.consumer_connection_lifetime(connected_since);
     }
 
-    lifecycle.stopped();
-
     info!(
-        "[Consumer, subscription={}] Nakadi consumer stopped",
+        "[Consumer, subscription={}] Nakadi consumer stopped.  Exiting",
         subscription_id
     );
 }
@@ -224,20 +225,37 @@ fn consume<I, M>(
     stream_id: StreamId,
     dispatcher: Dispatcher,
     committer: Committer,
-    lifecycle: Lifecycle,
+    lifecycle: &AutoCancellationToken,
     metrics_collector: &M,
 ) where
     I: Iterator<Item = LineResult>,
     M: MetricsCollector,
 {
     for line_result in line_iterator {
-        if lifecycle.abort_requested() {
+        if lifecycle.cancellation_requested() {
             info!(
                 "[Consumer, subscription={}, stream={}] Abort requested",
                 subscription_id, stream_id
             );
             break;
         }
+
+        if !dispatcher.is_running() {
+            error!(
+                "[Consumer, subscription={}, stream={}] Dispatcher is gone. Aborting.",
+                subscription_id, stream_id
+            );
+            break;
+        }
+
+        if !committer.is_running() {
+            error!(
+                "[Consumer, subscription={}, stream={}] Committer is gone. Aborting.",
+                subscription_id, stream_id
+            );
+            break;
+        }
+
         match line_result {
             Ok(raw_line) => {
                 if let Err(err) = process_batch_line(
@@ -265,21 +283,23 @@ fn consume<I, M>(
         }
     }
 
-    info!(
-        "[Consumer, subscription={}, stream={}] Stream consumption ended or aborted. \
-         Stopping components",
-        subscription_id, stream_id
-    );
+    if dispatcher.is_running() {
+        info!(
+            "[Consumer, subscription={}, stream={}] Stream consumption ended or aborted. \
+             Stopping components",
+            subscription_id, stream_id
+        );
 
-    info!(
-        "[Consumer, subscription={}, stream={}] Stopping dispatcher.",
-        subscription_id, stream_id
-    );
+        info!(
+            "[Consumer, subscription={}, stream={}] Stopping dispatcher.",
+            subscription_id, stream_id
+        );
 
-    dispatcher.stop();
+        dispatcher.stop();
 
-    while dispatcher.is_running() {
-        thread::sleep(Duration::from_millis(10));
+        while dispatcher.is_running() {
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     info!(
@@ -287,15 +307,17 @@ fn consume<I, M>(
         subscription_id, stream_id
     );
 
-    info!(
-        "[Consumer, subscription={}, stream={}] Stopping committer",
-        subscription_id, stream_id
-    );
+    if committer.is_running() {
+        info!(
+            "[Consumer, subscription={}, stream={}] Stopping committer",
+            subscription_id, stream_id
+        );
 
-    committer.stop();
+        committer.stop();
 
-    while committer.running() {
-        thread::sleep(Duration::from_millis(10));
+        while committer.is_running() {
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     info!(
@@ -355,7 +377,7 @@ fn connect<C: StreamingClient>(
     client: &C,
     subscription_id: &SubscriptionId,
     max_dur: Duration,
-    lifecycle: &Lifecycle,
+    lifecycle: &AutoCancellationToken,
 ) -> Result<(StreamId, C::LineIterator), ConnectError> {
     let deadline = Instant::now() + max_dur;
     let mut attempt = 0;
@@ -373,7 +395,7 @@ fn connect<C: StreamingClient>(
                         format!("Failed to connect to Nakadi after {} attempts.", attempt),
                         flow_id,
                     ));
-                } else if lifecycle.abort_requested() {
+                } else if lifecycle.cancellation_requested() {
                     return Err(ConnectError::Other(
                         format!(
                             "Failed to connect to Nakadi after {} attempts. Abort requested",

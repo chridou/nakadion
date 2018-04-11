@@ -4,8 +4,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use failure::*;
+use cancellation_token::*;
 
-use nakadi::Lifecycle;
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;
 use nakadi::handler::{BatchHandler, ProcessingStatus};
@@ -19,7 +19,7 @@ use nakadi::model::PartitionId;
 pub struct Worker {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
-    lifecycle: Lifecycle,
+    lifecycle: CancellationTokenSource,
     /// The partition this worker is responsible for.
     partition: PartitionId,
 }
@@ -40,17 +40,19 @@ impl Worker {
     {
         let (sender, receiver) = mpsc::channel();
 
-        let lifecycle = Lifecycle::default();
+        let lifecycle = CancellationTokenSource::default();
+
+        let cancellation_token = lifecycle.auto_token();
 
         let handle = Worker {
-            lifecycle: lifecycle.clone(),
+            lifecycle: lifecycle,
             sender,
             partition: partition.clone(),
         };
 
         start_handler_loop(
             receiver,
-            lifecycle,
+            cancellation_token,
             partition,
             handler,
             committer,
@@ -62,7 +64,7 @@ impl Worker {
 
     /// Returns true if the `Worker` is still running
     pub fn running(&self) -> bool {
-        self.lifecycle.running()
+        !self.lifecycle.is_any_cancelled()
     }
 
     /// Request the worker to stop.
@@ -71,7 +73,7 @@ impl Worker {
     /// immediately. Poll `self::running()` until the worker has
     /// stopped if you depend on the fact that the worker reales stopped working.
     pub fn stop(&self) {
-        self.lifecycle.request_abort()
+        self.lifecycle.request_cancellation()
     }
 
     /// Process the batch.
@@ -92,7 +94,7 @@ impl Worker {
 
 fn start_handler_loop<H, M>(
     receiver: mpsc::Receiver<Batch>,
-    lifecycle: Lifecycle,
+    lifecycle: AutoCancellationToken,
     partition: PartitionId,
     handler: H,
     committer: Committer,
@@ -106,7 +108,7 @@ fn start_handler_loop<H, M>(
         .spawn(move || {
             handler_loop(
                 receiver,
-                &lifecycle,
+                lifecycle,
                 partition,
                 handler,
                 committer,
@@ -118,7 +120,7 @@ fn start_handler_loop<H, M>(
 
 fn handler_loop<H, M>(
     receiver: mpsc::Receiver<Batch>,
-    lifecycle: &Lifecycle,
+    lifecycle: AutoCancellationToken,
     partition: PartitionId,
     handler: H,
     committer: Committer,
@@ -137,7 +139,7 @@ fn handler_loop<H, M>(
     metrics_collector.worker_worker_started();
 
     loop {
-        if lifecycle.abort_requested() {
+        if lifecycle.cancellation_requested() {
             info!(
                 "[Worker, stream={}, partition={}] Stop requested externally.",
                 stream_id, partition
@@ -216,7 +218,6 @@ fn handler_loop<H, M>(
         }
     }
 
-    lifecycle.stopped();
     metrics_collector.worker_worker_stopped();
 
     info!(

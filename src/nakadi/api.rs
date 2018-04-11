@@ -100,7 +100,7 @@ pub trait ApiClient {
     /// Creates an new subscription defined by a `SubscriptionRequest`.
     ///
     /// Trying to create a `Subscription` that already existed is not
-    /// considered a failure. See `CreateSubscriptionStatus` for mor details.   
+    /// considered a failure. See `CreateSubscriptionStatus` for mor details.
     ///
     /// # Errors
     ///
@@ -423,6 +423,7 @@ impl ApiClient for NakadiApiClient {
         let mut op = || {
             self.attempt_commit(&url, stream_id.clone(), cursors, flow_id.clone())
                 .map_err(|err| match err {
+                    err @ CommitError::UnprocessableEntity { .. } => BackoffError::Permanent(err),
                     err @ CommitError::Client { .. } => BackoffError::Permanent(err),
                     err => BackoffError::Transient(err),
                 })
@@ -430,8 +431,9 @@ impl ApiClient for NakadiApiClient {
 
         let notify = |err, dur| {
             warn!(
-                "Stream {} - Commit Error happened at {:?}: {}",
-                stream_id.clone(),
+                "[API-Client, stream={}, flow_id={}] - Retry notification. Commit error happened at {:?}: {}",
+                stream_id,
+                flow_id,
                 dur,
                 err
             );

@@ -1,7 +1,6 @@
 use std::env;
 use std::fmt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -160,38 +159,6 @@ fn commit_strategy_serialize_events() {
         &json_str,
         "{\"Events\":{\"after_events\":34,\"after_seconds\":59}}"
     );
-}
-
-/// Track the "running state" of Nakadion.
-#[derive(Clone)]
-pub struct Lifecycle {
-    state: Arc<(AtomicBool, AtomicBool)>,
-}
-
-impl Lifecycle {
-    pub fn abort_requested(&self) -> bool {
-        self.state.0.load(Ordering::Relaxed)
-    }
-
-    pub fn request_abort(&self) {
-        self.state.0.store(true, Ordering::Relaxed)
-    }
-
-    pub fn stopped(&self) {
-        self.state.1.store(false, Ordering::Relaxed)
-    }
-
-    pub fn running(&self) -> bool {
-        self.state.1.load(Ordering::Relaxed)
-    }
-}
-
-impl Default for Lifecycle {
-    fn default() -> Lifecycle {
-        Lifecycle {
-            state: Arc::new((AtomicBool::new(false), AtomicBool::new(true))),
-        }
-    }
 }
 
 /// Describes how `Nakadion` should resolve the `SubscriptionId` to
