@@ -73,6 +73,12 @@ pub struct AutoCancellationToken {
 
 impl Drop for AutoCancellationToken {
     fn drop(&mut self) {
+        if ::std::thread::panicking() {
+            error!(
+                "Abnormal cancellation due to a panic on thread '{}'!",
+                ::std::thread::current().name().unwrap_or("<unnamed>")
+            );
+        }
         self.cancelled()
     }
 }
