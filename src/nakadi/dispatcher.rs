@@ -5,8 +5,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use failure::{Error, Fail};
 use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
+use failure::{Error, Fail};
 
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;

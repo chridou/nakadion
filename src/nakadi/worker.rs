@@ -3,8 +3,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use failure::*;
 use cancellation_token::*;
+use failure::*;
 
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use failure::{Error, Fail};
 use cancellation_token::*;
+use failure::{Error, Fail};
 
 use nakadi::CommitStrategy;
 use nakadi::api::{ApiClient, CommitError, CommitStatus};

@@ -174,6 +174,10 @@ on the complexity of your processing logic.
 
 ## Recent Changes
 
+* 0.8.9
+   * Check whether worker threads are still running to prevent live locks
+   * Do not retry on "unprocessable entity" when committing.
+    * Always commit all cursors
 * 0.8.8
    * Relevant cursor age in commit strategy is the batch age
    * improved internal error handling
