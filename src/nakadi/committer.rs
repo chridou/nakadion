@@ -31,6 +31,7 @@ pub struct Committer {
     stream_id: StreamId,
     lifecycle: Arc<CancellationTokenSource>,
     subscription_id: SubscriptionId,
+    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
 }
 
 enum CommitterMessage {
@@ -49,7 +50,7 @@ impl Committer {
     ) -> Self
     where
         C: ApiClient + Send + 'static,
-        M: MetricsCollector + Send + 'static,
+        M: MetricsCollector + Clone + Sync + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
@@ -62,7 +63,7 @@ impl Committer {
             stream_id.clone(),
             client,
             lifecycle.auto_token(),
-            metrics_collector,
+            metrics_collector.clone(),
         );
 
         Committer {
@@ -70,6 +71,7 @@ impl Committer {
             stream_id,
             lifecycle,
             subscription_id,
+            metrics_collector: Arc::new(metrics_collector),
         }
     }
 
@@ -84,6 +86,7 @@ impl Committer {
         self.sender
             .send(CommitterMessage::Commit(batch, num_events_hint))
             .map_err(|err| {
+                self.metrics_collector.other_committer_gone();
                 err.context(format!(
                     "[Committer, stream={}] Could not send commit message to the commit worker",
                     self.stream_id

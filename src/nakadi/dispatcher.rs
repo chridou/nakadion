@@ -24,6 +24,7 @@ pub struct Dispatcher {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
     lifecycle: CancellationTokenSource,
+    metrics_collector: Box<MetricsCollector>,
 }
 
 impl Dispatcher {
@@ -35,7 +36,7 @@ impl Dispatcher {
     ) -> Dispatcher
     where
         HF: HandlerFactory + Send + Sync + 'static,
-        M: MetricsCollector + Clone + Send + 'static,
+        M: MetricsCollector + Clone + Send + Sync + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
@@ -46,6 +47,7 @@ impl Dispatcher {
         let handle = Dispatcher {
             lifecycle: lifecycle,
             sender,
+            metrics_collector: Box::new(metrics_collector.clone()),
         };
 
         start_dispatcher_loop(
@@ -70,6 +72,7 @@ impl Dispatcher {
 
     pub fn dispatch(&self, batch: Batch) -> Result<(), Error> {
         self.sender.send(batch).map_err(|err| {
+            self.metrics_collector.other_dispatcher_gone();
             err.context("[Dispatcher] Could not send message to the dispatcher worker")
                 .into()
         })
@@ -85,7 +88,7 @@ fn start_dispatcher_loop<HF, M>(
     min_idle_worker_lifetime: Option<Duration>,
 ) where
     HF: HandlerFactory + Send + Sync + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    M: MetricsCollector + Clone + Send + Sync + 'static,
 {
     let builder = thread::Builder::new().name("nakadion-dispatcher".into());
     builder
@@ -111,7 +114,7 @@ fn dispatcher_loop<HF, M>(
     min_idle_worker_lifetime: Option<Duration>,
 ) where
     HF: HandlerFactory,
-    M: MetricsCollector + Clone + Send + 'static,
+    M: MetricsCollector + Clone + Sync + Send + 'static,
 {
     metrics_collector.dispatcher_current_workers(0);
 

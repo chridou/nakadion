@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use failure::*;
+
 use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
 
 use nakadi::CommitStrategy;
@@ -50,7 +52,7 @@ impl Consumer {
         C: StreamingClient + Clone + Send + 'static,
         A: ApiClient + Clone + Send + 'static,
         HF: HandlerFactory + Send + Sync + 'static,
-        M: MetricsCollector + Clone + Send + 'static,
+        M: MetricsCollector + Clone + Sync + Send + 'static,
     {
         let lifecycle = CancellationTokenSource::default();
 
@@ -97,7 +99,7 @@ fn start_consumer_loop<C, A, HF, M>(
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    M: MetricsCollector + Clone + Send + Sync + 'static,
 {
     let builder = thread::Builder::new().name("nakadion-consumer".into());
     builder
@@ -129,7 +131,7 @@ fn consumer_loop<C, A, HF, M>(
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
-    M: MetricsCollector + Clone + Send + 'static,
+    M: MetricsCollector + Clone + Sync + Send + 'static,
 {
     let handler_factory = Arc::new(handler_factory);
 
@@ -245,6 +247,7 @@ fn consume<I, M>(
                 "[Consumer, subscription={}, stream={}] Dispatcher is gone. Aborting.",
                 subscription_id, stream_id
             );
+            metrics_collector.other_dispatcher_gone();
             break;
         }
 
@@ -253,6 +256,7 @@ fn consume<I, M>(
                 "[Consumer, subscription={}, stream={}] Committer is gone. Aborting.",
                 subscription_id, stream_id
             );
+            metrics_collector.other_committer_gone();
             break;
         }
 
@@ -332,7 +336,7 @@ fn process_batch_line<M>(
     stream_id: &StreamId,
     raw_line: RawLine,
     metrics_collector: &M,
-) -> Result<(), String>
+) -> Result<(), Error>
 where
     M: MetricsCollector,
 {
@@ -369,7 +373,13 @@ where
                 batch_line: batch_line,
                 received_at: raw_line.received_at,
             })
-            .map_err(|err| format!("Dispatcher did not process batch: {}", err))
+            .map_err(|err| {
+                err.context(format!(
+                    "[Consumer, subscription={}, stream={}] \
+                     Dispatcher did not process batch",
+                    subscription_id, stream_id
+                )).into()
+            })
     }
 }
 

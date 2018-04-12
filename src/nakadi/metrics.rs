@@ -94,6 +94,11 @@ pub trait MetricsCollector {
     /// The time left when committing the cursor until the stream would have become
     /// invalid.
     fn committer_time_left_on_commit_until_invalid(&self, time_left: Duration);
+    /// A panic occured somewhere.
+    fn other_panicked(&self);
+    fn other_dispatcher_gone(&self);
+    fn other_worker_gone(&self);
+    fn other_committer_gone(&self);
 }
 
 /// Using this disables metrics collection.
@@ -129,6 +134,11 @@ impl MetricsCollector for DevNullMetricsCollector {
     fn committer_last_cursor_age_on_commit(&self, _age: Duration) {}
     fn committer_cursor_buffer_time(&self, _time_buffered: Duration) {}
     fn committer_time_left_on_commit_until_invalid(&self, _time_left: Duration) {}
+
+    fn other_panicked(&self) {}
+    fn other_dispatcher_gone(&self) {}
+    fn other_worker_gone(&self) {}
+    fn other_committer_gone(&self) {}
 }
 
 #[cfg(feature = "metrix")]
@@ -142,6 +152,14 @@ mod metrix {
     use metrix::instruments::switches::*;
     use metrix::instruments::*;
     use metrix::processor::*;
+
+    #[derive(Clone, PartialEq, Eq)]
+    enum OtherMetrics {
+        Panicked,
+        DispatcherGone,
+        WorkerGone,
+        CommitterGone,
+    }
 
     #[derive(Clone, PartialEq, Eq)]
     enum ConnectorMetrics {
@@ -196,6 +214,7 @@ mod metrix {
         dispatcher: TelemetryTransmitterSync<DispatcherMetrics>,
         worker: TelemetryTransmitterSync<WorkerMetrics>,
         cursor: TelemetryTransmitterSync<CursorMetrics>,
+        other: TelemetryTransmitterSync<OtherMetrics>,
     }
 
     impl MetrixCollector {
@@ -210,12 +229,14 @@ mod metrix {
             let (dispatcher_tx, dispatcher_rx) = create_dispatcher_metrics();
             let (worker_tx, worker_rx) = create_worker_metrics();
             let (cursor_tx, cursor_rx) = create_cursor_metrics();
+            let (other_tx, other_rx) = create_other_metrics();
 
             add_metrics_to.add_processor(connector_rx);
             add_metrics_to.add_processor(consumer_rx);
             add_metrics_to.add_processor(dispatcher_rx);
             add_metrics_to.add_processor(worker_rx);
             add_metrics_to.add_processor(cursor_rx);
+            add_metrics_to.add_processor(other_rx);
 
             MetrixCollector {
                 connector: connector_tx,
@@ -223,6 +244,7 @@ mod metrix {
                 dispatcher: dispatcher_tx,
                 worker: worker_tx,
                 cursor: cursor_tx,
+                other: other_tx,
             }
         }
     }
@@ -332,6 +354,50 @@ mod metrix {
             self.cursor
                 .observed_one_duration_now(CursorMetrics::TimeLeftUntilInvalid, time_left);
         }
+
+        fn other_panicked(&self) {
+            self.other.observed_one_now(OtherMetrics::Panicked)
+        }
+        fn other_dispatcher_gone(&self) {
+            self.other.observed_one_now(OtherMetrics::DispatcherGone)
+        }
+        fn other_worker_gone(&self) {
+            self.other.observed_one_now(OtherMetrics::WorkerGone)
+        }
+        fn other_committer_gone(&self) {
+            self.other.observed_one_now(OtherMetrics::CommitterGone)
+        }
+    }
+
+    fn create_other_metrics() -> (
+        TelemetryTransmitterSync<OtherMetrics>,
+        TelemetryProcessor<OtherMetrics>,
+    ) {
+        let mut cockpit: Cockpit<OtherMetrics> = Cockpit::without_name(None);
+
+        let mut panel = Panel::with_name(OtherMetrics::Panicked, "panicked");
+        let switch = StaircaseTimer::new_with_defaults("occurred");
+        panel.add_instrument(switch);
+
+        let mut panel = Panel::with_name(OtherMetrics::DispatcherGone, "dispatcher_gone");
+        let switch = StaircaseTimer::new_with_defaults("occurred");
+        panel.add_instrument(switch);
+
+        let mut panel = Panel::with_name(OtherMetrics::WorkerGone, "worker_gone");
+        let switch = StaircaseTimer::new_with_defaults("occurred");
+        panel.add_instrument(switch);
+
+        let mut panel = Panel::with_name(OtherMetrics::CommitterGone, "committer_gone");
+        let switch = StaircaseTimer::new_with_defaults("occurred");
+        panel.add_instrument(switch);
+
+        cockpit.add_panel(panel);
+
+        let (tx, rx) = TelemetryProcessor::new_pair("other");
+
+        tx.add_cockpit(cockpit);
+
+        (tx.synced(), rx)
     }
 
     fn create_connector_metrics() -> (

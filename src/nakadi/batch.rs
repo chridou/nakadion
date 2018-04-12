@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use failure::*;
+
 pub struct Batch {
     pub batch_line: BatchLine,
     pub received_at: Instant,
@@ -12,14 +14,14 @@ pub struct BatchLine {
 }
 
 impl BatchLine {
-    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, String> {
+    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, Error> {
         let items = lineparsing::parse_line(&bytes)?;
 
         Ok(BatchLine { bytes, items })
     }
 
     #[allow(unused)]
-    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, String> {
+    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, Error> {
         let bytes: Vec<_> = bytes.iter().cloned().collect();
         BatchLine::new((bytes))
     }
@@ -39,9 +41,9 @@ impl BatchLine {
         &self.bytes[a..b + 1]
     }
 
-    pub fn partition_str(&self) -> Result<&str, String> {
+    pub fn partition_str(&self) -> Result<&str, Error> {
         ::std::str::from_utf8(self.partition())
-            .map_err(|err| format!("Partition is not UTF-8: {}", err))
+            .map_err(|err| format_err!("Partition is not UTF-8: {}", err))
     }
 
     pub fn event_type(&self) -> &[u8] {
@@ -49,9 +51,9 @@ impl BatchLine {
         &self.bytes[a..b + 1]
     }
 
-    pub fn event_type_str(&self) -> Result<&str, String> {
+    pub fn event_type_str(&self) -> Result<&str, Error> {
         ::std::str::from_utf8(self.event_type())
-            .map_err(|err| format!("Partition is not UTF-8: {}", err))
+            .map_err(|err| format_err!("Partition is not UTF-8: {}", err))
     }
 
     pub fn events(&self) -> Option<&[u8]> {
@@ -130,7 +132,7 @@ fn parse_subscription_batch_line_with_info() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
+    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive_line(), false);
@@ -163,7 +165,7 @@ fn parse_subscription_batch_line_without_info() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
+    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.events(), Some(events_sample.as_bytes()));
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive_line(), false);
@@ -186,7 +188,7 @@ fn parse_subscription_batch_line_keep_alive_with_info() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
+    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.info(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive_line(), true);
 }
@@ -206,13 +208,15 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor(), cursor_sample.as_bytes());
     assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str(), Ok("order.ORDER_RECEIVED"));
+    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
     assert_eq!(line.info(), None);
     assert_eq!(line.is_keep_alive_line(), true);
 }
 
 mod lineparsing {
     use super::{Cursor, LineItems};
+
+    use failure::*;
 
     const OBJ_OPEN: u8 = b'{';
     const OBJ_CLOSE: u8 = b'}';
@@ -228,7 +232,7 @@ mod lineparsing {
     const CURSOR_PARTITION_LABEL: &'static [u8] = b"partition";
     const CURSOR_EVENT_TYPE_LABEL: &'static [u8] = b"event_type";
 
-    pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, String> {
+    pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, Error> {
         let mut line_items = LineItems::default();
 
         let mut next_byte = 0;
@@ -241,7 +245,7 @@ mod lineparsing {
         }
 
         if line_items.cursor.line_position.1 == 0 {
-            Err("No cursor".into())
+            Err(format_err!("No cursor"))
         } else {
             Ok(line_items)
         }
@@ -251,10 +255,10 @@ mod lineparsing {
         json_bytes: &[u8],
         start: usize,
         line_items: &mut LineItems,
-    ) -> Result<Option<usize>, String> {
+    ) -> Result<Option<usize>, Error> {
         if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
             if end - begin < 3 {
-                return Err("String can not be a label if len<3".into());
+                return Err(format_err!("String can not be a label if len < 3"));
             }
 
             let label = &json_bytes[begin + 1..end];
@@ -283,7 +287,7 @@ mod lineparsing {
         }
     }
 
-    fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, String> {
+    fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, Error> {
         if start == json_bytes.len() {
             return Ok(None);
         }
@@ -301,7 +305,7 @@ mod lineparsing {
         }
 
         if idx_begin >= json_bytes.len() - 1 {
-            return Err(format!(
+            return Err(format_err!(
                 "Not a string. Missing starting `\"` after pos {}",
                 start
             ));
@@ -328,18 +332,20 @@ mod lineparsing {
 
         if idx_end == json_bytes.len() {
             let start_seq = ::std::str::from_utf8(&json_bytes[start..idx_end]).unwrap_or("???");
-            return Err(format!(
+            return Err(format_err!(
                 "Not a string. Missing ending `\"` after pos {} but before {} in {}",
-                start, idx_end, start_seq
+                start,
+                idx_end,
+                start_seq
             ));
         }
 
         Ok(Some((idx_begin, idx_end)))
     }
 
-    fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), String> {
+    fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Error> {
         if start == json_bytes.len() {
-            return Err("Reached end".into());
+            return Err(format_err!("Reached end"));
         }
 
         let mut idx_begin = start;
@@ -351,7 +357,7 @@ mod lineparsing {
         }
 
         if idx_begin >= json_bytes.len() - 1 {
-            return Err("Not an object. Missing starting `{`.".into());
+            return Err(format_err!("Not an object. Missing starting `{{`."));
         }
 
         let mut idx_end = idx_begin + 1;
@@ -380,15 +386,15 @@ mod lineparsing {
         }
 
         if idx_end == json_bytes.len() {
-            return Err("Not an object. Missing ending `}`.".into());
+            return Err(format_err!("Not an object. Missing ending `}}`."));
         }
 
         Ok((idx_begin, idx_end))
     }
 
-    fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), String> {
+    fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Error> {
         if start == json_bytes.len() {
-            return Err("Reached end".into());
+            return Err(format_err!("Reached end"));
         }
 
         let mut idx_begin = start;
@@ -400,7 +406,7 @@ mod lineparsing {
         }
 
         if idx_begin >= json_bytes.len() - 1 {
-            return Err("Not an array. Missing starting `[`.".into());
+            return Err(format_err!("Not an array. Missing starting `[`."));
         }
 
         let mut idx_end = idx_begin + 1;
@@ -429,7 +435,7 @@ mod lineparsing {
         }
 
         if idx_end == json_bytes.len() {
-            return Err("Not an array. Missing ending `]`.".into());
+            return Err(format_err!("Not an array. Missing ending `]`."));
         }
 
         Ok((idx_begin, idx_end))
@@ -440,7 +446,7 @@ mod lineparsing {
         cursor: &mut Cursor,
         start: usize,
         end: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), Error> {
         let mut next_byte = start;
         while next_byte <= end {
             if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
@@ -450,7 +456,7 @@ mod lineparsing {
             }
         }
         if cursor.partition.0 == 0 {
-            Err(format!("Partition missing in cursor @ {}", next_byte))
+            Err(format_err!("Partition missing in cursor @ {}", next_byte))
         } else {
             Ok(())
         }
@@ -460,10 +466,10 @@ mod lineparsing {
         json_bytes: &[u8],
         start: usize,
         cursor: &mut Cursor,
-    ) -> Result<Option<usize>, String> {
+    ) -> Result<Option<usize>, Error> {
         if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
             if end - begin < 2 {
-                return Err("String can not be a label if len<2".into());
+                return Err(format_err!("String can not be a label if len<2"));
             }
 
             let label = &json_bytes[begin + 1..end];
@@ -471,25 +477,25 @@ mod lineparsing {
                 CURSOR_PARTITION_LABEL => {
                     if let Some((a, b)) = next_string(json_bytes, end + 1)? {
                         if b - a < 2 {
-                            return Err("Empty String for partition".into());
+                            return Err(format_err!("Empty String for partition"));
                         } else {
                             cursor.partition = (a + 1, b - 1);
                             b
                         }
                     } else {
-                        return Err("No String for partition".into());
+                        return Err(format_err!("No String for partition"));
                     }
                 }
                 CURSOR_EVENT_TYPE_LABEL => {
                     if let Some((a, b)) = next_string(json_bytes, end + 1)? {
                         if b - a < 2 {
-                            return Err("Empty String for event_type".into());
+                            return Err(format_err!("Empty String for event_type"));
                         } else {
                             cursor.event_type = (a + 1, b - 1);
                             b
                         }
                     } else {
-                        return Err("No String for event_type".into());
+                        return Err(format_err!("No String for event_type"));
                     }
                 }
                 _ => end,

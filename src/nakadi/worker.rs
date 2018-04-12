@@ -22,6 +22,7 @@ pub struct Worker {
     lifecycle: CancellationTokenSource,
     /// The partition this worker is responsible for.
     partition: PartitionId,
+    metrics_collector: Box<MetricsCollector>,
 }
 
 impl Worker {
@@ -36,7 +37,7 @@ impl Worker {
     ) -> Worker
     where
         H: BatchHandler + Send + 'static,
-        M: MetricsCollector + Send + 'static,
+        M: MetricsCollector + Clone + Send + Sync + 'static,
     {
         let (sender, receiver) = mpsc::channel();
 
@@ -48,6 +49,7 @@ impl Worker {
             lifecycle: lifecycle,
             sender,
             partition: partition.clone(),
+            metrics_collector: Box::new(metrics_collector.clone()),
         };
 
         start_handler_loop(
@@ -79,6 +81,7 @@ impl Worker {
     /// Process the batch.
     pub fn process(&self, batch: Batch) -> Result<(), Error> {
         self.sender.send(batch).map_err(|err| {
+            self.metrics_collector.other_worker_gone();
             err.context(format!(
             "[Worker, partition={}] Could not send batch. Channel to worker thread disconnected.",
             self.partition
@@ -101,7 +104,7 @@ fn start_handler_loop<H, M>(
     metrics_collector: M,
 ) where
     H: BatchHandler + Send + 'static,
-    M: MetricsCollector + Send + 'static,
+    M: MetricsCollector + Send + Sync + 'static,
 {
     let builder = thread::Builder::new().name(format!("nakadion-worker-{}", partition));
     builder

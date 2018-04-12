@@ -221,6 +221,8 @@
 //!
 //! ## Recent Changes
 //!
+//! * 0.8.10
+//!    * Metrics for panics and unavailable workers
 //! * 0.8.9
 //!    * Check whether worker threads are still running to prevent live locks
 //!    * Do not retry on "unprocessable entity" when committing.
