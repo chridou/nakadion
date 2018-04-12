@@ -378,22 +378,24 @@ mod metrix {
         let mut panel = Panel::with_name(OtherMetrics::Panicked, "panicked");
         let switch = StaircaseTimer::new_with_defaults("occurred");
         panel.add_instrument(switch);
+        cockpit.add_panel(panel);
 
         let mut panel = Panel::with_name(OtherMetrics::DispatcherGone, "dispatcher_gone");
         let switch = StaircaseTimer::new_with_defaults("occurred");
         panel.add_instrument(switch);
+        cockpit.add_panel(panel);
 
         let mut panel = Panel::with_name(OtherMetrics::WorkerGone, "worker_gone");
         let switch = StaircaseTimer::new_with_defaults("occurred");
         panel.add_instrument(switch);
+        cockpit.add_panel(panel);
 
         let mut panel = Panel::with_name(OtherMetrics::CommitterGone, "committer_gone");
         let switch = StaircaseTimer::new_with_defaults("occurred");
         panel.add_instrument(switch);
-
         cockpit.add_panel(panel);
 
-        let (tx, rx) = TelemetryProcessor::new_pair("other");
+        let (tx, rx) = TelemetryProcessor::new_pair("bad_things");
 
         tx.add_cockpit(cockpit);
 
