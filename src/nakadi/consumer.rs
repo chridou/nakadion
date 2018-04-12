@@ -54,7 +54,7 @@ impl Consumer {
         HF: HandlerFactory + Send + Sync + 'static,
         M: MetricsCollector + Clone + Sync + Send + 'static,
     {
-        let lifecycle = CancellationTokenSource::default();
+        let lifecycle = CancellationTokenSource::new(metrics_collector.clone());
 
         let cancellation_token = lifecycle.auto_token();
 

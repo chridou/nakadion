@@ -41,7 +41,7 @@ impl Worker {
     {
         let (sender, receiver) = mpsc::channel();
 
-        let lifecycle = CancellationTokenSource::default();
+        let lifecycle = CancellationTokenSource::new(metrics_collector.clone());
 
         let cancellation_token = lifecycle.auto_token();
 

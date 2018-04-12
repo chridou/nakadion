@@ -54,7 +54,7 @@ impl Committer {
     {
         let (sender, receiver) = mpsc::channel();
 
-        let lifecycle = Arc::new(CancellationTokenSource::default());
+        let lifecycle = Arc::new(CancellationTokenSource::new(metrics_collector.clone()));
 
         start_commit_loop(
             receiver,
