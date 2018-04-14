@@ -163,6 +163,8 @@ fn handler_loop<H, M>(
             }
         };
 
+        metrics_collector.worker_batch_received(batch.received_at);
+
         let handler_result = {
             let event_type = match batch.batch_line.event_type_str() {
                 Ok(et) => EventType::new(et),

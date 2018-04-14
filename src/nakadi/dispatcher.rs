@@ -167,6 +167,8 @@ fn dispatcher_loop<HF, M>(
             }
         };
 
+        metrics_collector.dispatcher_batch_received(batch.received_at);
+
         if batch.batch_line.events().is_none() {
             error!(
                 "[Dispatcher, stream={}] Received a keep alive batch!. Stopping.",

@@ -238,9 +238,9 @@ fn run_commit_loop<C, M>(
             break;
         }
 
-        match receiver.recv_timeout(Duration::from_millis(100)) {
+        match receiver.recv_timeout(Duration::from_millis(50)) {
             Ok(CommitterMessage::Commit(next_batch, num_events_hint)) => {
-                metrics_collector.committer_cursor_received(next_batch.received_at);
+                metrics_collector.committer_batch_received(next_batch.received_at);
                 let mut key = (
                     next_batch.batch_line.partition().to_vec(),
                     next_batch.batch_line.event_type().to_vec(),

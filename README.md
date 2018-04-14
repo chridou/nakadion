@@ -174,6 +174,9 @@ on the complexity of your processing logic.
 
 ## Recent Changes
 
+* 0.8.11
+   * Renamed metrics
+   * Track internal batch age via metrics
 * 0.8.10
    * Metrics for panics and unavailable workers
 * 0.8.9

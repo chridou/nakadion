@@ -367,6 +367,7 @@ where
         metrics_collector.consumer_keep_alive_line_received(num_bytes);
         Ok(())
     } else {
+        metrics_collector.consumer_batch_received(raw_line.received_at);
         metrics_collector.consumer_batch_line_received(num_bytes);
         dispatcher
             .dispatch(Batch {

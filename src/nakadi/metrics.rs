@@ -48,7 +48,11 @@ pub trait MetricsCollector {
     fn consumer_keep_alive_line_received(&self, bytes: usize);
     /// A line of events with the given number of bytes was reveived.
     fn consumer_batch_line_received(&self, bytes: usize);
+    /// Time elapsed from receiving the batch from `Nakadi`.
+    fn consumer_batch_received(&self, batch_received_at_timestamp: Instant);
 
+    /// Time elapsed from receiving the batch from `Nakadi`.
+    fn dispatcher_batch_received(&self, batch_received_at_timestamp: Instant);
     /// The number of workers currently processing partitions.
     fn dispatcher_current_workers(&self, num_workers: usize);
 
@@ -56,6 +60,8 @@ pub trait MetricsCollector {
     fn worker_worker_started(&self);
     /// A worker was stopped
     fn worker_worker_stopped(&self);
+    /// Time elapsed from receiving the batch from `Nakadi`.
+    fn worker_batch_received(&self, batch_received_at_timestamp: Instant);
     /// Events with a comined legth of `bytes` bytes have been
     /// received.
     fn worker_batch_size_bytes(&self, bytes: usize);
@@ -64,10 +70,8 @@ pub trait MetricsCollector {
     /// The worker processed `n` events of the same batch.
     fn worker_events_in_same_batch_processed(&self, n: usize);
 
-    /// Time elapsed from receiving the cursor from `Nakadi` until
-    /// it was send for being committed. This is most probably right
-    /// after events have been processed?
-    fn committer_cursor_received(&self, cursor_received_at_timestamp: Instant);
+    /// Time elapsed from receiving the batch from `Nakadi`.
+    fn committer_batch_received(&self, batch_received_at_timestamp: Instant);
     /// A commit attempt has been made. It was started at `commit_attempt_started`.
     /// No difference is made between success and failure.
     fn committer_cursor_commit_attempt(&self, commit_attempt_started: Instant);
@@ -115,16 +119,19 @@ impl MetricsCollector for DevNullMetricsCollector {
     fn consumer_info_line_received(&self, _bytes: usize) {}
     fn consumer_keep_alive_line_received(&self, _bytes: usize) {}
     fn consumer_batch_line_received(&self, _bytes: usize) {}
+    fn consumer_batch_received(&self, _batch_received_at_timestamp: Instant) {}
 
+    fn dispatcher_batch_received(&self, _batch_received_at_timestamp: Instant) {}
     fn dispatcher_current_workers(&self, _num_workers: usize) {}
 
+    fn worker_batch_received(&self, _batch_received_at_timestamp: Instant) {}
     fn worker_worker_started(&self) {}
     fn worker_worker_stopped(&self) {}
     fn worker_batch_size_bytes(&self, _bytes: usize) {}
     fn worker_batch_processed(&self, _started: Instant) {}
     fn worker_events_in_same_batch_processed(&self, _n: usize) {}
 
-    fn committer_cursor_received(&self, _cursor_received_at_timestamp: Instant) {}
+    fn committer_batch_received(&self, _batch_received_at_timestamp: Instant) {}
     fn committer_cursor_committed(&self, _commit_attempt_started: Instant) {}
     fn committer_batches_committed(&self, _n: usize) {}
     fn committer_events_committed(&self, _n: usize) {}
@@ -175,10 +182,12 @@ mod metrix {
         KeepAliveLineReceived,
         InfoLineReceived,
         BatchLineReceived,
+        BatchReceived,
     }
 
     #[derive(Clone, PartialEq, Eq)]
     enum DispatcherMetrics {
+        BatchReceived,
         NumWorkers,
     }
 
@@ -186,14 +195,15 @@ mod metrix {
     enum WorkerMetrics {
         WorkerStarted,
         WorkerStopped,
+        BatchReceived,
         BatchSizeInBytes,
         BatchProcessed,
         EventsProcessed,
     }
 
     #[derive(Clone, PartialEq, Eq)]
-    enum CursorMetrics {
-        CursorReceived,
+    enum CommitterMetrics {
+        BatchReceived,
         CursorCommitted,
         BatchesCommitted,
         EventsCommitted,
@@ -213,7 +223,7 @@ mod metrix {
         consumer: TelemetryTransmitterSync<ConsumerMetrics>,
         dispatcher: TelemetryTransmitterSync<DispatcherMetrics>,
         worker: TelemetryTransmitterSync<WorkerMetrics>,
-        cursor: TelemetryTransmitterSync<CursorMetrics>,
+        committer: TelemetryTransmitterSync<CommitterMetrics>,
         other: TelemetryTransmitterSync<OtherMetrics>,
     }
 
@@ -228,14 +238,14 @@ mod metrix {
             let (consumer_tx, consumer_rx) = create_consumer_metrics();
             let (dispatcher_tx, dispatcher_rx) = create_dispatcher_metrics();
             let (worker_tx, worker_rx) = create_worker_metrics();
-            let (cursor_tx, cursor_rx) = create_cursor_metrics();
+            let (committer_tx, committer_rx) = create_committer_metrics();
             let (other_tx, other_rx) = create_other_metrics();
 
             add_metrics_to.add_processor(connector_rx);
             add_metrics_to.add_processor(consumer_rx);
             add_metrics_to.add_processor(dispatcher_rx);
             add_metrics_to.add_processor(worker_rx);
-            add_metrics_to.add_processor(cursor_rx);
+            add_metrics_to.add_processor(committer_rx);
             add_metrics_to.add_processor(other_rx);
 
             MetrixCollector {
@@ -243,7 +253,7 @@ mod metrix {
                 consumer: consumer_tx,
                 dispatcher: dispatcher_tx,
                 worker: worker_tx,
-                cursor: cursor_tx,
+                committer: committer_tx,
                 other: other_tx,
             }
         }
@@ -283,12 +293,26 @@ mod metrix {
             self.consumer
                 .observed_one_value_now(ConsumerMetrics::BatchLineReceived, bytes as u64);
         }
+        fn consumer_batch_received(&self, batch_received_at_timestamp: Instant) {
+            self.consumer
+                .measure_time(ConsumerMetrics::BatchReceived, batch_received_at_timestamp);
+        }
 
+        fn dispatcher_batch_received(&self, batch_received_at_timestamp: Instant) {
+            self.dispatcher.measure_time(
+                DispatcherMetrics::BatchReceived,
+                batch_received_at_timestamp,
+            );
+        }
         fn dispatcher_current_workers(&self, num_workers: usize) {
             self.dispatcher
                 .observed_one_value_now(DispatcherMetrics::NumWorkers, num_workers as u64);
         }
 
+        fn worker_batch_received(&self, batch_received_at_timestamp: Instant) {
+            self.worker
+                .measure_time(WorkerMetrics::BatchReceived, batch_received_at_timestamp);
+        }
         fn worker_worker_started(&self) {
             self.worker.observed_one_now(WorkerMetrics::WorkerStarted)
         }
@@ -308,51 +332,53 @@ mod metrix {
                 .observed_one_value_now(WorkerMetrics::EventsProcessed, n as u64);
         }
 
-        fn committer_cursor_received(&self, cursor_received_at_timestamp: Instant) {
-            self.cursor
-                .measure_time(CursorMetrics::CursorReceived, cursor_received_at_timestamp);
+        fn committer_batch_received(&self, batch_received_at_timestamp: Instant) {
+            self.committer
+                .measure_time(CommitterMetrics::BatchReceived, batch_received_at_timestamp);
         }
         fn committer_cursor_committed(&self, commit_attempt_started: Instant) {
-            self.cursor
-                .measure_time(CursorMetrics::CursorCommitted, commit_attempt_started);
+            self.committer
+                .measure_time(CommitterMetrics::CursorCommitted, commit_attempt_started);
         }
         fn committer_batches_committed(&self, n: usize) {
             if n > 0 {
-                self.cursor
-                    .observed_now(CursorMetrics::BatchesCommitted, n as u64);
+                self.committer
+                    .observed_now(CommitterMetrics::BatchesCommitted, n as u64);
             }
         }
         fn committer_events_committed(&self, n: usize) {
             if n > 0 {
-                self.cursor
-                    .observed_now(CursorMetrics::EventsCommitted, n as u64);
+                self.committer
+                    .observed_now(CommitterMetrics::EventsCommitted, n as u64);
             }
         }
         fn committer_cursor_commit_attempt(&self, commit_attempt_started: Instant) {
-            self.cursor
-                .measure_time(CursorMetrics::CursorCommitAttempt, commit_attempt_started);
+            self.committer.measure_time(
+                CommitterMetrics::CursorCommitAttempt,
+                commit_attempt_started,
+            );
         }
         fn committer_cursor_commit_failed(&self, commit_attempt_started: Instant) {
-            self.cursor.measure_time(
-                CursorMetrics::CursorCommitAttemptFailed,
+            self.committer.measure_time(
+                CommitterMetrics::CursorCommitAttemptFailed,
                 commit_attempt_started,
             );
         }
         fn committer_first_cursor_age_on_commit(&self, age: Duration) {
-            self.cursor
-                .observed_one_duration_now(CursorMetrics::FirstCursorAgeOnCommit, age);
+            self.committer
+                .observed_one_duration_now(CommitterMetrics::FirstCursorAgeOnCommit, age);
         }
         fn committer_last_cursor_age_on_commit(&self, age: Duration) {
-            self.cursor
-                .observed_one_duration_now(CursorMetrics::LastCursorAgeOnCommit, age);
+            self.committer
+                .observed_one_duration_now(CommitterMetrics::LastCursorAgeOnCommit, age);
         }
         fn committer_cursor_buffer_time(&self, time_buffered: Duration) {
-            self.cursor
-                .observed_one_duration_now(CursorMetrics::CursorBufferTime, time_buffered);
+            self.committer
+                .observed_one_duration_now(CommitterMetrics::CursorBufferTime, time_buffered);
         }
         fn committer_time_left_on_commit_until_invalid(&self, time_left: Duration) {
-            self.cursor
-                .observed_one_duration_now(CursorMetrics::TimeLeftUntilInvalid, time_left);
+            self.committer
+                .observed_one_duration_now(CommitterMetrics::TimeLeftUntilInvalid, time_left);
         }
 
         fn other_panicked(&self) {
@@ -455,6 +481,14 @@ mod metrix {
         batch_line_received_panel.add_instrument(last_batch_line_received_tracker);
         add_line_instruments_to_cockpit(batch_line_received_panel, &mut cockpit);
 
+        let mut batches_received_panel =
+            Panel::with_name(ConsumerMetrics::BatchReceived, "batches_received");
+        batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        batches_received_panel.set_counter(Counter::new_with_defaults("count"));
+        batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
+        batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+        cockpit.add_panel(batches_received_panel);
+
         let mut alerts_panel = Panel::with_name(ConsumerMetrics::BatchLineReceived, "alerts");
         let mut no_batches_for_one_minute_alert =
             NonOccurrenceIndicator::new_with_defaults("no_batches_for_one_minute");
@@ -497,6 +531,14 @@ mod metrix {
     ) {
         let mut cockpit: Cockpit<DispatcherMetrics> = Cockpit::without_name(None);
 
+        let mut batches_received_panel =
+            Panel::with_name(DispatcherMetrics::BatchReceived, "batches_received");
+        batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        batches_received_panel.set_counter(Counter::new_with_defaults("count"));
+        batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
+        batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+        cockpit.add_panel(batches_received_panel);
+
         let mut num_workers_panel = Panel::new(DispatcherMetrics::NumWorkers);
         num_workers_panel.set_gauge(Gauge::new_with_defaults("num_workers"));
         cockpit.add_panel(num_workers_panel);
@@ -513,6 +555,14 @@ mod metrix {
         TelemetryProcessor<WorkerMetrics>,
     ) {
         let mut cockpit: Cockpit<WorkerMetrics> = Cockpit::without_name(None);
+
+        let mut batches_received_panel =
+            Panel::with_name(WorkerMetrics::BatchReceived, "batches_received");
+        batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        batches_received_panel.set_counter(Counter::new_with_defaults("count"));
+        batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
+        batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+        cockpit.add_panel(batches_received_panel);
 
         let mut event_bytes_panel =
             Panel::with_name(WorkerMetrics::BatchSizeInBytes, "incoming_batches");
@@ -555,44 +605,44 @@ mod metrix {
         (tx.synced(), rx)
     }
 
-    fn create_cursor_metrics() -> (
-        TelemetryTransmitterSync<CursorMetrics>,
-        TelemetryProcessor<CursorMetrics>,
+    fn create_committer_metrics() -> (
+        TelemetryTransmitterSync<CommitterMetrics>,
+        TelemetryProcessor<CommitterMetrics>,
     ) {
-        let mut cockpit: Cockpit<CursorMetrics> = Cockpit::without_name(None);
+        let mut cockpit: Cockpit<CommitterMetrics> = Cockpit::without_name(None);
 
-        let mut cursors_received_panel =
-            Panel::with_name(CursorMetrics::CursorReceived, "cursors_received");
-        cursors_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
-        cursors_received_panel.set_counter(Counter::new_with_defaults("count"));
-        cursors_received_panel.set_meter(Meter::new_with_defaults("per_second"));
-        cursors_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
-        cockpit.add_panel(cursors_received_panel);
+        let mut batches_received_panel =
+            Panel::with_name(CommitterMetrics::BatchReceived, "batches_received");
+        batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        batches_received_panel.set_counter(Counter::new_with_defaults("count"));
+        batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
+        batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+        cockpit.add_panel(batches_received_panel);
 
         let cursors_committed_panel =
-            Panel::with_name(CursorMetrics::CursorCommitted, "cursors_committed");
+            Panel::with_name(CommitterMetrics::CursorCommitted, "cursors_committed");
         add_counting_and_time_us_instruments_to_cockpit(cursors_committed_panel, &mut cockpit);
 
         let batches_committed_panel =
-            Panel::with_name(CursorMetrics::BatchesCommitted, "batches_committed");
-        add_counting_instruments_to_cockpit(batches_committed_panel, &mut cockpit);
+            Panel::with_name(CommitterMetrics::BatchesCommitted, "batches_committed");
+        add_counting_and_distribution_instruments_to_cockpit(batches_committed_panel, &mut cockpit);
 
         let events_committed_panel =
-            Panel::with_name(CursorMetrics::EventsCommitted, "events_committed");
-        add_counting_instruments_to_cockpit(events_committed_panel, &mut cockpit);
+            Panel::with_name(CommitterMetrics::EventsCommitted, "events_committed");
+        add_counting_and_distribution_instruments_to_cockpit(events_committed_panel, &mut cockpit);
 
         let commit_attempts_panel =
-            Panel::with_name(CursorMetrics::CursorCommitAttempt, "commit_attempts");
+            Panel::with_name(CommitterMetrics::CursorCommitAttempt, "commit_attempts");
         add_counting_instruments_to_cockpit(commit_attempts_panel, &mut cockpit);
 
         let commit_attempts_failed_panel = Panel::with_name(
-            CursorMetrics::CursorCommitAttemptFailed,
+            CommitterMetrics::CursorCommitAttemptFailed,
             "commit_attempts_failed",
         );
         add_counting_instruments_to_cockpit(commit_attempts_failed_panel, &mut cockpit);
 
         let mut first_cursor_age_on_commit_panel = Panel::with_name(
-            CursorMetrics::FirstCursorAgeOnCommit,
+            CommitterMetrics::FirstCursorAgeOnCommit,
             "first_cursor_age_on_commit",
         );
         first_cursor_age_on_commit_panel.set_description(
@@ -603,7 +653,7 @@ mod metrix {
         add_us_histogram_instruments_to_cockpit(first_cursor_age_on_commit_panel, &mut cockpit);
 
         let mut last_cursor_age_on_commit_panel = Panel::with_name(
-            CursorMetrics::LastCursorAgeOnCommit,
+            CommitterMetrics::LastCursorAgeOnCommit,
             "last_cursor_age_on_commit",
         );
         last_cursor_age_on_commit_panel.set_description(
@@ -614,13 +664,13 @@ mod metrix {
         add_us_histogram_instruments_to_cockpit(last_cursor_age_on_commit_panel, &mut cockpit);
 
         let mut cursor_buffer_time_panel =
-            Panel::with_name(CursorMetrics::CursorBufferTime, "cursor_buffer_time");
+            Panel::with_name(CommitterMetrics::CursorBufferTime, "cursor_buffer_time");
         cursor_buffer_time_panel
             .set_description("The time a cursor has been buffered until it was finally committed.");
         add_us_histogram_instruments_to_cockpit(cursor_buffer_time_panel, &mut cockpit);
 
         let mut time_left_panel = Panel::with_name(
-            CursorMetrics::TimeLeftUntilInvalid,
+            CommitterMetrics::TimeLeftUntilInvalid,
             "cursor_time_left_until_invalid",
         );
         time_left_panel.set_description(
@@ -629,7 +679,7 @@ mod metrix {
         );
         add_us_histogram_instruments_to_cockpit(time_left_panel, &mut cockpit);
 
-        let (tx, rx) = TelemetryProcessor::new_pair("cursors");
+        let (tx, rx) = TelemetryProcessor::new_pair("committer");
 
         tx.add_cockpit(cockpit);
 
@@ -653,6 +703,18 @@ mod metrix {
     {
         panel.set_counter(Counter::new_with_defaults("count"));
         panel.set_meter(Meter::new_with_defaults("per_second"));
+        cockpit.add_panel(panel);
+    }
+
+    fn add_counting_and_distribution_instruments_to_cockpit<L>(
+        mut panel: Panel<L>,
+        cockpit: &mut Cockpit<L>,
+    ) where
+        L: Clone + Eq + Send + 'static,
+    {
+        panel.set_counter(Counter::new_with_defaults("count"));
+        panel.set_meter(Meter::new_with_defaults("per_second"));
+        panel.set_histogram(Histogram::new_with_defaults("distribution"));
         cockpit.add_panel(panel);
     }
 

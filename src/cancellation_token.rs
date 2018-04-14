@@ -49,13 +49,6 @@ impl CancellationTokenSource {
             metrics_collector: self.metrics_collector.clone(),
         }
     }
-
-    pub fn manual_token(&self) -> ManualCancellationToken {
-        ManualCancellationToken {
-            cancellation_requested: self.cancellation_requested.clone(),
-            cancelled: self.cancelled.clone(),
-        }
-    }
 }
 
 impl Default for CancellationTokenSource {
@@ -71,21 +64,6 @@ impl Default for CancellationTokenSource {
 pub trait CancellationToken {
     fn cancellation_requested(&self) -> bool;
     fn cancelled(&self);
-}
-
-pub struct ManualCancellationToken {
-    cancellation_requested: Arc<AtomicBool>,
-    cancelled: Arc<AtomicBool>,
-}
-
-impl CancellationToken for ManualCancellationToken {
-    fn cancellation_requested(&self) -> bool {
-        self.cancellation_requested.load(Ordering::Relaxed)
-    }
-
-    fn cancelled(&self) {
-        self.cancelled.store(true, Ordering::Relaxed)
-    }
 }
 
 #[derive(Clone)]
