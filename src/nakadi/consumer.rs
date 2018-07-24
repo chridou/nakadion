@@ -7,7 +7,6 @@ use failure::*;
 
 use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
 
-use nakadi::CommitStrategy;
 use nakadi::api::ApiClient;
 use nakadi::batch::{Batch, BatchLine};
 use nakadi::committer::Committer;
@@ -16,6 +15,7 @@ use nakadi::handler::HandlerFactory;
 use nakadi::metrics::MetricsCollector;
 use nakadi::model::*;
 use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
+use nakadi::CommitStrategy;
 
 /// Sequence of backoffs after failed commit attempts
 const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
@@ -34,7 +34,7 @@ const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
 /// The consumer creates a background thread.
 pub struct Consumer {
     lifecycle: CancellationTokenSource,
-    subscription_id: SubscriptionId,
+    _subscription_id: SubscriptionId,
 }
 
 impl Consumer {
@@ -60,7 +60,7 @@ impl Consumer {
 
         let consumer = Consumer {
             lifecycle: lifecycle,
-            subscription_id: subscription_id.clone(),
+            _subscription_id: subscription_id.clone(),
         };
 
         start_consumer_loop(
