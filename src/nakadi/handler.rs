@@ -238,10 +238,15 @@ pub trait TypedBatchHandler {
     // whole events batch at once failed.
     fn handle_deserialization_errors(
         &mut self,
-        _results: Vec<EventDeserializationResult<Self::Event>>,
+        results: Vec<EventDeserializationResult<Self::Event>>,
     ) -> TypedProcessingStatus {
+        let num_events = results.len();
+        let num_failed = results.iter().filter(|r| r.is_err()).count();
         TypedProcessingStatus::Failed {
-            reason: "Failed to deserialize all or individual events".into(),
+            reason: format!(
+                "Failed to deserialize {} out of {} events",
+                num_failed, num_events
+            ),
         }
     }
 }

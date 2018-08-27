@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
-use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer};
+use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, Response};
 use serde::Serialize;
 use serde_json;
