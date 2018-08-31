@@ -11,9 +11,8 @@ use serde::Serialize;
 use serde_json;
 
 use auth::{AccessToken, ProvidesAccessToken};
+use custom_headers::XFlowId;
 use nakadi::model::FlowId;
-
-header! { (XFlowId, "X-Flow-Id") => [String] }
 
 /// Publishes events to `Nakadi`
 ///
@@ -142,7 +141,7 @@ fn publish_events(
         Err(err) => return Err(PublishError::Token(err.to_string())),
     };
 
-    request_builder.header(XFlowId(flow_id.0.clone()));
+    request_builder.header(XFlowId(flow_id.clone()));
 
     match request_builder.body(bytes).send() {
         Ok(ref mut response) => match response.status() {

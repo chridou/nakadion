@@ -12,9 +12,6 @@ use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
-use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
-
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 
@@ -23,6 +20,10 @@ use failure::*;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
 use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
+
+use auth::{AccessToken, ProvidesAccessToken, TokenError};
+use custom_headers::*;
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 /// A REST client for the Nakadi API.
 ///
@@ -310,8 +311,8 @@ impl NakadiApiClient {
             headers.set(Authorization(Bearer { token }));
         }
 
-        headers.set(XFlowId(flow_id.0.clone()));
-        headers.set(XNakadiStreamId(stream_id.0));
+        headers.set(XFlowId(flow_id.clone()));
+        headers.set(XNakadiStreamId(stream_id));
         headers.set(ContentType::json());
 
         let body = make_cursors_body(cursors);

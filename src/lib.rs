@@ -252,17 +252,13 @@ extern crate failure;
 extern crate log;
 #[macro_use]
 extern crate serde;
-extern crate serde_json;
-
-#[macro_use]
-extern crate reqwest;
-extern crate uuid;
-
-extern crate chrono;
-
 extern crate backoff;
-
+extern crate chrono;
+extern crate hyper;
+extern crate reqwest;
+extern crate serde_json;
 extern crate url;
+extern crate uuid;
 
 #[cfg(feature = "metrix")]
 extern crate metrix;
@@ -286,5 +282,4 @@ pub use nakadi::publisher;
 pub use nakadi::events;
 
 pub(crate) mod cancellation_token;
-
 pub(crate) mod custom_headers;
