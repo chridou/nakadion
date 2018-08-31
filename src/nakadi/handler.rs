@@ -14,7 +14,8 @@ pub enum ProcessingStatus {
     /// Optionally the number of processed events can be provided
     /// to help with deciding on when to commit the cursor.
     ///
-    /// The number of events should be the number of events that were in the batch.
+    /// The number of events should be the number of events that were in the
+    /// batch.
     Processed(Option<usize>),
     /// Processing failed. Do not commit the cursor. This
     /// always ends in the streaming being aborted for the current
@@ -106,18 +107,19 @@ pub struct CreateHandlerError {
 /// A `HandlerFactory` can be used in two ways:
 ///
 /// * It does not contain any state it shares with the created `BatchHandler`s.
-/// This is useful when incoming data is partitioned in a way that all `BatchHandler`s
-/// act only on data that never appears on another partition.
+/// This is useful when incoming data is partitioned in a way that all
+/// `BatchHandler`s act only on data that never appears on another partition.
 ///
-/// * It contains state that is shared with the `BatchHandler`s. E.g. a cache that
-/// conatins data that can appear on other partitions.
+/// * It contains state that is shared with the `BatchHandler`s. E.g. a cache
+/// that conatins data that can appear on other partitions.
 /// # Example
 ///
 /// ```rust
 /// use std::sync::{Arc, Mutex};
 ///
-/// use nakadion::{BatchHandler, CreateHandlerError, EventType, HandlerFactory, PartitionId,
-///                ProcessingStatus};
+/// use nakadion::{
+///     BatchHandler, CreateHandlerError, EventType, HandlerFactory, PartitionId, ProcessingStatus,
+/// };
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler(Arc<Mutex<i32>>);
@@ -231,31 +233,75 @@ pub trait TypedBatchHandler {
     type Event: DeserializeOwned;
     /// Execute the processing logic with a deserialized batch of events.
     fn handle(&mut self, events: Vec<Self::Event>) -> TypedProcessingStatus;
+
+    // A handler which is invoked if deserialization of the
+    // whole events batch at once failed.
+    fn handle_deserialization_errors(
+        &mut self,
+        results: Vec<EventDeserializationResult<Self::Event>>,
+    ) -> TypedProcessingStatus {
+        let num_events = results.len();
+        let num_failed = results.iter().filter(|r| r.is_err()).count();
+        TypedProcessingStatus::Failed {
+            reason: format!(
+                "Failed to deserialize {} out of {} events",
+                num_failed, num_events
+            ),
+        }
+    }
 }
+
+pub type EventDeserializationResult<T> = Result<T, (serde_json::Value, serde_json::Error)>;
 
 impl<T, E> BatchHandler for T
 where
     T: TypedBatchHandler<Event = E>,
     E: DeserializeOwned,
 {
-    fn handle(&mut self, event_type: EventType, events: &[u8]) -> ProcessingStatus {
-        let events: Vec<E> = match serde_json::from_slice(events) {
-            Ok(events) => events,
-            Err(err) => {
-                return ProcessingStatus::Failed {
-                    reason: format!(
-                        "Could not deserialize events(event type: {}): {}",
-                        event_type.0, err
-                    ),
+    fn handle(&mut self, _event_type: EventType, events: &[u8]) -> ProcessingStatus {
+        match serde_json::from_slice::<Vec<E>>(events) {
+            Ok(events) => {
+                let n = events.len();
+
+                match TypedBatchHandler::handle(self, events) {
+                    TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
+                    TypedProcessingStatus::Failed { reason } => ProcessingStatus::Failed { reason },
                 }
             }
-        };
-
-        let n = events.len();
-
-        match TypedBatchHandler::handle(self, events) {
-            TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
-            TypedProcessingStatus::Failed { reason } => ProcessingStatus::Failed { reason },
+            Err(_) => match try_deserialize_individually::<E>(events) {
+                Ok(results) => {
+                    let n = results.len();
+                    match self.handle_deserialization_errors(results) {
+                        TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
+                        TypedProcessingStatus::Failed { reason } => {
+                            ProcessingStatus::Failed { reason }
+                        }
+                    }
+                }
+                Err(err) => ProcessingStatus::Failed {
+                    reason: err.to_string(),
+                },
+            },
         }
     }
+}
+
+// This function clones the ast before deserializing... but we are in an
+// exceptional case anyways...
+fn try_deserialize_individually<T: DeserializeOwned>(
+    events: &[u8],
+) -> Result<Vec<EventDeserializationResult<T>>, serde_json::Error> {
+    let deserialized_json_asts: Vec<serde_json::Value> = serde_json::from_slice(events)?;
+
+    let mut results = Vec::with_capacity(deserialized_json_asts.len());
+
+    for ast in deserialized_json_asts {
+        let ast2 = ast.clone();
+        match serde_json::from_value(ast) {
+            Ok(event) => results.push(Ok(event)),
+            Err(err) => results.push(Err((ast2, err))),
+        }
+    }
+
+    Ok(results)
 }

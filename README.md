@@ -174,33 +174,11 @@ on the complexity of your processing logic.
 
 ## Recent Changes
 
+* 0.10.0
+   * Improved typed `TypedHandler` to handle deserialization failures on individual events
+   * Updated metrix to 0.8
 * 0.9.0
    * Updated metrix to 0.7
-* 0.8.11
-   * Renamed metrics
-   * Track internal batch age via metrics
-* 0.8.10
-   * Metrics for panics and unavailable workers
-* 0.8.9
-   * Check whether worker threads are still running to prevent live locks
-   * Do not retry on "unprocessable entity" when committing.
-    * Always commit all cursors
-* 0.8.8
-   * Relevant cursor age in commit strategy is the batch age
-   * improved internal error handling
-* 0.8.7
-   * use named threads
-   * improved logging(especially on closed channels)
-   * renamed some internal methods
-* 0.8.6
-   * fixed metrics label for 'cursor_time_left_until_invalid'
-* 0.8.5
-    * Updated README.md
-* 0.8.4
-    * Fixed and renamed metrics for cursor ages
-* 0.8.3
-    * Added code examples to the documentation
-    * Added JSON serialization examples
 
 ## License
 

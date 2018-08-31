@@ -7,13 +7,14 @@
 //! `Nakadion` is client that connects to the Nakadi Subscription API. It
 //! does all the cursor management so that users can concentrate on
 //! implementing their logic for processing events. The code implemented
-//! to process events by a user does not get in touch with the internals of Nakadi.
+//! to process events by a user does not get in touch with the internals of
+//! Nakadi.
 //!
-//! `Nakadion` processes batches of events from Nakadi on a worker per partition basis.
-//! A worker new is spawned for each new partion discovered. These workers are guaranteed
-//! to be run ona single thread at a time. To process batches of events a
-//! handler factory has to be implemented which is creates handlers that are executed by the
-//! workers.
+//! `Nakadion` processes batches of events from Nakadi on a worker per
+//! partition basis. A worker new is spawned for each new partion discovered.
+//! These workers are guaranteed to be run ona single thread at a time. To
+//! process batches of events a handler factory has to be implemented which is
+//! creates handlers that are executed by the workers.
 //!
 //! `Nakadion` is almost completely configurable with environment variables.
 //!
@@ -43,9 +44,10 @@
 //! // Keep in mind that there is also `TypedBatchHandler` which can
 //! // deserialize the events.
 //! impl BatchHandler for MyHandler {
-//!     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
-//!         self.count += 1;
-//!         ProcessingStatus::processed_no_hint()
+//!     fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//!         ProcessingStatus {
+//!             self.count += 1;
+//!            ProcessingStatus::processed_no_hint()
 //!     }
 //! }
 //! ```
@@ -58,7 +60,8 @@
 //! #    pub count: i32,
 //! # }
 //! # impl BatchHandler for MyHandler {
-//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//! # ProcessingStatus {
 //! #        self.count += 1;
 //! #        ProcessingStatus::processed_no_hint()
 //! #    }
@@ -117,7 +120,8 @@
 //! #    pub count: i32,
 //! # }
 //! # impl BatchHandler for MyHandler {
-//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//! # ProcessingStatus {
 //! #        self.count += 1;
 //! #        ProcessingStatus::processed_no_hint()
 //! #    }
@@ -146,133 +150,115 @@
 //! # let handler_factory = MyHandlerFactory;
 //!
 //! // Start Nakadion
-//! let nakadion = builder.build_and_start(handler_factory, token_provider).unwrap();
+//! let nakadion = builder.build_and_start(handler_factory,
+//! token_provider).unwrap();
 //!
 //! // Nakadion will stop once the binding `nakadion` runs out of scope.
 //! // Nakadion can be cloned and also be stopped it manually
 //! // You can also let Nakadion block the current thread until it stops.
-//! nakadion.block_until_stopped();
+//! // nakadion.block_until_stopped();
 //! ```
 //!
 //! ## How Nakadion works
 //!
 //! ### Load balancing
 //!
-//! A started instance connects to the Nakadi Event Broker with one active connection. Due to
-//! Nakadi`s capability of automatically distributing partitions among clients Nakadion does
-//! not need to track concurrently consuming clients. In most use cases it does not make
-//! any sense to have more clients running than the number partitions assigned
-//! to an event type.
+//! A started instance connects to the Nakadi Event Broker with one active
+//! connection. Due to Nakadi`s capability of automatically distributing
+//! partitions among clients Nakadion does not need to track concurrently
+//! consuming clients. In most use cases it does not make any sense to have
+//! more clients running than the number partitions assigned to an event type.
 //!
 //! ### Consuming events
 //!
-//! Nakadi delivers events in batches. Each batch contains the events of a single partition
-//! along with a cursor that is used for reporting progress to Nakadi.
+//! Nakadi delivers events in batches. Each batch contains the events of a
+//! single partition along with a cursor that is used for reporting progress to
+//! Nakadi.
 //!
-//! To consume events with `Nakadion` one has to implement a `BatchHandler`. This `BatchHandler`
-//! provides the processing logic and is passed the bytes containing the events of a batch.
+//! To consume events with `Nakadion` one has to implement a `BatchHandler`.
+//! This `BatchHandler` provides the processing logic and is passed the bytes
+//! containing the events of a batch.
 //!
-//! `Nakadion` itself does not do any deserialization of events. The `BatchHandler` is responsible
-//! for deserializing events. Nevertheless there is a `TypedBatchHandler` for convinience
-//! that does the deserialization of events using `serde`.
+//! `Nakadion` itself does not do any deserialization of events. The
+//! `BatchHandler` is responsible for deserializing events. Nevertheless there
+//! is a `TypedBatchHandler` for convinience that does the deserialization of
+//! events using `serde`.
 //!
 //! When `Nakadion` receives a batch it just extract the necessary data from
 //! the bytes received over the network and then delagates the batch
 //! to a dispatcher which spawns workers that are then passed the batch.
 //!
-//! This means `Nakadion` itself does not have any knowledge of the events contained in a batch.
+//! This means `Nakadion` itself does not have any knowledge of the events
+//! contained in a batch.
 //!
 //! ### Buffering batches and maximizing throughput
 //!
-//! `Nakadion` has an unbounded buffer for events. When looking at how Nakadi works it turns
-//! out that a bounded buffer is not necessary.
+//! `Nakadion` has an unbounded buffer for events. When looking at how Nakadi
+//! works it turns out that a bounded buffer is not necessary.
 //!
-//! Nakadi has a timeout for committing the cursors of batches. This tiemout is 60 seconds.
-//! Furthermore Nakadi has a configuration parameter called `max_uncommitted_events`.
-//! With this paramteter which can be configured for `Nakadion` one can steer how many
-//! events can be at most in `Nakadion`s buffers. In conjunction with a
-//! `CommitStrategy` one can optimize for maximum throughput and keep the amount
-//! of buffered events under control.
+//! Nakadi has a timeout for committing the cursors of batches. This tiemout is
+//! 60 seconds. Furthermore Nakadi has a configuration parameter called
+//! `max_uncommitted_events`. With this paramteter which can be configured for
+//! `Nakadion` one can steer how many events can be at most in `Nakadion`s
+//! buffers. In conjunction with a `CommitStrategy` one can optimize for
+//! maximum throughput and keep the amount of buffered events under control.
 //!
 //! ### Logging
 //!
-//! `Nakadion` does verbose logging when connecting to a stream and when a stream is closed. The
-//! reason is that this information can be quite important when probles arise. A reconnect
-//! happens roughly every full hour unless configured otherwise on Nakadi's side.
+//! `Nakadion` does verbose logging when connecting to a stream and when a
+//! stream is closed. The reason is that this information can be quite
+//! important when probles arise. A reconnect happens roughly every full hour
+//! unless configured otherwise on Nakadi's side.
 //!
-//! `Nakadion` also logs a message each time a new worker is created and each time a worker is
-//! shut down.
+//! `Nakadion` also logs a message each time a new worker is created and each
+//! time a worker is shut down.
 //!
 //! Otherwise `Nakadion` only logs problems and errors.
 //!
-//! So in the end your log files will not be flodded with messages from `Nakadion`.
+//! So in the end your log files will not be flodded with messages from
+//! `Nakadion`.
 //!
 //! ### Metrics
 //!
-//! `Nakadion` provides an interface for attaching metrics libraries. Metrics are especially
-//! useful when optimizing for maximum throughput since one can see what
-//! effect (especially on cursors) the different possible settings have.
+//! `Nakadion` provides an interface for attaching metrics libraries. Metrics
+//! are especially useful when optimizing for maximum throughput since one can
+//! see what effect (especially on cursors) the different possible settings
+//! have.
 //!
 //! ### Performance
 //!
-//! Nakadion is not meant to be used in a high performance scenario. It uses synchronous IO.
-//! Nevertheless it is easily possible to consume tens of thousands events per second depending
-//! on the complexity of your processing logic.
+//! Nakadion is not meant to be used in a high performance scenario. It uses
+//! synchronous IO. Nevertheless it is easily possible to consume tens of
+//! thousands events per second depending on the complexity of your processing
+//! logic.
 //!
 //! ## Recent Changes
 //!
+//! * 0.10.0
+//! * Improved typed `TypedHandler` to handle deserialization failures on
+//! individual events   * Updated metrix to 0.8
 //! * 0.9.0
 //!    * Updated metrix to 0.7
-//! * 0.8.11
-//!    * Renamed metrics
-//!    * Track internal batch age via metrics
-//! * 0.8.10
-//!    * Metrics for panics and unavailable workers
-//! * 0.8.9
-//!    * Check whether worker threads are still running to prevent live locks
-//!    * Do not retry on "unprocessable entity" when committing.
-//!     * Always commit all cursors
-//! * 0.8.8
-//!    * Relevant cursor age in commit strategy is the batch age
-//!    * improved internal error handling
-//! * 0.8.7
-//!    * use named threads
-//!    * improved logging(especially on closed channels)
-//!    * renamed some internal methods
-//! * 0.8.6
-//!    * fixed metrics label for 'cursor_time_left_until_invalid'
-//! * 0.8.5
-//!     * Updated README.md
-//! * 0.8.4
-//!     * Fixed and renamed metrics for cursor ages
-//! * 0.8.3
-//!     * Added code examples to the documentation
-//!     * Added JSON serialization examples
 //!
 //! ## License
 //!
-//! Nakadion is distributed under the terms of both the MIT license and the Apache License (Version
-//! 2.0).
+//! Nakadion is distributed under the terms of both the MIT license and the
+//! Apache License (Version 2.0).
 //!
 //! See LICENSE-APACHE and LICENSE-MIT for details.
 #[macro_use]
 extern crate failure;
 #[macro_use]
-extern crate hyper;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate serde;
-extern crate serde_json;
-
-extern crate reqwest;
-extern crate uuid;
-
-extern crate chrono;
-
 extern crate backoff;
-
+extern crate chrono;
+extern crate hyper;
+extern crate reqwest;
+extern crate serde_json;
 extern crate url;
+extern crate uuid;
 
 #[cfg(feature = "metrix")]
 extern crate metrix;
@@ -287,10 +273,13 @@ pub use nakadi::handler::*;
 pub use nakadi::metrics;
 pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
 pub use nakadi::streaming_client;
-pub use nakadi::{CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery};
+pub use nakadi::{
+    CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery,
+};
 
 pub use nakadi::publisher;
 
 pub use nakadi::events;
 
 pub(crate) mod cancellation_token;
+pub(crate) mod custom_headers;

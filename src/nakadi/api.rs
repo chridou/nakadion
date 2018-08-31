@@ -12,20 +12,18 @@ use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
-use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
-
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
 
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::*;
-use reqwest::StatusCode;
 use reqwest::header::{Authorization, Bearer, ContentType, Headers};
+use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
-header! { (XNakadiStreamId, "X-Nakadi-StreamId") => [String] }
-header! { (XFlowId, "X-Flow-Id") => [String] }
+use auth::{AccessToken, ProvidesAccessToken, TokenError};
+use custom_headers::*;
+use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 /// A REST client for the Nakadi API.
 ///
@@ -188,9 +186,11 @@ impl ConfigBuilder {
             builder
         };
         let builder = if let Some(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS").ok() {
-            builder.request_timeout(Duration::from_millis(env_val
-                .parse::<u64>()
-                .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?))
+            builder.request_timeout(Duration::from_millis(
+                env_val
+                    .parse::<u64>()
+                    .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?,
+            ))
         } else {
             warn!(
                 "Environment variable 'NAKADION_REQUEST_TIMEOUT_MS' not found. It will have be set \
@@ -311,13 +311,14 @@ impl NakadiApiClient {
             headers.set(Authorization(Bearer { token }));
         }
 
-        headers.set(XFlowId(flow_id.0.clone()));
-        headers.set(XNakadiStreamId(stream_id.0));
+        headers.set(XFlowId(flow_id.clone()));
+        headers.set(XNakadiStreamId(stream_id));
         headers.set(ContentType::json());
 
         let body = make_cursors_body(cursors);
 
-        let mut response = self.http_client
+        let mut response = self
+            .http_client
             .post(url)
             .headers(headers)
             .body(body)
