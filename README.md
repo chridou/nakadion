@@ -174,6 +174,8 @@ on the complexity of your processing logic.
 
 ## Recent Changes
 
+* 0.10.1
+   * Event types must be an optional vec in the incoming metadata
 * 0.10.0
    * Improved typed `TypedHandler` to handle deserialization failures on individual events
    * Updated metrix to 0.8

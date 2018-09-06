@@ -1,6 +1,6 @@
 //! Helpers for defining events
-use chrono::DateTime;
 use chrono::offset::Utc;
+use chrono::DateTime;
 use uuid::Uuid;
 
 use nakadi::model::{FlowId, PartitionId};
@@ -29,6 +29,7 @@ pub struct IncomingMetadata {
     pub occurred_at: DateTime<Utc>,
     pub received_at: DateTime<Utc>,
     pub version: String,
+    #[serde(default)]
     pub parent_eids: Vec<Uuid>,
     pub partition: PartitionId,
     pub flow_id: FlowId,
