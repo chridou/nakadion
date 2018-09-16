@@ -234,6 +234,8 @@
 //!
 //! ## Recent Changes
 //!
+//! * 0.10.2
+//!     * update crate uuid to 0.7
 //! * 0.10.1
 //!     * Event types must be an optional vec in the incoming metadata
 //! * 0.10.0
