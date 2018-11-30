@@ -6,12 +6,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use failure::*;
-use reqwest::header::{Authorization, Bearer, Headers};
+use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use custom_headers::{XFlowId, XNakadiStreamId};
 use nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
@@ -523,23 +522,28 @@ where
     ) -> ::std::result::Result<(StreamId, NakadiLineIterator), ConnectError> {
         let connect_url = create_connect_url(&self.config, &subscription_id);
 
-        let mut headers = Headers::new();
-        if let Some(AccessToken(token)) = self.token_provider.get_token()? {
-            headers.set(Authorization(Bearer { token }));
-        }
+        let mut headers = HeaderMap::new();
 
-        headers.set(XFlowId(flow_id.clone()));
+        headers.insert("X-Flow-Id", flow_id.0.parse().unwrap());
+
+        let request_builder = self.http_client.get(&connect_url).headers(headers);
+
+        let request_builder = if let Some(AccessToken(token)) = self.token_provider.get_token()? {
+            request_builder.bearer_auth(token)
+        } else {
+            request_builder
+        };
 
         self.metrics_collector.streaming_connect_attempt();
 
-        let mut response = self.http_client.get(&connect_url).headers(headers).send()?;
+        let mut response = request_builder.send()?;
 
         match response.status() {
-            StatusCode::Ok => {
+            StatusCode::OK => {
                 let stream_id = if let Some(stream_id) = response
                     .headers()
-                    .get::<XNakadiStreamId>()
-                    .map(|XNakadiStreamId(stream_id)| stream_id)
+                    .get("X-Nakadi-StreamId")
+                    .map(|stream_id| StreamId(stream_id.to_str().unwrap().into()))
                 {
                     stream_id.clone()
                 } else {
@@ -552,56 +556,56 @@ where
                 };
                 Ok((stream_id, NakadiLineIterator::new(response)))
             }
-            StatusCode::Forbidden => {
+            StatusCode::FORBIDDEN => {
                 self.metrics_collector.streaming_connect_attempt_failed();
                 Err(ConnectError::Forbidden(
                     format!(
                         "{}: {}",
-                        StatusCode::Forbidden,
+                        StatusCode::FORBIDDEN,
                         "Nakadion: Nakadi said forbidden."
                     ),
                     flow_id,
                 ))
             }
-            StatusCode::Unauthorized => {
+            StatusCode::UNAUTHORIZED => {
                 self.metrics_collector.streaming_connect_attempt_failed();
                 Err(ConnectError::Unauthorized(
                     format!(
                         "{}: {}",
-                        StatusCode::Unauthorized,
+                        StatusCode::UNAUTHORIZED,
                         read_response_body(&mut response)
                     ),
                     flow_id,
                 ))
             }
-            StatusCode::NotFound => {
+            StatusCode::NOT_FOUND => {
                 self.metrics_collector.streaming_connect_attempt_failed();
                 Err(ConnectError::SubscriptionNotFound(
                     format!(
                         "{}: {}",
-                        StatusCode::NotFound,
+                        StatusCode::NOT_FOUND,
                         read_response_body(&mut response)
                     ),
                     flow_id,
                 ))
             }
-            StatusCode::BadRequest => {
+            StatusCode::BAD_REQUEST => {
                 self.metrics_collector.streaming_connect_attempt_failed();
                 Err(ConnectError::BadRequest(
                     format!(
                         "{}: {}",
-                        StatusCode::BadRequest,
+                        StatusCode::BAD_REQUEST,
                         read_response_body(&mut response)
                     ),
                     flow_id,
                 ))
             }
-            StatusCode::Conflict => {
+            StatusCode::CONFLICT => {
                 self.metrics_collector.streaming_connect_attempt_failed();
                 Err(ConnectError::Conflict(
                     format!(
                         "{}: {}",
-                        StatusCode::Conflict,
+                        StatusCode::CONFLICT,
                         read_response_body(&mut response)
                     ),
                     flow_id,

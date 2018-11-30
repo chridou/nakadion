@@ -17,12 +17,11 @@ use serde_json;
 
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use failure::*;
-use reqwest::header::{Authorization, Bearer, ContentType, Headers};
+use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use custom_headers::*;
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 /// A REST client for the Nakadi API.
@@ -306,49 +305,49 @@ impl NakadiApiClient {
         cursors: &[T],
         flow_id: FlowId,
     ) -> ::std::result::Result<CommitStatus, CommitError> {
-        let mut headers = Headers::new();
-        if let Some(AccessToken(token)) = self.token_provider.get_token()? {
-            headers.set(Authorization(Bearer { token }));
-        }
+        let mut headers = HeaderMap::new();
 
-        headers.set(XFlowId(flow_id.clone()));
-        headers.set(XNakadiStreamId(stream_id));
-        headers.set(ContentType::json());
+        headers.insert("X-Flow-Id", flow_id.0.parse().unwrap());
+        headers.insert("X-Nakadi-StreamId", stream_id.0.parse().unwrap());
+        headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
 
         let body = make_cursors_body(cursors);
 
-        let mut response = self
-            .http_client
-            .post(url)
-            .headers(headers)
-            .body(body)
-            .send()?;
+        let request_builder = self.http_client.post(url).headers(headers).body(body);
+
+        let request_builder = if let Some(AccessToken(token)) = self.token_provider.get_token()? {
+            request_builder.bearer_auth(token)
+        } else {
+            request_builder
+        };
+
+        let mut response = request_builder.send()?;
 
         match response.status() {
             // All cursors committed but at least one did not increase an offset.
-            StatusCode::Ok => Ok(CommitStatus::NotAllOffsetsIncreased),
+            StatusCode::OK => Ok(CommitStatus::NotAllOffsetsIncreased),
             // All cursors committed and all increased the offset.
-            StatusCode::NoContent => Ok(CommitStatus::AllOffsetsIncreased),
-            StatusCode::NotFound => Err(CommitError::SubscriptionNotFound(
+            StatusCode::NO_CONTENT => Ok(CommitStatus::AllOffsetsIncreased),
+            StatusCode::NOT_FOUND => Err(CommitError::SubscriptionNotFound(
                 format!(
                     "{}: {}",
-                    StatusCode::NotFound,
+                    StatusCode::NOT_FOUND,
                     read_response_body(&mut response)
                 ),
                 flow_id,
             )),
-            StatusCode::UnprocessableEntity => Err(CommitError::UnprocessableEntity(
+            StatusCode::UNPROCESSABLE_ENTITY => Err(CommitError::UnprocessableEntity(
                 format!(
                     "{}: {}",
-                    StatusCode::UnprocessableEntity,
+                    StatusCode::UNPROCESSABLE_ENTITY,
                     read_response_body(&mut response)
                 ),
                 flow_id,
             )),
-            StatusCode::Forbidden => Err(CommitError::Client(
+            StatusCode::FORBIDDEN => Err(CommitError::Client(
                 format!(
                     "{}: {}",
-                    StatusCode::Forbidden,
+                    StatusCode::FORBIDDEN,
                     "<Nakadion: Nakadi said forbidden.>"
                 ),
                 flow_id,
@@ -633,28 +632,30 @@ fn create_event_type(
     token_provider: &ProvidesAccessToken,
     event_type: &EventTypeDefinition,
 ) -> Result<(), CreateEventTypeError> {
-    let mut request_builder = client.post(url);
+    let mut headers = HeaderMap::new();
 
-    match token_provider.get_token() {
-        Ok(Some(AccessToken(token))) => {
-            request_builder.header(Authorization(Bearer { token }));
-        }
-        Ok(None) => (),
+    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+
+    let request_builder = client.post(url).headers(headers);
+
+    let request_builder = match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => request_builder.bearer_auth(token),
+        Ok(None) => request_builder,
         Err(err) => return Err(CreateEventTypeError::Other(err.to_string())),
     };
 
     match request_builder.json(event_type).send() {
         Ok(ref mut response) => match response.status() {
-            StatusCode::Created => Ok(()),
-            StatusCode::Unauthorized => {
+            StatusCode::CREATED => Ok(()),
+            StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(CreateEventTypeError::Unauthorized(msg))
             }
-            StatusCode::Conflict => {
+            StatusCode::CONFLICT => {
                 let msg = read_response_body(response);
                 Err(CreateEventTypeError::Conflict(msg))
             }
-            StatusCode::UnprocessableEntity => {
+            StatusCode::UNPROCESSABLE_ENTITY => {
                 let msg = read_response_body(response);
                 Err(CreateEventTypeError::UnprocessableEntity(msg))
             }
@@ -672,24 +673,22 @@ fn delete_event_type(
     url: &str,
     token_provider: &ProvidesAccessToken,
 ) -> Result<(), DeleteEventTypeError> {
-    let mut request_builder = client.delete(url);
+    let request_builder = client.delete(url);
 
-    match token_provider.get_token() {
-        Ok(Some(AccessToken(token))) => {
-            request_builder.header(Authorization(Bearer { token }));
-        }
-        Ok(None) => (),
+    let request_builder = match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => request_builder.bearer_auth(token),
+        Ok(None) => request_builder,
         Err(err) => return Err(DeleteEventTypeError::Other(err.to_string())),
     };
 
     match request_builder.send() {
         Ok(ref mut response) => match response.status() {
-            StatusCode::Ok => Ok(()),
-            StatusCode::Unauthorized => {
+            StatusCode::OK => Ok(()),
+            StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(DeleteEventTypeError::Unauthorized(msg))
             }
-            StatusCode::Forbidden => {
+            StatusCode::FORBIDDEN => {
                 let msg = read_response_body(response);
                 Err(DeleteEventTypeError::Forbidden(msg))
             }
@@ -707,28 +706,26 @@ fn delete_subscription(
     url: &str,
     token_provider: &ProvidesAccessToken,
 ) -> Result<(), DeleteSubscriptionError> {
-    let mut request_builder = client.delete(url);
+    let request_builder = client.delete(url);
 
-    match token_provider.get_token() {
-        Ok(Some(AccessToken(token))) => {
-            request_builder.header(Authorization(Bearer { token }));
-        }
-        Ok(None) => (),
+    let request_builder = match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => request_builder.bearer_auth(token),
+        Ok(None) => request_builder,
         Err(err) => return Err(DeleteSubscriptionError::Other(err.to_string())),
     };
 
     match request_builder.send() {
         Ok(ref mut response) => match response.status() {
-            StatusCode::NoContent => Ok(()),
-            StatusCode::NotFound => {
+            StatusCode::NO_CONTENT => Ok(()),
+            StatusCode::NOT_FOUND => {
                 let msg = read_response_body(response);
                 Err(DeleteSubscriptionError::NotFound(msg))
             }
-            StatusCode::Unauthorized => {
+            StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(DeleteSubscriptionError::Unauthorized(msg))
             }
-            StatusCode::Forbidden => {
+            StatusCode::FORBIDDEN => {
                 let msg = read_response_body(response);
                 Err(DeleteSubscriptionError::Forbidden(msg))
             }
@@ -755,35 +752,37 @@ fn create_subscription(
     token_provider: &ProvidesAccessToken,
     request: &SubscriptionRequest,
 ) -> Result<CreateSubscriptionStatus, CreateSubscriptionError> {
-    let mut request_builder = client.post(url);
+    let mut headers = HeaderMap::new();
 
-    match token_provider.get_token() {
-        Ok(Some(AccessToken(token))) => {
-            request_builder.header(Authorization(Bearer { token }));
-        }
-        Ok(None) => (),
+    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+
+    let request_builder = client.post(url).headers(headers);
+
+    let request_builder = match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => request_builder.bearer_auth(token),
+        Ok(None) => request_builder,
         Err(err) => return Err(CreateSubscriptionError::Other(err.to_string())),
     };
 
     match request_builder.json(request).send() {
         Ok(ref mut response) => match response.status() {
-            StatusCode::Ok => match serde_json::from_reader(response) {
+            StatusCode::OK => match serde_json::from_reader(response) {
                 Ok(sub) => Ok(CreateSubscriptionStatus::AlreadyExists(sub)),
                 Err(err) => Err(CreateSubscriptionError::Other(err.to_string())),
             },
-            StatusCode::Created => match serde_json::from_reader(response) {
+            StatusCode::CREATED => match serde_json::from_reader(response) {
                 Ok(sub) => Ok(CreateSubscriptionStatus::Created(sub)),
                 Err(err) => Err(CreateSubscriptionError::Other(err.to_string())),
             },
-            StatusCode::Unauthorized => {
+            StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(CreateSubscriptionError::Unauthorized(msg))
             }
-            StatusCode::UnprocessableEntity => {
+            StatusCode::UNPROCESSABLE_ENTITY => {
                 let msg = read_response_body(response);
                 Err(CreateSubscriptionError::UnprocessableEntity(msg))
             }
-            StatusCode::BadRequest => {
+            StatusCode::BAD_REQUEST => {
                 let msg = read_response_body(response);
                 Err(CreateSubscriptionError::BadRequest(msg))
             }

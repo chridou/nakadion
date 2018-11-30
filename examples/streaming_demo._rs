@@ -13,8 +13,8 @@ extern crate uuid;
 use chrono::offset::Utc;
 use std::env;
 use std::io::Write;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -22,10 +22,10 @@ use uuid::Uuid;
 use env_logger::Builder;
 use failure::Error;
 use log::LevelFilter;
-use nakadion::FlowId;
 use nakadion::api::*;
 use nakadion::auth::*;
 use nakadion::events::*;
+use nakadion::FlowId;
 use nakadion::*;
 
 use metrix::driver::TelemetryDriver;
@@ -236,14 +236,12 @@ fn consume<T: AggregatesProcessors>(
             owning_application: "test-suite".into(),
             event_types: vec![EVENT_TYPE_NAME.into()],
             read_from: Some(ReadFrom::Begin),
-        }))
-        .max_uncommitted_events(60000)
+        })).max_uncommitted_events(60000)
         .set_min_idle_worker_lifetime(Duration::from_secs(15))
         .commit_strategy(CommitStrategy::Batches {
             after_batches: 200,
             after_seconds: Some(5),
-        })
-        .batch_flush_timeout(Duration::from_secs(1))
+        }).batch_flush_timeout(Duration::from_secs(1))
         .batch_limit(50);
 
     let nakadion = nakadion_builder.build_and_start_with_metrix(

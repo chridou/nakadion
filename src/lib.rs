@@ -258,7 +258,6 @@ extern crate log;
 extern crate serde;
 extern crate backoff;
 extern crate chrono;
-extern crate hyper;
 extern crate reqwest;
 extern crate serde_json;
 extern crate url;
@@ -286,4 +285,4 @@ pub use nakadi::publisher;
 pub use nakadi::events;
 
 pub(crate) mod cancellation_token;
-pub(crate) mod custom_headers;
+//pub(crate) mod custom_headers;

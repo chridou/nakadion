@@ -4,14 +4,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
-use reqwest::header::{Authorization, Bearer};
+use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::StatusCode;
 use reqwest::{Client as HttpClient, Response};
 use serde::Serialize;
 use serde_json;
 
 use auth::{AccessToken, ProvidesAccessToken};
-use custom_headers::XFlowId;
 use nakadi::model::FlowId;
 
 /// Publishes events to `Nakadi`
@@ -131,31 +130,32 @@ fn publish_events(
     bytes: Vec<u8>,
     flow_id: &FlowId,
 ) -> Result<PublishStatus, PublishError> {
-    let mut request_builder = client.post(url);
+    let mut headers = HeaderMap::new();
 
-    match token_provider.get_token() {
-        Ok(Some(AccessToken(token))) => {
-            request_builder.header(Authorization(Bearer { token }));
-        }
-        Ok(None) => (),
+    headers.insert("X-Flow-Id", flow_id.0.parse().unwrap());
+    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+
+    let request_builder = client.post(url).headers(headers);
+
+    let request_builder = match token_provider.get_token() {
+        Ok(Some(AccessToken(token))) => request_builder.bearer_auth(token),
+        Ok(None) => request_builder,
         Err(err) => return Err(PublishError::Token(err.to_string())),
     };
 
-    request_builder.header(XFlowId(flow_id.clone()));
-
     match request_builder.body(bytes).send() {
         Ok(ref mut response) => match response.status() {
-            StatusCode::Ok => Ok(PublishStatus::AllEventsPublished),
-            StatusCode::MultiStatus => Ok(PublishStatus::NotAllEventsPublished),
-            StatusCode::Unauthorized => {
+            StatusCode::OK => Ok(PublishStatus::AllEventsPublished),
+            StatusCode::MULTI_STATUS => Ok(PublishStatus::NotAllEventsPublished),
+            StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(PublishError::Unauthorized(msg, flow_id.clone()))
             }
-            StatusCode::Forbidden => {
+            StatusCode::FORBIDDEN => {
                 let msg = read_response_body(response);
                 Err(PublishError::Forbidden(msg, flow_id.clone()))
             }
-            StatusCode::UnprocessableEntity => {
+            StatusCode::UNPROCESSABLE_ENTITY => {
                 let msg = read_response_body(response);
                 Err(PublishError::UnprocessableEntity(msg, flow_id.clone()))
             }

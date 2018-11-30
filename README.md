@@ -174,6 +174,7 @@ on the complexity of your processing logic.
 
 ## Recent Changes
 
+* 0.11.0 use reqwest 0.9
 * 0.10.2
     * update crate uuid to 0.7
 * 0.10.1
