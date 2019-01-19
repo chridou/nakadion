@@ -256,33 +256,10 @@ extern crate failure;
 extern crate log;
 #[macro_use]
 extern crate serde;
-extern crate backoff;
-extern crate chrono;
-extern crate reqwest;
-extern crate serde_json;
-extern crate url;
-extern crate uuid;
+
 
 #[cfg(feature = "metrix")]
 extern crate metrix;
 
-pub mod auth;
-
-mod nakadi;
-
-pub use nakadi::api;
-pub use nakadi::consumer;
-pub use nakadi::handler::*;
-pub use nakadi::metrics;
-pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
-pub use nakadi::streaming_client;
-pub use nakadi::{
-    CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery,
-};
-
-pub use nakadi::publisher;
-
-pub use nakadi::events;
-
-pub(crate) mod cancellation_token;
-//pub(crate) mod custom_headers;
+mod model;
+mod internals;

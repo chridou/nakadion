@@ -9,6 +9,7 @@ documentation = "https://docs.rs/nakadion"
 homepage = "https://github.com/chridou/nakadion"
 repository = "https://github.com/chridou/nakadion"
 keywords = ["event", "broker", "distributed", "message", "nakadi"]
+edition="2018"
 
 [dependencies]
 log = "0.4"
