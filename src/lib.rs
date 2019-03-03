@@ -257,9 +257,8 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 
-
 #[cfg(feature = "metrix")]
 extern crate metrix;
 
-mod model;
 mod internals;
+mod model;
