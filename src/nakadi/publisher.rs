@@ -19,20 +19,21 @@ use nakadi::model::FlowId;
 /// and is not used for consuming a `Nakadi` stream.
 /// It is simply a helper for publishing to a `Nakadi`
 /// stream
+#[derive(Clone)]
 pub struct NakadiPublisher {
-    nakadi_base_url: String,
+    nakadi_base_url: Arc<String>,
     http_client: HttpClient,
-    token_provider: Arc<ProvidesAccessToken>,
+    token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
 }
 
 impl NakadiPublisher {
     /// Create a new `NakadiPublisher`
-    pub fn new<U: Into<String>, T: ProvidesAccessToken + 'static>(
+    pub fn new<U: Into<String>, T: ProvidesAccessToken + Sync + Send + 'static>(
         nakadi_base_url: U,
         token_provider: T,
     ) -> NakadiPublisher {
         NakadiPublisher {
-            nakadi_base_url: nakadi_base_url.into(),
+            nakadi_base_url: Arc::new(nakadi_base_url.into()),
             http_client: HttpClient::new(),
             token_provider: Arc::new(token_provider),
         }
@@ -41,10 +42,10 @@ impl NakadiPublisher {
     /// Create a new `NakadiPublisher`
     pub fn with_shared_access_token_provider<U: Into<String>>(
         nakadi_base_url: U,
-        token_provider: Arc<ProvidesAccessToken>,
+        token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
     ) -> NakadiPublisher {
         NakadiPublisher {
-            nakadi_base_url: nakadi_base_url.into(),
+            nakadi_base_url: Arc::new(nakadi_base_url.into()),
             http_client: HttpClient::new(),
             token_provider: token_provider,
         }
@@ -53,7 +54,7 @@ impl NakadiPublisher {
     /// Publish events packed into a vector of bytes.
     ///
     /// The events must be encoded in a way that `Nakadi`
-    /// can understand and pass it`s valaditation mechanism
+    /// can understand and pass it`s validitation mechanism
     /// especially regarding schemas.
     ///
     /// The `budget` is the maximum `Duration` publishing events
@@ -68,7 +69,7 @@ impl NakadiPublisher {
     ) -> Result<PublishStatus, PublishError> {
         let url = format!("{}/event-types/{}/events", self.nakadi_base_url, event_type);
 
-        let flow_id = flow_id.unwrap_or_else(|| FlowId::default());
+        let flow_id = flow_id.unwrap_or_else(FlowId::default);
 
         let mut op = || match publish_events(
             &self.http_client,
@@ -173,7 +174,7 @@ fn read_response_body(response: &mut Response) -> String {
     response
         .read_to_string(&mut buf)
         .map(|_| buf)
-        .unwrap_or("<Could not read body.>".to_string())
+        .unwrap_or_else(|_| "<Could not read body>".to_string())
 }
 
 /// A status for (almos) successful publishing
