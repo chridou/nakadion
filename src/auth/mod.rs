@@ -3,7 +3,7 @@ use std::fmt;
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
-pub struct AccessToken(pub String);
+pub struct AccessToken(String);
 
 impl AccessToken {
     /// Creates a new token.
@@ -35,12 +35,11 @@ impl ProvidesAccessToken for NoAuthAccessTokenProvider {
     }
 }
 
+/// An error returned when no access token was available when there should be one.
+///
+/// This struct does not contain any details or reasons for logging.
+///
+/// It is the duty of the implementor of `ProvidesAccessToken` to log errors.
 #[derive(Fail, Debug, Clone)]
-pub enum TokenError {
-    #[fail(display = "Client Error: {}", message)]
-    Client { message: String },
-    #[fail(display = "Server Error: {}", message)]
-    Server { message: String },
-    #[fail(display = "Other Error: {}", message)]
-    Other { message: String },
-}
+#[fail(display = "Failed to get access token")]
+pub struct TokenError;
