@@ -54,7 +54,7 @@ impl NakadiPublisher {
     /// Publish events packed into a vector of bytes.
     ///
     /// The events must be encoded in a way that `Nakadi`
-    /// can understand and pass it`s validitation mechanism
+    /// can understand and pass it`s validation mechanism
     /// especially regarding schemas.
     ///
     /// The `budget` is the maximum `Duration` publishing events
