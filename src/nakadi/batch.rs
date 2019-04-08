@@ -23,7 +23,7 @@ impl BatchLine {
     #[allow(unused)]
     pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, Error> {
         let bytes: Vec<_> = bytes.iter().cloned().collect();
-        BatchLine::new((bytes))
+        BatchLine::new(bytes)
     }
 
     #[allow(unused)]
@@ -33,12 +33,12 @@ impl BatchLine {
 
     pub fn cursor(&self) -> &[u8] {
         let (a, b) = self.items.cursor.line_position;
-        &self.bytes[a..b + 1]
+        &self.bytes[a..=b]
     }
 
     pub fn partition(&self) -> &[u8] {
         let (a, b) = self.items.cursor.partition;
-        &self.bytes[a..b + 1]
+        &self.bytes[a..=b]
     }
 
     pub fn partition_str(&self) -> Result<&str, Error> {
@@ -48,7 +48,7 @@ impl BatchLine {
 
     pub fn event_type(&self) -> &[u8] {
         let (a, b) = self.items.cursor.event_type;
-        &self.bytes[a..b + 1]
+        &self.bytes[a..=b]
     }
 
     pub fn event_type_str(&self) -> Result<&str, Error> {
@@ -57,11 +57,11 @@ impl BatchLine {
     }
 
     pub fn events(&self) -> Option<&[u8]> {
-        self.items.events.map(|e| &self.bytes[e.0..e.1 + 1])
+        self.items.events.map(|e| &self.bytes[e.0..=e.1])
     }
 
     pub fn info(&self) -> Option<&[u8]> {
-        self.items.info.map(|e| &self.bytes[e.0..e.1 + 1])
+        self.items.info.map(|e| &self.bytes[e.0..=e.1])
     }
 
     pub fn is_keep_alive_line(&self) -> bool {
@@ -652,7 +652,8 @@ mod lineparsing {
             &mut cursor,
             0,
             cursor_sample.len(),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(true);
     }
 }
