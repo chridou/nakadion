@@ -1,7 +1,7 @@
 //! The processor orchestrates the workers
 
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -214,7 +214,7 @@ fn dispatcher_loop<HF, M>(
             };
 
             info!(
-                "[Dispatcher, stream={}, partition={}] New handler  created. Starting worker.",
+                "[Dispatcher, stream={}, partition={}] New handler created. Starting worker.",
                 stream_id, partition
             );
 
@@ -238,11 +238,19 @@ fn dispatcher_loop<HF, M>(
         }
     }
 
-    workers.iter().for_each(|w| w.0.stop());
+    workers.iter().for_each(|w| {
+        info!(
+            "[Dispatcher, stream={}, partition={}] Requesting worker to stop.",
+            stream_id,
+            w.0.partition()
+        );
+        w.0.stop()
+    });
 
     info!(
-        "[Dispatcher, stream={}] Waiting for workers to stop",
-        stream_id
+        "[Dispatcher, stream={}] Waiting for {} workers to stop",
+        stream_id,
+        workers.len()
     );
 
     while workers.iter().any(|w| w.0.running()) {
@@ -279,11 +287,11 @@ fn kill_idle_workers(
         }
     }
 
-    while stopped.iter().any(|w| w.running()) {
+    while stopped.iter().any(Worker::running) {
         thread::sleep(Duration::from_millis(5));
     }
 
-    if stopped.len() > 0 {
+    if !stopped.is_empty() {
         metrics_collector.dispatcher_current_workers(survivors.len());
     }
 

@@ -46,7 +46,7 @@ impl Worker {
         let cancellation_token = lifecycle.auto_token();
 
         let handle = Worker {
-            lifecycle: lifecycle,
+            lifecycle,
             sender,
             partition: partition.clone(),
             metrics_collector: Box::new(metrics_collector.clone()),
@@ -85,7 +85,8 @@ impl Worker {
             err.context(format!(
             "[Worker, partition={}] Could not send batch. Channel to worker thread disconnected.",
             self.partition
-        )).into()
+        ))
+            .into()
         })
     }
 

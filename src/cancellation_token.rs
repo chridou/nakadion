@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use nakadi::metrics::*;
 
@@ -30,7 +30,7 @@ impl CancellationTokenSource {
         CancellationTokenSource {
             cancellation_requested: Arc::new(AtomicBool::new(false)),
             cancelled: Arc::new(AtomicBool::new(false)),
-            metrics_collector: metrics_collector,
+            metrics_collector,
         }
     }
 
