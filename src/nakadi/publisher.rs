@@ -15,7 +15,7 @@ use nakadi::model::FlowId;
 
 /// Publishes events to `Nakadi`
 ///
-/// The publisher is just a convinience struct
+/// The publisher is just a convenience struct
 /// and is not used for consuming a `Nakadi` stream.
 /// It is simply a helper for publishing to a `Nakadi`
 /// stream
@@ -47,7 +47,7 @@ impl NakadiPublisher {
         NakadiPublisher {
             nakadi_base_url: Arc::new(nakadi_base_url.into()),
             http_client: HttpClient::new(),
-            token_provider: token_provider,
+            token_provider,
         }
     }
 
@@ -177,7 +177,7 @@ fn read_response_body(response: &mut Response) -> String {
         .unwrap_or_else(|_| "<Could not read body>".to_string())
 }
 
-/// A status for (almos) successful publishing
+/// A status for (almost) successful publishing
 #[derive(Debug)]
 pub enum PublishStatus {
     /// All events were written and accepted by `Nakadi`
@@ -198,9 +198,9 @@ pub enum PublishError {
     UnprocessableEntity(String, FlowId),
     #[fail(display = "Could not serialize events: {}", _0)]
     Serialization(String),
-    #[fail(display = "An error occured: {}", _0)]
+    #[fail(display = "An error occurred: {}", _0)]
     Token(String),
-    #[fail(display = "An error occured(FlowId: {}): {}", _1, _0)]
+    #[fail(display = "An error occurred(FlowId: {}): {}", _1, _0)]
     Other(String, FlowId),
 }
 

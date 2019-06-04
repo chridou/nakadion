@@ -1,18 +1,18 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::sync::Arc;
+use std::collections::HashMap;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use cancellation_token::*;
 use failure::{Error, Fail};
 
-use nakadi::CommitStrategy;
 use nakadi::api::{ApiClient, CommitError, CommitStatus};
 use nakadi::batch::Batch;
 use nakadi::metrics::MetricsCollector;
 use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use nakadi::CommitStrategy;
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
@@ -40,7 +40,7 @@ enum CommitterMessage {
 
 impl Committer {
     /// Start a new `Committer`. The committer uses
-    /// an `ApiClient` to commit commirsors.
+    /// an `ApiClient` to commit cursors.
     pub fn start<C, M>(
         client: C,
         strategy: CommitStrategy,
@@ -90,7 +90,8 @@ impl Committer {
                 err.context(format!(
                     "[Committer, stream={}] Could not send commit message to the commit worker",
                     self.stream_id
-                )).into()
+                ))
+                .into()
             })
     }
 
@@ -166,7 +167,7 @@ impl CommitEntry {
                 after_seconds: Some(after_seconds),
                 ..
             } => {
-                let by_strategy = batch.received_at + Duration::from_secs(after_seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(u64::from(after_seconds));
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
@@ -176,14 +177,14 @@ impl CommitEntry {
                 after_seconds: Some(after_seconds),
                 ..
             } => {
-                let by_strategy = batch.received_at + Duration::from_secs(after_seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(u64::from(after_seconds));
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
                 )
             }
             CommitStrategy::AfterSeconds { seconds } => {
-                let by_strategy = batch.received_at + Duration::from_secs(seconds as u64);
+                let by_strategy = batch.received_at + Duration::from_secs(u64::from(seconds));
                 ::std::cmp::min(
                     by_strategy,
                     batch.received_at + Duration::from_secs(CURSOR_COMMIT_OFFSET),
@@ -332,7 +333,7 @@ fn flush_all_cursors<C>(
             ),
             Ok(CommitStatus::NotAllOffsetsIncreased) => info!(
                 "[Committer, subscription={}, stream={}, flow id={}] Not all remaining\
-                 offstets increased.",
+                 offsets increased.",
                 subscription_id, stream_id, flow_id
             ),
             Ok(CommitStatus::NothingToCommit) => info!(

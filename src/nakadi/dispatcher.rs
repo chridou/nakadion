@@ -45,7 +45,7 @@ impl Dispatcher {
         let cancellation_token = lifecycle.auto_token();
 
         let handle = Dispatcher {
-            lifecycle: lifecycle,
+            lifecycle,
             sender,
             metrics_collector: Box::new(metrics_collector.clone()),
         };
@@ -135,7 +135,7 @@ fn dispatcher_loop<HF, M>(
 
         if !committer.is_running() {
             error!(
-                "[Dispatcher, stream={}] Comitter not running. Aborting.",
+                "[Dispatcher, stream={}] Committer not running. Aborting.",
                 stream_id
             );
 
@@ -259,7 +259,7 @@ fn dispatcher_loop<HF, M>(
 
     metrics_collector.dispatcher_current_workers(0);
 
-    info!("[Dispatcher, stream={}] All wokers stopped.", stream_id);
+    info!("[Dispatcher, stream={}] All workers stopped.", stream_id);
 
     info!("[Dispatcher, stream={}] Stopped.", stream_id);
 }

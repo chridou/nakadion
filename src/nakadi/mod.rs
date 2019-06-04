@@ -415,7 +415,7 @@ impl NakadionBuilder {
     /// # Environment Variables:
     ///
     /// * `NAKADION_NAKADI_HOST`: See `NakadionBuilder::nakadi_host`
-    /// * `NAKADION_MAX_UNCOMMITED_EVENTS`: See
+    /// * `NAKADION_MAX_UNCOMMITTED_EVENTS`: See
     /// `NakadionBuilder::max_uncommitted_events`
     /// * `NAKADION_BATCH_LIMIT`: See `NakadionBuilder::batch_limit`
     /// * `NAKADION_BATCH_FLUSH_TIMEOUT_SECS`: See
@@ -441,10 +441,12 @@ impl NakadionBuilder {
         let mut builder = NakadionBuilder::default();
         builder.streaming_client_builder = streaming_client_builder;
 
-        let builder = if let Some(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS").ok() {
-            builder.request_timeout(Duration::from_millis(env_val
-                .parse::<u64>()
-                .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?))
+        let builder = if let Ok(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS") {
+            builder.request_timeout(Duration::from_millis(
+                env_val
+                    .parse::<u64>()
+                    .context("Could not parse 'NAKADION_REQUEST_TIMEOUT_MS'")?,
+            ))
         } else {
             warn!(
                 "Environment variable 'NAKADION_REQUEST_TIMEOUT_MS' not found. It will be set \
@@ -453,7 +455,7 @@ impl NakadionBuilder {
             builder
         };
 
-        let builder = if let Some(env_val) = env::var("NAKADION_COMMIT_STRATEGY").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_COMMIT_STRATEGY") {
             let commit_strategy = serde_json::from_str(&env_val)
                 .context("Could not parse 'NAKADION_COMMIT_STRATEGY'")?;
             builder.commit_strategy(commit_strategy)
@@ -465,7 +467,7 @@ impl NakadionBuilder {
             builder
         };
 
-        let builder = if let Some(env_val) = env::var("NAKADION_SUBSCRIPTION_DISCOVERY").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_SUBSCRIPTION_DISCOVERY") {
             let discovery = serde_json::from_str(&env_val)
                 .context("Could not parse 'NAKADION_SUBSCRIPTION_DISCOVERY'")?;
             builder.subscription_discovery(discovery)
@@ -477,11 +479,12 @@ impl NakadionBuilder {
             builder
         };
 
-        let builder = if let Some(env_val) = env::var("NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS").ok()
-        {
-            builder.min_idle_worker_lifetime(Some(Duration::from_secs(env_val
-                .parse::<u64>()
-                .context("Could not parse 'NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS'")?)))
+        let builder = if let Ok(env_val) = env::var("NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS") {
+            builder.min_idle_worker_lifetime(Some(Duration::from_secs(
+                env_val
+                    .parse::<u64>()
+                    .context("Could not parse 'NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS'")?,
+            )))
         } else {
             warn!(
                 "Environment variable 'NAKADION_MIN_IDLE_WORKER_LIFETIME_SECS' not found. Using \
@@ -623,7 +626,7 @@ impl NakadionBuilder {
 
 /// This struct represents Nakadion.
 ///
-/// Once instatntiated it can only be used
+/// Once instantiated it can only be used
 /// query its running state or to stop
 /// consuming events.
 pub struct Nakadion {
@@ -668,7 +671,7 @@ impl Nakadion {
     }
 
     /// Start with the given configuration
-    /// and create all interally required components from the configuration
+    /// and create all internally required components from the configuration
     ///
     /// # Errors
     ///
@@ -733,7 +736,7 @@ impl Nakadion {
                 metrics_collector.clone(),
             )?;
 
-        info!("Commit stragtegy is {:?}", config.commit_strategy);
+        info!("Commit strategy is {:?}", config.commit_strategy);
 
         Nakadion::start_with(
             subscription_id,
