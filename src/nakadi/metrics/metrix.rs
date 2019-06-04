@@ -1,12 +1,12 @@
 use std::time::{Duration, Instant};
 
-use metrix::TelemetryTransmitterSync;
-use metrix::TransmitsTelemetryData;
 use metrix::cockpit::*;
 use metrix::instruments::other_instruments::*;
 use metrix::instruments::switches::*;
 use metrix::instruments::*;
 use metrix::processor::*;
+use metrix::TelemetryTransmitterSync;
+use metrix::TransmitsTelemetryData;
 
 #[derive(Clone, PartialEq, Eq)]
 enum OtherMetrics {

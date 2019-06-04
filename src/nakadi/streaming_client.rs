@@ -18,7 +18,7 @@ const LINE_SPLIT_BYTE: u8 = b'\n';
 
 /// A line as received from Nakadi plus a timestamp.
 pub struct RawLine {
-    /// The bytes reveived as a line from Nakadi
+    /// The bytes received as a line from Nakadi
     pub bytes: Vec<u8>,
     /// The timestamp when this line was received
     pub received_at: Instant,
@@ -241,7 +241,7 @@ impl ConfigBuilder {
     /// Variables:
     ///
     /// * NAKADION_NAKADI_HOST: See `ConfigBuilder::nakadi_host`
-    /// * NAKADION_MAX_UNCOMMITED_EVENTS: See
+    /// * NAKADION_MAX_UNCOMMITTED_EVENTS: See
     /// `ConfigBuilder::max_uncommitted_events`
     /// * NAKADION_BATCH_LIMIT: See `ConfigBuilder::batch_limit`
     /// * NAKADION_BATCH_FLUSH_TIMEOUT_SECS: See
@@ -252,7 +252,7 @@ impl ConfigBuilder {
     /// `ConfigBuilder::stream_keep_alive_limit`
     pub fn from_env() -> Result<ConfigBuilder, Error> {
         let builder = ConfigBuilder::default();
-        let builder = if let Some(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_STREAM_KEEP_ALIVE_LIMIT") {
             builder.stream_keep_alive_limit(
                 env_val
                     .parse::<usize>()
@@ -265,7 +265,7 @@ impl ConfigBuilder {
             );
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_STREAM_LIMIT").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_STREAM_LIMIT") {
             builder.stream_limit(
                 env_val
                     .parse::<usize>()
@@ -275,7 +275,7 @@ impl ConfigBuilder {
             warn!("Environment variable 'NAKADION_STREAM_LIMIT' not found. Using default.");
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_STREAM_TIMEOUT_SECS").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_STREAM_TIMEOUT_SECS") {
             builder.stream_timeout(Duration::from_secs(
                 env_val
                     .parse::<u64>()
@@ -285,7 +285,7 @@ impl ConfigBuilder {
             warn!("Environment variable 'NAKADION_STREAM_TIMEOUT_SECS' not found. Using default.");
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_BATCH_FLUSH_TIMEOUT_SECS").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_BATCH_FLUSH_TIMEOUT_SECS") {
             builder.batch_flush_timeout(Duration::from_secs(
                 env_val
                     .parse::<u64>()
@@ -298,7 +298,7 @@ impl ConfigBuilder {
             );
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_BATCH_LIMIT").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_BATCH_LIMIT") {
             builder.batch_limit(
                 env_val
                     .parse::<usize>()
@@ -308,20 +308,20 @@ impl ConfigBuilder {
             warn!("Environment variable 'NAKADION_BATCH_LIMIT' not found. Using default.");
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_MAX_UNCOMMITED_EVENTS").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_MAX_UNCOMMITTED_EVENTS") {
             builder.max_uncommitted_events(
                 env_val
                     .parse::<usize>()
-                    .context("Could not parse 'NAKADION_MAX_UNCOMMITED_EVENTS'")?,
+                    .context("Could not parse 'NAKADION_MAX_UNCOMMITTED_EVENTS'")?,
             )
         } else {
             warn!(
-                "Environment variable 'NAKADION_MAX_UNCOMMITED_EVENTS' not found. Using \
+                "Environment variable 'NAKADION_MAX_UNCOMMITTED_EVENTS' not found. Using \
                  default."
             );
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_NAKADI_HOST") {
             builder.nakadi_host(env_val)
         } else {
             warn!(
@@ -351,7 +351,7 @@ impl ConfigBuilder {
             batch_flush_timeout: self.batch_flush_timeout.unwrap_or(Duration::from_secs(0)),
             batch_limit: self.batch_limit.unwrap_or(0),
             max_uncommitted_events: self.max_uncommitted_events.unwrap_or(0),
-            nakadi_host: nakadi_host,
+            nakadi_host,
         })
     }
 
@@ -440,7 +440,7 @@ where
         )
     }
 
-    /// Create a new `NakadiStreamingClient<M>` with a shared acess token provider.
+    /// Create a new `NakadiStreamingClient<M>` with a shared access token provider.
     pub fn with_shared_access_token_provider(
         config: Config,
         token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
@@ -463,7 +463,7 @@ where
 fn create_connect_url(config: &Config, subscription_id: &SubscriptionId) -> String {
     let mut connect_url = String::new();
     connect_url.push_str(&config.nakadi_host);
-    if !connect_url.ends_with("/") {
+    if !connect_url.ends_with('/') {
         connect_url.push('/');
     }
     connect_url.push_str("subscriptions/");
@@ -627,11 +627,11 @@ fn read_response_body(response: &mut Response) -> String {
     response
         .read_to_string(&mut buf)
         .map(|_| buf)
-        .unwrap_or("<Nakadion: Could not read body.>".to_string())
+        .unwrap_or_else(|_| "<Nakadion: Could not read body.>".to_string())
 }
 
-/// Errors that can happen when connectiong to Nakadi for
-/// extablishing a streaming connection.
+/// Errors that can happen when connections to Nakadi for
+/// establishing a streaming connection.
 #[derive(Fail, Debug)]
 pub enum ConnectError {
     #[fail(display = "Token Error on connect: {}", _0)]

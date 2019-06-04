@@ -15,14 +15,14 @@ pub struct BatchLine {
 
 impl BatchLine {
     pub fn new(bytes: Vec<u8>) -> Result<BatchLine, Error> {
-        let items = lineparsing::parse_line(&bytes)?;
+        let items = line_parsing::parse_line(&bytes)?;
 
         Ok(BatchLine { bytes, items })
     }
 
     #[allow(unused)]
     pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, Error> {
-        let bytes: Vec<_> = bytes.iter().cloned().collect();
+        let bytes = bytes.to_vec();
         BatchLine::new(bytes)
     }
 
@@ -213,7 +213,7 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
     assert_eq!(line.is_keep_alive_line(), true);
 }
 
-mod lineparsing {
+mod line_parsing {
     use super::{Cursor, LineItems};
 
     use failure::*;
@@ -225,12 +225,12 @@ mod lineparsing {
     const DOUBLE_QUOTE: u8 = b'"';
     const ESCAPE: u8 = b'\\';
 
-    const CURSOR_LABEL: &'static [u8] = b"cursor";
-    const EVENTS_LABEL: &'static [u8] = b"events";
-    const INFO_LABEL: &'static [u8] = b"info";
+    const CURSOR_LABEL: &[u8] = b"cursor";
+    const EVENTS_LABEL: &[u8] = b"events";
+    const INFO_LABEL: &[u8] = b"info";
 
-    const CURSOR_PARTITION_LABEL: &'static [u8] = b"partition";
-    const CURSOR_EVENT_TYPE_LABEL: &'static [u8] = b"event_type";
+    const CURSOR_PARTITION_LABEL: &[u8] = b"partition";
+    const CURSOR_EVENT_TYPE_LABEL: &[u8] = b"event_type";
 
     pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, Error> {
         let mut line_items = LineItems::default();
@@ -266,7 +266,7 @@ mod lineparsing {
                 CURSOR_LABEL => {
                     let (a, b) = find_next_obj(json_bytes, end)?;
                     line_items.cursor.line_position = (a, b);
-                    let _ = parse_cursor_fields(json_bytes, &mut line_items.cursor, a, b)?;
+                    parse_cursor_fields(json_bytes, &mut line_items.cursor, a, b)?;
                     b
                 }
                 EVENTS_LABEL => {
@@ -654,7 +654,6 @@ mod lineparsing {
             cursor_sample.len(),
         )
         .unwrap();
-        assert!(true);
     }
 }
 

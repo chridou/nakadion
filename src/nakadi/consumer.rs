@@ -18,7 +18,7 @@ use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClien
 use nakadi::CommitStrategy;
 
 /// Sequence of backoffs after failed commit attempts
-const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
+const CONNECT_RETRY_BACKOFF_MS: &[u64] = &[
     10, 50, 100, 500, 1000, 1000, 1000, 3000, 3000, 3000, 5000, 5000, 5000, 10_000, 10_000, 10_000,
     15_000, 15_000, 15_000,
 ];
@@ -28,7 +28,7 @@ const CONNECT_RETRY_BACKOFF_MS: &'static [u64] = &[
 ///
 /// The consumer also manages connection attempts to the stream and reconnect.
 ///
-/// This is the main component consuming batches and instatiation
+/// This is the main component consuming batches and instantiation
 /// helper components for each newly connected stream.
 ///
 /// The consumer creates a background thread.
@@ -59,20 +59,20 @@ impl Consumer {
         let cancellation_token = lifecycle.auto_token();
 
         let consumer = Consumer {
-            lifecycle: lifecycle,
+            lifecycle,
             _subscription_id: subscription_id.clone(),
         };
 
-        start_consumer_loop(
+        start_consumer_loop(ConsumerLoopSettings {
             streaming_client,
             api_client,
             handler_factory,
             commit_strategy,
             subscription_id,
-            cancellation_token,
+            lifecycle: cancellation_token,
             metrics_collector,
             min_idle_worker_lifetime,
-        );
+        });
 
         consumer
     }
@@ -86,7 +86,7 @@ impl Consumer {
     }
 }
 
-fn start_consumer_loop<C, A, HF, M>(
+struct ConsumerLoopSettings<C, A, HF, M> {
     streaming_client: C,
     api_client: A,
     handler_factory: HF,
@@ -95,7 +95,10 @@ fn start_consumer_loop<C, A, HF, M>(
     lifecycle: AutoCancellationToken,
     metrics_collector: M,
     min_idle_worker_lifetime: Option<Duration>,
-) where
+}
+
+fn start_consumer_loop<C, A, HF, M>(consumer_loop_settings: ConsumerLoopSettings<C, A, HF, M>)
+where
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
@@ -103,36 +106,28 @@ fn start_consumer_loop<C, A, HF, M>(
 {
     let builder = thread::Builder::new().name("nakadion-consumer".into());
     builder
-        .spawn(move || {
-            consumer_loop(
-                streaming_client,
-                api_client,
-                handler_factory,
-                commit_strategy,
-                subscription_id,
-                lifecycle,
-                metrics_collector,
-                min_idle_worker_lifetime,
-            )
-        })
+        .spawn(move || consumer_loop(consumer_loop_settings))
         .unwrap();
 }
 
-fn consumer_loop<C, A, HF, M>(
-    streaming_client: C,
-    api_client: A,
-    handler_factory: HF,
-    commit_strategy: CommitStrategy,
-    subscription_id: SubscriptionId,
-    lifecycle: AutoCancellationToken,
-    metrics_collector: M,
-    min_idle_worker_lifetime: Option<Duration>,
-) where
+fn consumer_loop<C, A, HF, M>(consumer_loop_settings: ConsumerLoopSettings<C, A, HF, M>)
+where
     C: StreamingClient + Clone + Send + 'static,
     A: ApiClient + Clone + Send + 'static,
     HF: HandlerFactory + Send + Sync + 'static,
     M: MetricsCollector + Clone + Sync + Send + 'static,
 {
+    let ConsumerLoopSettings {
+        handler_factory,
+        lifecycle,
+        streaming_client,
+        subscription_id,
+        api_client,
+        commit_strategy,
+        metrics_collector,
+        min_idle_worker_lifetime,
+    } = consumer_loop_settings;
+
     let handler_factory = Arc::new(handler_factory);
 
     loop {
@@ -371,7 +366,7 @@ where
         metrics_collector.consumer_batch_line_received(num_bytes);
         dispatcher
             .dispatch(Batch {
-                batch_line: batch_line,
+                batch_line,
                 received_at: raw_line.received_at,
             })
             .map_err(|err| {
@@ -379,7 +374,8 @@ where
                     "[Consumer, subscription={}, stream={}] \
                      Dispatcher did not process batch",
                     subscription_id, stream_id
-                )).into()
+                ))
+                .into()
             })
     }
 }

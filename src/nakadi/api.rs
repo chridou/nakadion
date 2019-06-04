@@ -39,7 +39,7 @@ pub trait ApiClient {
     ///
     /// # Errors
     ///
-    /// The cursors could not be comitted.
+    /// The cursors could not be committed.
     fn commit_cursors<T: AsRef<[u8]>>(
         &self,
         subscription_id: &SubscriptionId,
@@ -67,7 +67,7 @@ pub trait ApiClient {
     ///
     /// # Errors
     ///
-    /// The cursors could not be comitted.
+    /// The cursors could not be committed.
     fn commit_cursors_budgeted<T: AsRef<[u8]>>(
         &self,
         subscription_id: &SubscriptionId,
@@ -123,7 +123,7 @@ pub trait ApiClient {
 pub struct Config {
     /// The Nakadi host
     pub nakadi_host: String,
-    /// Timeout after which a conection to the REST API
+    /// Timeout after which a connection to the REST API
     /// is aborted. If `None` wait indefinitely.
     pub request_timeout: Duration,
 }
@@ -151,7 +151,7 @@ impl ConfigBuilder {
         self
     }
 
-    /// Timeout after which a conection to the REST API
+    /// Timeout after which a connection to the REST API
     /// is aborted. If `None` wait indefinitely
     pub fn request_timeout(mut self, request_timeout: Duration) -> ConfigBuilder {
         self.request_timeout = Some(request_timeout);
@@ -167,7 +167,7 @@ impl ConfigBuilder {
     /// Variables:
     ///
     /// * NAKADION_NAKADI_HOST: Host address of Nakadi. The host is mandatory.
-    /// * NAKADION_REQUEST_TIMEOUT_MS: Timeout in ms after which a conection to the REST API
+    /// * NAKADION_REQUEST_TIMEOUT_MS: Timeout in ms after which a connection to the REST API
     /// is aborted. This is optional and defaults to 1 second.
     ///
     /// # Errors
@@ -175,7 +175,7 @@ impl ConfigBuilder {
     /// Fails if a value can not be parsed from an existing environment variable.
     pub fn from_env() -> Result<ConfigBuilder, Error> {
         let builder = ConfigBuilder::default();
-        let builder = if let Some(env_val) = env::var("NAKADION_NAKADI_HOST").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_NAKADI_HOST") {
             builder.nakadi_host(env_val)
         } else {
             warn!(
@@ -184,7 +184,7 @@ impl ConfigBuilder {
             );
             builder
         };
-        let builder = if let Some(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS").ok() {
+        let builder = if let Ok(env_val) = env::var("NAKADION_REQUEST_TIMEOUT_MS") {
             builder.request_timeout(Duration::from_millis(
                 env_val
                     .parse::<u64>()
@@ -212,7 +212,7 @@ impl ConfigBuilder {
             bail!("Nakadi host required");
         };
         Ok(Config {
-            nakadi_host: nakadi_host,
+            nakadi_host,
             request_timeout: self.request_timeout.unwrap_or(Duration::from_millis(500)),
         })
     }
@@ -475,7 +475,7 @@ impl ApiClient for NakadiApiClient {
         backoff.multiplier = 1.5;
 
         match op.retry_notify(&mut backoff, notify) {
-            Ok(x) => Ok(x),
+            Ok(_) => Ok(()),
             Err(BackoffError::Transient(err)) => Err(err),
             Err(BackoffError::Permanent(err)) => Err(err),
         }
@@ -513,7 +513,7 @@ impl ApiClient for NakadiApiClient {
         backoff.multiplier = 1.5;
 
         match op.retry_notify(&mut backoff, notify) {
-            Ok(x) => Ok(x),
+            Ok(_) => Ok(()),
             Err(BackoffError::Transient(err)) => Err(err),
             Err(BackoffError::Permanent(err)) => Err(err),
         }
@@ -547,7 +547,7 @@ fn make_cursors_body<T: AsRef<[u8]>>(cursors: &[T]) -> Vec<u8> {
     body
 }
 
-/// A commit attempt can result in multiple statusses
+/// A commit attempt can result in multiple statuses
 #[derive(Debug)]
 pub enum CommitStatus {
     /// All the cursors have been successfully committed
@@ -743,7 +743,7 @@ fn read_response_body(response: &mut Response) -> String {
     response
         .read_to_string(&mut buf)
         .map(|_| buf)
-        .unwrap_or("<Could not read body.>".to_string())
+        .unwrap_or_else(|_| "<Could not read body.>".to_string())
 }
 
 fn create_subscription(
@@ -900,7 +900,7 @@ pub enum CreateSubscriptionError {
     UnprocessableEntity(String),
     #[fail(display = "Bad request: {}", _0)]
     BadRequest(String),
-    #[fail(display = "An error occured: {}", _0)]
+    #[fail(display = "An error occurred: {}", _0)]
     Other(String),
 }
 
@@ -912,7 +912,7 @@ pub enum DeleteSubscriptionError {
     Forbidden(String),
     #[fail(display = "NotFound: {}", _0)]
     NotFound(String),
-    #[fail(display = "An error occured: {}", _0)]
+    #[fail(display = "An error occurred: {}", _0)]
     Other(String),
 }
 
@@ -947,7 +947,7 @@ pub enum CreateEventTypeError {
     Conflict(String),
     #[fail(display = "Unprocessable Entity: {}", _0)]
     UnprocessableEntity(String),
-    #[fail(display = "An error occured: {}", _0)]
+    #[fail(display = "An error occurred: {}", _0)]
     Other(String),
 }
 
@@ -968,7 +968,7 @@ pub enum DeleteEventTypeError {
     Unauthorized(String),
     #[fail(display = "Forbidden: {}", _0)]
     Forbidden(String),
-    #[fail(display = "An error occured: {}", _0)]
+    #[fail(display = "An error occurred: {}", _0)]
     Other(String),
 }
 
@@ -1094,7 +1094,7 @@ impl<'de> Deserialize<'de> for PartitionStrategy {
             "hash" => Ok(PartitionStrategy::Hash),
             "user_defined" => Ok(PartitionStrategy::UserDefined),
             other => Err(serde::de::Error::custom(format!(
-                "not a partition stragtegy: {}",
+                "not a partition strategy: {}",
                 other
             ))),
         }
@@ -1166,7 +1166,7 @@ pub struct EventTypeDefinition {
 
 /// The schema definition of an event type.
 ///
-/// These are part of the parametrs used to create a new event type.
+/// These are part of the parameters used to create a new event type.
 ///
 /// For more information see
 /// [Event Type Schema](http://nakadi.io/manual.html#definition_EventTypeSchema)
@@ -1213,7 +1213,7 @@ impl<'de> Deserialize<'de> for SchemaType {
 /// Known statistics on an event type passed to Nakadi when creating
 /// an event.
 ///
-/// These are part of the parametrs used to create a new event type.
+/// These are part of the parameters used to create a new event type.
 ///
 /// For more information see
 /// [Event Type Statistics](http://nakadi.io/manual.html#definition_EventTypeStatistics)
