@@ -2,8 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use crate::model::misc::{AuthorizationAttribute, OwningApplication};
-pub use crate::model::{EventTypeName, PartitionId, StreamId};
+use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::SubscriptionCursorWithoutToken;
+use crate::model::{EventTypeName, PartitionId, StreamId};
 
 /// Id of subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,9 +114,37 @@ pub struct SubscriptionInput {
     owning_application: OwningApplication,
     event_types: EventTypeNames,
     consumer_group: Option<ConsumerGroup>,
-    read_from: (),
-    initial_cursors: (),
+    /// Position to start reading events from.
+    ///
+    /// Currently supported values:
+    ///
+    /// * Begin - read from the oldest available event.
+    /// * End - read from the most recent offset.
+    /// * Cursors - read from cursors provided in initial_cursors property.
+    /// Applied when the client starts reading from a subscription.
+    read_from: ReadFrom,
+    /// List of cursors to start reading from.
+    ///
+    /// This property is required when `read_from` = `ReadFrom::Cursors`.
+    /// The initial cursors should cover all partitions of subscription.
+    /// Clients will get events starting from next offset positions.
+    initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
     status: Vec<SubscriptionEventTypeStatus>,
-    #[serde(default)]
     authorization: SubscriptionAuthorization,
+}
+
+/// Position to start reading events from. Currently supported values:
+///
+///  * Begin - read from the oldest available event.
+///  * End - read from the most recent offset.
+///  * Cursors - read from cursors provided in initial_cursors property.
+///  Applied when the client starts reading from a subscription.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadFrom {
+    Start,
+    End,
+    Cursors,
 }
