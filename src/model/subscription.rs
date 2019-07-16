@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::model::cursor::CursorOffset;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
-use crate::model::SubscriptionCursorWithoutToken;
 use crate::model::{EventTypeName, PartitionId, StreamId};
 
 /// Id of subscription
@@ -148,3 +148,31 @@ pub enum ReadFrom {
     End,
     Cursors,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionCursorWithoutToken {
+    pub partition: PartitionId,
+    pub offset: CursorOffset,
+    pub event_type: EventTypeName,
+}
+
+/// An opaque value defined by the server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorToken(String);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionCursor {
+    pub partition: PartitionId,
+    pub offset: CursorOffset,
+    pub event_type: EventTypeName,
+    pub cursor_token: CursorToken,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitResult {
+    pub cursor: SubscriptionCursor,
+    pub result: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionEventTypeStats;

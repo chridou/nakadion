@@ -3,5 +3,7 @@ extern crate metrix;
 
 mod internals;
 
+pub mod event_stream;
+pub mod handler;
 pub mod model;
-pub mod api;
+pub mod nakadi_api;

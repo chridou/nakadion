@@ -7,6 +7,12 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
 
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct Partition {
+event_type: EventTypeName,
+      partition: PartitionId,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StreamId(Uuid);
 
@@ -17,21 +23,26 @@ pub struct StreamId(Uuid);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowId(String);
 
+/// Generates a random `FlowId` if passed as a parameter.
+///
+/// This struct is just for readability. `()` can also be used.
+pub struct RandomFlowId;
+
 impl FlowId {
     pub fn new<T: Into<String>>(v: T) -> Self {
         Self(v.into())
     }
 }
 
-impl From<()> for FlowId {
-    fn from(_v: ()) -> Self {
+impl From<RandomFlowId> for FlowId {
+    fn from(_v: RandomFlowId) -> Self {
         FlowId(uuid::Uuid::new_v4().to_string())
     }
 }
 
-impl From<String> for FlowId {
-    fn from(v: String) -> Self {
-        FlowId::new(v)
+impl<T> From<T> for FlowId where T: Into<String>  {
+    fn from(v: T) -> Self {
+        FlowId::new(v.into())
     }
 }
 
