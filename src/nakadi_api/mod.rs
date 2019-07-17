@@ -3,6 +3,8 @@ use serde::Serialize;
 use crate::model::*;
 use crate::event_stream::EventStream;
 
+mod reqwest_client;
+
 pub type NakadiApiResult<T> = Result<T, NakadiApiError>;
 
 trait MonitoringApi {
@@ -171,3 +173,4 @@ pub struct NakadiApiError;
 pub struct CommitError;
 
 pub struct ConnectError;
+

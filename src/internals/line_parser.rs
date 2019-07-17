@@ -47,18 +47,18 @@ impl Default for Cursor {
 }
 
 #[derive(Debug)]
-pub struct LineParseError(String);
+pub struct ParseLineError(String);
 
-impl<T> From<T> for LineParseError
+impl<T> From<T> for ParseLineError
 where
     T: Into<String>,
 {
     fn from(v: T) -> Self {
-        LineParseError(v.into())
+        ParseLineError(v.into())
     }
 }
 
-pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, LineParseError> {
+pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, ParseLineError> {
     let mut line_items = LineItems::default();
 
     let mut next_byte = 0;
@@ -81,7 +81,7 @@ fn parse_next_item(
     json_bytes: &[u8],
     start: usize,
     line_items: &mut LineItems,
-) -> Result<Option<usize>, LineParseError> {
+) -> Result<Option<usize>, ParseLineError> {
     if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
         if end - begin < 3 {
             return Err("String can not be a label if len < 3".into());
@@ -113,7 +113,7 @@ fn parse_next_item(
     }
 }
 
-fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, LineParseError> {
+fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>, ParseLineError> {
     if start == json_bytes.len() {
         return Ok(None);
     }
@@ -155,7 +155,7 @@ fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>
 
     if idx_end == json_bytes.len() {
         let start_seq = ::std::str::from_utf8(&json_bytes[start..idx_end])
-            .map_err(|err| LineParseError::from(format!("Not UTF-8: {}", err)))?;
+            .map_err(|err| ParseLineError::from(format!("Not UTF-8: {}", err)))?;
         return Err(format!(
             "Not a string. Missing ending `\"` after pos {} but before {} in {}",
             start, idx_end, start_seq
@@ -166,7 +166,7 @@ fn next_string(json_bytes: &[u8], start: usize) -> Result<Option<(usize, usize)>
     Ok(Some((idx_begin, idx_end)))
 }
 
-fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), LineParseError> {
+fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), ParseLineError> {
     if start == json_bytes.len() {
         return Err("Reached end".into());
     }
@@ -215,7 +215,7 @@ fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Line
     Ok((idx_begin, idx_end))
 }
 
-fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), LineParseError> {
+fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), ParseLineError> {
     if start == json_bytes.len() {
         return Err("Reached end".into());
     }
@@ -269,7 +269,7 @@ fn parse_cursor_fields(
     cursor: &mut Cursor,
     start: usize,
     end: usize,
-) -> Result<(), LineParseError> {
+) -> Result<(), ParseLineError> {
     let mut next_byte = start;
     while next_byte <= end {
         if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
@@ -289,7 +289,7 @@ fn parse_next_cursor_item(
     json_bytes: &[u8],
     start: usize,
     cursor: &mut Cursor,
-) -> Result<Option<usize>, LineParseError> {
+) -> Result<Option<usize>, ParseLineError> {
     if let Ok(Some((begin, end))) = next_string(json_bytes, start) {
         if end - begin < 2 {
             return Err("String can not be a label if len<2".into());

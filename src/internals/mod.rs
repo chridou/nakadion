@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+pub mod batch_line;
 pub mod line_parser;
 
 #[derive(Clone)]

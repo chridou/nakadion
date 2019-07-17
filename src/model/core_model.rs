@@ -1,5 +1,7 @@
 //! Essential types
 //!
+use std::fmt;
+use std::convert::AsRef;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -60,6 +62,18 @@ pub struct EventTypeName(String);
 impl EventTypeName {
     pub fn new(v: impl Into<String>) -> Self {
         EventTypeName(v.into())
+    }
+}
+
+impl fmt::Display for EventTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for EventTypeName {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
