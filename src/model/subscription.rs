@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use std::fmt;
+use std::convert::AsRef;
 
 use crate::model::cursor::CursorOffset;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
@@ -13,6 +15,12 @@ pub struct SubscriptionId(Uuid);
 impl SubscriptionId {
     pub fn new(id: Uuid) -> Self {
         SubscriptionId(id)
+    }
+}
+
+impl fmt::Display for SubscriptionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

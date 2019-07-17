@@ -1,5 +1,7 @@
 //! Optional OAUTH authorization for connecting to Nakadi
 use std::fmt;
+use std::convert::AsRef;
+use std::error::Error;
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
@@ -15,6 +17,12 @@ impl AccessToken {
 impl fmt::Display for AccessToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "<secret-access-token>")
+    }
+}
+
+impl AsRef<str> for AccessToken {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
@@ -40,6 +48,17 @@ impl ProvidesAccessToken for NoAuthAccessTokenProvider {
 /// This struct does not contain any details or reasons for logging.
 ///
 /// It is the duty of the implementor of `ProvidesAccessToken` to log errors.
-#[derive(Fail, Debug, Clone)]
-#[fail(display = "Failed to get access token")]
+#[derive(Debug)]
 pub struct TokenError;
+
+impl fmt::Display for TokenError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "Failed to get access token")
+    }
+}
+
+impl Error for TokenError {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}

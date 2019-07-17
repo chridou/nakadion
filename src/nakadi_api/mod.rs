@@ -1,7 +1,7 @@
 use serde::Serialize;
 
-use crate::model::*;
 use crate::event_stream::EventStream;
+use crate::model::*;
 
 mod reqwest_client;
 
@@ -73,14 +73,30 @@ trait StreamApi {
         name: &EventTypeName,
         events: &[E],
         flow_id: T,
-    ) -> NakadiApiResult<()>;
+    ) -> Result<(), PublishError> {
+        unimplemented!()
+    }
+
+    fn publish_event<T: Into<FlowId>, E: Serialize>(
+        name: &EventTypeName,
+        event: &E,
+        flow_id: T,
+    ) -> Result<(), PublishError> {
+        unimplemented!()
+    }
+
+    fn publish_raw_events<T: Into<FlowId>>(
+        name: &EventTypeName,
+        raw_events: &[u8],
+        flow_id: T,
+    ) -> Result<(), PublishError>;
 }
+
 trait SubscriptionApi {
     /// This endpoint creates a subscription for EventTypes.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
     fn create_subscription<T: Into<FlowId>>(
-        name: &EventTypeName,
         input: &SubscriptionInput,
         flow_id: T,
     ) -> NakadiApiResult<Subcription>;
@@ -89,7 +105,7 @@ trait SubscriptionApi {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
     fn get_subscription<T: Into<FlowId>>(
-        name: &EventTypeName,
+        name: SubscriptionId,
         flow_id: T,
     ) -> NakadiApiResult<Subcription>;
 
@@ -170,7 +186,8 @@ pub enum Committed {
 
 pub struct NakadiApiError;
 
+pub struct PublishError;
+
 pub struct CommitError;
 
 pub struct ConnectError;
-
