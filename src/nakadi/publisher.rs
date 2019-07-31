@@ -19,35 +19,44 @@ use nakadi::model::FlowId;
 /// and is not used for consuming a `Nakadi` stream.
 /// It is simply a helper for publishing to a `Nakadi`
 /// stream
+///
+/// Constructors take a parameter `retry_on_partial_success`.
+/// If set to `true` partial successes on publishing events will be retried.
+/// Otherwise not.
 #[derive(Clone)]
 pub struct NakadiPublisher {
     nakadi_base_url: Arc<String>,
     http_client: HttpClient,
     token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
+    retry_on_partial_success: bool,
 }
 
 impl NakadiPublisher {
     /// Create a new `NakadiPublisher`
     pub fn new<U: Into<String>, T: ProvidesAccessToken + Sync + Send + 'static>(
         nakadi_base_url: U,
+        retry_on_partial_success: bool,
         token_provider: T,
     ) -> NakadiPublisher {
         NakadiPublisher {
             nakadi_base_url: Arc::new(nakadi_base_url.into()),
             http_client: HttpClient::new(),
             token_provider: Arc::new(token_provider),
+            retry_on_partial_success,
         }
     }
 
     /// Create a new `NakadiPublisher`
     pub fn with_shared_access_token_provider<U: Into<String>>(
         nakadi_base_url: U,
+        retry_on_partial_success: bool,
         token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
     ) -> NakadiPublisher {
         NakadiPublisher {
             nakadi_base_url: Arc::new(nakadi_base_url.into()),
             http_client: HttpClient::new(),
             token_provider,
+            retry_on_partial_success,
         }
     }
 
@@ -77,6 +86,7 @@ impl NakadiPublisher {
             &*self.token_provider,
             bytes.clone(),
             &flow_id,
+            self.retry_on_partial_success,
         ) {
             Ok(publish_status) => Ok(publish_status),
             Err(err) => {
@@ -130,6 +140,7 @@ fn publish_events(
     token_provider: &ProvidesAccessToken,
     bytes: Vec<u8>,
     flow_id: &FlowId,
+    retry_on_partial_success: bool,
 ) -> Result<PublishStatus, PublishError> {
     let mut headers = HeaderMap::new();
 
@@ -147,7 +158,16 @@ fn publish_events(
     match request_builder.body(bytes).send() {
         Ok(ref mut response) => match response.status() {
             StatusCode::OK => Ok(PublishStatus::AllEventsPublished),
-            StatusCode::MULTI_STATUS => Ok(PublishStatus::NotAllEventsPublished),
+            StatusCode::MULTI_STATUS => {
+                if !retry_on_partial_success {
+                    Ok(PublishStatus::NotAllEventsPublished)
+                } else {
+                    Err(PublishError::Other(
+                        "Partial success. Retry enabled.".to_string(),
+                        flow_id.clone(),
+                    ))
+                }
+            }
             StatusCode::UNAUTHORIZED => {
                 let msg = read_response_body(response);
                 Err(PublishError::Unauthorized(msg, flow_id.clone()))
