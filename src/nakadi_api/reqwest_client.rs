@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use reqwest::{Client, Url, RequestBuilder};
+use reqwest::{Client, Method, RequestBuilder, Url};
+use serde::de::DeserializeOwned;
+use serde_json;
 
-use crate::auth::{ProvidesAccessToken, TokenError};
+use crate::auth::ProvidesAccessToken;
 
 use super::*;
 
@@ -10,24 +12,55 @@ use super::*;
 pub struct ReqwestNakadiApiClient {
     client: Client,
     urls: Arc<Urls>,
-    token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>
+    token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
 }
 
 impl ReqwestNakadiApiClient {
-    pub fn new<P>(client: Client, base_url: Url, token_provider: P) -> Self where P: ProvidesAccessToken + Send + Sync + 'static{
+    pub fn new<P>(client: Client, base_url: Url, token_provider: P) -> Self
+    where
+        P: ProvidesAccessToken + Send + Sync + 'static,
+    {
         Self {
             client,
             urls: Arc::new(Urls::new(base_url)),
-            token_provider: Arc::new(token_provider)
+            token_provider: Arc::new(token_provider),
         }
     }
 
-    fn enrich_with_token(&self, b: RequestBuilder) -> Result<RequestBuilder, TokenError> {
-        if let Some(token) = self.token_provider.get_token()? {
-            Ok(b.bearer_auth(token))
+    fn get<R: DeserializeOwned, T: Into<FlowId>>(
+        &self,
+        url: Url,
+        flow_id: T,
+    ) -> Result<R, RemoteCallError> {
+        let b = self.client.request(Method::GET, url);
+        let b = self.add_headers(b, flow_id)?;
+
+        let rsp = b.send()?;
+
+        if rsp.status().is_success() {
+            Ok(serde_json::from_reader(rsp)?)
         } else {
-            Ok(b)
+            unimplemented!()
         }
+    }
+
+    fn add_headers<T: Into<FlowId>>(
+        &self,
+        b: RequestBuilder,
+        flow_id: T,
+    ) -> Result<RequestBuilder, RemoteCallError> {
+        let flow_id = flow_id.into();
+        let b = if let Some(token) = self.token_provider.get_token().map_err(|err| {
+            RemoteCallError::new(RemoteCallErrorKind::Other, "could not get token", None)
+                .with_cause(err)
+        })? {
+            b.bearer_auth(token)
+        } else {
+            b
+        }
+        .header("x-flow_id", flow_id.to_string());
+
+        Ok(b)
     }
 }
 
@@ -269,5 +302,11 @@ impl Urls {
             .unwrap()
             .join("stats")
             .unwrap()
+    }
+}
+
+impl From<reqwest::Error> for RemoteCallError {
+    fn from(err: reqwest::Error) -> Self {
+        unimplemented!()
     }
 }

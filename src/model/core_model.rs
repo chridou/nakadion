@@ -1,7 +1,7 @@
 //! Essential types
 //!
-use std::fmt;
 use std::convert::AsRef;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -11,8 +11,8 @@ pub struct PartitionId(String);
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Partition {
-event_type: EventTypeName,
-      partition: PartitionId,
+    event_type: EventTypeName,
+    partition: PartitionId,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -36,13 +36,22 @@ impl FlowId {
     }
 }
 
+impl fmt::Display for FlowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl From<RandomFlowId> for FlowId {
     fn from(_v: RandomFlowId) -> Self {
         FlowId(uuid::Uuid::new_v4().to_string())
     }
 }
 
-impl<T> From<T> for FlowId where T: Into<String>  {
+impl<T> From<T> for FlowId
+where
+    T: Into<String>,
+{
     fn from(v: T) -> Self {
         FlowId::new(v.into())
     }
