@@ -1,10 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
-
-use serde::Serialize;
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
+use serde::Serialize;
 
 use crate::event_stream::EventStream;
 use crate::model::*;
@@ -200,22 +199,25 @@ pub struct ConnectError;
 
 #[derive(Debug)]
 pub struct RemoteCallError {
-    message: Option<String>,
-    status_code: Option<StatusCode>,
-    cause: Option<Box<dyn Error + Send + 'static>>,
+    pub(crate) message: Option<String>,
+    pub(crate) status_code: Option<StatusCode>,
+    pub(crate) cause: Option<Box<dyn Error + Send + 'static>>,
     pub(crate) problem: Option<HttpApiProblem>,
     kind: RemoteCallErrorKind,
 }
 
-
 impl RemoteCallError {
-    pub(crate) fn new<M: Into<String>>(kind:RemoteCallErrorKind, message: M, status_code: Option<StatusCode>) -> Self {
+    pub(crate) fn new<M: Into<String>>(
+        kind: RemoteCallErrorKind,
+        message: M,
+        status_code: Option<StatusCode>,
+    ) -> Self {
         Self {
             message: Some(message.into()),
             status_code,
             kind,
             problem: None,
-            cause: None
+            cause: None,
         }
     }
 
@@ -231,11 +233,11 @@ impl RemoteCallError {
         self.kind == RemoteCallErrorKind::Serialization
     }
 
-   pub fn is_io(&self) -> bool {
+    pub fn is_io(&self) -> bool {
         self.kind == RemoteCallErrorKind::Io
     }
 
-   pub fn is_other(&self) -> bool {
+    pub fn is_other(&self) -> bool {
         self.kind == RemoteCallErrorKind::Other
     }
 
@@ -257,7 +259,7 @@ impl RemoteCallError {
         }
     }
 
-    pub(crate) fn with_cause<E: Error + Send + 'static>(mut self, cause: E ) -> Self {
+    pub(crate) fn with_cause<E: Error + Send + 'static>(mut self, cause: E) -> Self {
         self.cause = Some(Box::new(cause));
         self
     }
@@ -269,33 +271,30 @@ impl fmt::Display for RemoteCallError {
 
         match self.kind {
             Client => {
-            write!(f, "client error")?;
-
-            },
+                write!(f, "client error")?;
+            }
             Server => {
-            write!(f, "server error")?;
-
-            },
+                write!(f, "server error")?;
+            }
             Serialization => {
-            write!(f, "serialization error")?;
-
-            },
+                write!(f, "serialization error")?;
+            }
             Io => {
-            write!(f, "io error")?;
-
-            },
+                write!(f, "io error")?;
+            }
             Other => {
-            write!(f, "other error")?;
-
-            },
+                write!(f, "other error")?;
+            }
         }
 
         if let Some(status_code) = self.status_code {
             write!(f, " - status: {}", status_code)?;
         }
 
-       if let Some(ref message) = self.message {
+        if let Some(ref message) = self.message {
             write!(f, " - message: {}", message)?;
+        } else if let Some(detail) = self.problem.as_ref().and_then(|p| p.detail.as_ref()) {
+            write!(f, " - message: {}", detail)?;
         }
 
         Ok(())
@@ -308,14 +307,26 @@ impl Error for RemoteCallError {
     }
 }
 
+impl From<RemoteCallErrorKind> for RemoteCallError {
+    fn from(kind: RemoteCallErrorKind) -> Self {
+        Self {
+            message: None,
+            status_code: None,
+            cause: None,
+            problem: None,
+            kind,
+        }
+    }
+}
+
 impl From<serde_json::Error> for RemoteCallError {
     fn from(err: serde_json::Error) -> Self {
-        Self{
-               message: Some("de/-serialization error".to_string()),
-    status_code: None,
-    cause: Some(Box::new(err)),
-    problem: None,
-    kind: RemoteCallErrorKind::Serialization,
+        Self {
+            message: Some("de/-serialization error".to_string()),
+            status_code: None,
+            cause: Some(Box::new(err)),
+            problem: None,
+            kind: RemoteCallErrorKind::Serialization,
         }
     }
 }
@@ -327,4 +338,3 @@ pub(crate) enum RemoteCallErrorKind {
     Io,
     Other,
 }
-

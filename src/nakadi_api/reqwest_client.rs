@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use reqwest::{Client, Method, RequestBuilder, Url};
+use reqwest::{Client, Method, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde_json;
 
@@ -40,7 +40,7 @@ impl ReqwestNakadiApiClient {
         if rsp.status().is_success() {
             Ok(serde_json::from_reader(rsp)?)
         } else {
-            unimplemented!()
+            Err(evaluate_error(rsp))
         }
     }
 
@@ -309,4 +309,28 @@ impl From<reqwest::Error> for RemoteCallError {
     fn from(err: reqwest::Error) -> Self {
         unimplemented!()
     }
+}
+
+fn evaluate_error(rsp: Response) -> RemoteCallError {
+    let status_code = rsp.status();
+
+    let kind = if status_code.is_client_error() {
+        RemoteCallErrorKind::Client
+    } else if status_code.is_server_error() {
+        RemoteCallErrorKind::Server
+    } else {
+        RemoteCallErrorKind::Other
+    };
+
+    let mut err: RemoteCallError = kind.into();
+
+    if let Ok(problem) = serde_json::from_reader(rsp) {
+        err.problem = problem;
+    } else {
+        err.message = Some("*** could not extract problem from response ***".to_owned());
+    }
+
+    err.status_code = Some(status_code);
+
+    err
 }
