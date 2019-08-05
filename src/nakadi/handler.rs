@@ -2,7 +2,14 @@
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use nakadi::model::{EventType, PartitionId};
+use nakadi::model::PartitionId;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SubscriptionCursor {
+    pub partition: PartitionId,
+    pub offset: String,
+    pub event_type: String,
+}
 
 /// This struct must be returned after processing a batch
 /// to tell nakadion how to continue.
@@ -61,7 +68,7 @@ impl ProcessingStatus {
 /// # Example
 ///
 /// ```rust
-/// use nakadion::{BatchHandler, EventType, ProcessingStatus};
+/// use nakadion::{BatchHandler, SubscriptionCursor, ProcessingStatus, PartitionId};
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler {
@@ -70,7 +77,7 @@ impl ProcessingStatus {
 ///
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
-///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///     fn handle(&mut self, _cursor: &SubscriptionCursor, _events: &[u8]) -> ProcessingStatus {
 ///         self.count += 1;
 ///         ProcessingStatus::processed_no_hint()
 ///     }
@@ -80,7 +87,12 @@ impl ProcessingStatus {
 /// let mut handler = MyHandler { count: 0 };
 ///
 /// // This will be done by Nakadion
-/// let status = handler.handle(EventType::new("test_event"), &[]);
+/// let cursor = SubscriptionCursor {
+///    partition: PartitionId::new("1"),
+///    offset: "53".to_string(),
+///    event_type: "test_event".to_string(),
+/// };
+/// let status = handler.handle(&cursor, &[]);
 ///
 /// assert_eq!(handler.count, 1);
 /// assert_eq!(status, ProcessingStatus::Processed(None));
@@ -89,7 +101,7 @@ pub trait BatchHandler {
     /// Handle the events.
     ///
     /// Calling this method may never panic!
-    fn handle(&mut self, event_type: EventType, events: &[u8]) -> ProcessingStatus;
+    fn handle(&mut self, cursor: &SubscriptionCursor, events: &[u8]) -> ProcessingStatus;
 }
 
 /// An error that can happen when the `HandlerFactory` was not able to create
@@ -118,7 +130,7 @@ pub struct CreateHandlerError {
 /// use std::sync::{Arc, Mutex};
 ///
 /// use nakadion::{
-///     BatchHandler, CreateHandlerError, EventType, HandlerFactory, PartitionId, ProcessingStatus,
+///     BatchHandler, CreateHandlerError, SubscriptionCursor, HandlerFactory, PartitionId, ProcessingStatus,
 /// };
 ///
 /// // Use a struct to maintain state
@@ -126,7 +138,7 @@ pub struct CreateHandlerError {
 ///
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
-///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///     fn handle(&mut self, _cursor: &SubscriptionCursor, _events: &[u8]) -> ProcessingStatus {
 ///         *self.0.lock().unwrap() += 1;
 ///         ProcessingStatus::processed_no_hint()
 ///     }
@@ -151,18 +163,28 @@ pub struct CreateHandlerError {
 ///
 /// let factory = MyHandlerFactory(count.clone());
 ///
-/// // Handler creation will be done by Nakadion
+/// // Handler creation will be invoked by Nakadion
 /// let mut handler1 = factory.create_handler(&PartitionId::new("1")).unwrap();
 /// let mut handler2 = factory.create_handler(&PartitionId::new("2")).unwrap();
 ///
 /// // This will be done by Nakadion
-/// let status1 = handler1.handle(EventType::new("test_event"), &[]);
+/// let cursor = SubscriptionCursor {
+///    partition: PartitionId::new("1"),
+///    offset: "53".to_string(),
+///    event_type: "test_event".to_string(),
+/// };
+/// let status1 = handler1.handle(&cursor, &[]);
 ///
 /// assert_eq!(*count.lock().unwrap(), 1);
 /// assert_eq!(status1, ProcessingStatus::Processed(None));
 ///
 /// // This will be done by Nakadion
-/// let status2 = handler2.handle(EventType::new("test_event"), &[]);
+/// let cursor = SubscriptionCursor {
+///    partition: PartitionId::new("2"),
+///    offset: "54".to_string(),
+///    event_type: "test_event".to_string(),
+/// };
+/// let status2 = handler2.handle(&cursor, &[]);
 ///
 /// assert_eq!(*count.lock().unwrap(), 2);
 /// assert_eq!(status2, ProcessingStatus::Processed(None));
@@ -232,7 +254,11 @@ pub enum TypedProcessingStatus {
 pub trait TypedBatchHandler {
     type Event: DeserializeOwned;
     /// Execute the processing logic with a deserialized batch of events.
-    fn handle(&mut self, events: Vec<Self::Event>) -> TypedProcessingStatus;
+    fn handle(
+        &mut self,
+        cursor: &SubscriptionCursor,
+        events: Vec<Self::Event>,
+    ) -> TypedProcessingStatus;
 
     // A handler which is invoked if deserialization of the
     // whole events batch at once failed.
@@ -258,12 +284,12 @@ where
     T: TypedBatchHandler<Event = E>,
     E: DeserializeOwned,
 {
-    fn handle(&mut self, _event_type: EventType, events: &[u8]) -> ProcessingStatus {
+    fn handle(&mut self, cursor: &SubscriptionCursor, events: &[u8]) -> ProcessingStatus {
         match serde_json::from_slice::<Vec<E>>(events) {
             Ok(events) => {
                 let n = events.len();
 
-                match TypedBatchHandler::handle(self, events) {
+                match TypedBatchHandler::handle(self, cursor, events) {
                     TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
                     TypedProcessingStatus::Failed { reason } => ProcessingStatus::Failed { reason },
                 }
@@ -304,4 +330,22 @@ fn try_deserialize_individually<T: DeserializeOwned>(
     }
 
     Ok(results)
+}
+
+#[test]
+fn parse_cursor() {
+    use serde_json;
+    let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
+
+    let parsed: SubscriptionCursor = serde_json::from_str(&cursor_sample).unwrap();
+
+    let expected = SubscriptionCursor {
+        partition: PartitionId::new("6"),
+        offset: "543".to_string(),
+        event_type: "order.ORDER_RECEIVED".to_string(),
+    };
+
+    assert_eq!(parsed, expected);
 }

@@ -5,12 +5,12 @@ use std::time::{Duration, Instant};
 
 use cancellation_token::*;
 use failure::*;
+use serde_json;
 
 use nakadi::batch::Batch;
 use nakadi::committer::Committer;
 use nakadi::handler::{BatchHandler, ProcessingStatus};
 use nakadi::metrics::MetricsCollector;
-use nakadi::model::EventType;
 use nakadi::model::PartitionId;
 
 /// A worker is responsible for executing a handler on a given
@@ -167,11 +167,11 @@ fn handler_loop<H, M>(
         metrics_collector.worker_batch_received(batch.received_at);
 
         let handler_result = {
-            let event_type = match batch.batch_line.event_type_str() {
-                Ok(et) => EventType::new(et),
+            let cursor = match serde_json::from_slice(batch.batch_line.cursor()) {
+                Ok(cursor) => cursor,
                 Err(err) => {
                     error!(
-                        "[Worker, stream={}, partition={}] Invalid event type str. Stopping: {}",
+                        "[Worker, stream={}, partition={}] Could not parse cursor. Stopping: {}",
                         stream_id, partition, err
                     );
                     break;
@@ -191,7 +191,7 @@ fn handler_loop<H, M>(
 
             metrics_collector.worker_batch_size_bytes(events.len());
             let start = Instant::now();
-            let handler_result = handler.handle(event_type, events);
+            let handler_result = handler.handle(&cursor, events);
             metrics_collector.worker_batch_processed(start);
             handler_result
         };

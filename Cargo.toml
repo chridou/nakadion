@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -13,7 +13,7 @@ keywords = ["event", "broker", "distributed", "message", "nakadi"]
 [dependencies]
 log = "0.4"
 uuid = {version = "0.7", features=["serde", "v4"] }
-url = { version = "1.7" }
+url = { version = "2.0" }
 reqwest = "0.9"
 failure = "0.1"
 backoff = "0.1"
