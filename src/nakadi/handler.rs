@@ -264,6 +264,7 @@ pub trait TypedBatchHandler {
     // whole events batch at once failed.
     fn handle_deserialization_errors(
         &mut self,
+        cursor: &SubscriptionCursor,
         results: Vec<EventDeserializationResult<Self::Event>>,
     ) -> TypedProcessingStatus {
         let num_events = results.len();
@@ -297,7 +298,7 @@ where
             Err(_) => match try_deserialize_individually::<E>(events) {
                 Ok(results) => {
                     let n = results.len();
-                    match self.handle_deserialization_errors(results) {
+                    match self.handle_deserialization_errors(cursor, results) {
                         TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
                         TypedProcessingStatus::Failed { reason } => {
                             ProcessingStatus::Failed { reason }

@@ -1,5 +1,7 @@
 //! ## Changelog
 //!
+//! * 0.13.1
+//!     * TypeBatchHandler also gets cursors on deserialization errors
 //! * 0.13.0
 //!     * Small breaking change: Handlers are given the current cursor.
 //!     Simply adjust the signature of your handlers to take the parameter.
