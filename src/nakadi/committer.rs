@@ -242,13 +242,13 @@ fn run_commit_loop<C, M>(
         match receiver.recv_timeout(Duration::from_millis(50)) {
             Ok(CommitterMessage::Commit(next_batch, num_events_hint)) => {
                 metrics_collector.committer_batch_received(next_batch.received_at);
-                let mut key = (
+                let key = (
                     next_batch.batch_line.partition().to_vec(),
                     next_batch.batch_line.event_type().to_vec(),
                 );
 
                 match cursors.entry(key) {
-                    Entry::Vacant(mut entry) => {
+                    Entry::Vacant(entry) => {
                         entry.insert(CommitEntry::new(next_batch, strategy, num_events_hint));
                     }
                     Entry::Occupied(mut entry) => {

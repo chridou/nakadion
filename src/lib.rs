@@ -44,7 +44,7 @@
 //! // Keep in mind that there is also `TypedBatchHandler` which can
 //! // deserialize the events.
 //! impl BatchHandler for MyHandler {
-//!     fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//!     fn handle(&mut self, _cursor: &SubscriptionCursor, _events: &[u8]) ->
 //!         ProcessingStatus {
 //!             self.count += 1;
 //!            ProcessingStatus::processed_no_hint()
@@ -60,7 +60,7 @@
 //! #    pub count: i32,
 //! # }
 //! # impl BatchHandler for MyHandler {
-//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//! #    fn handle(&mut self, _cursor: &SubscriptionCursor, _events: &[u8]) ->
 //! # ProcessingStatus {
 //! #        self.count += 1;
 //! #        ProcessingStatus::processed_no_hint()
@@ -120,7 +120,7 @@
 //! #    pub count: i32,
 //! # }
 //! # impl BatchHandler for MyHandler {
-//! #    fn handle(&mut self, _event_type: EventType, _events: &[u8]) ->
+//! #    fn handle(&mut self, _cursor: &SubscriptionCursor, _events: &[u8]) ->
 //! # ProcessingStatus {
 //! #        self.count += 1;
 //! #        ProcessingStatus::processed_no_hint()
@@ -232,17 +232,9 @@
 //! thousands events per second depending on the complexity of your processing
 //! logic.
 //!
-//! ## Recent Changes
+//! ## Recent changes
 //!
-//! * 0.10.2
-//!     * update crate uuid to 0.7
-//! * 0.10.1
-//!     * Event types must be an optional vec in the incoming metadata
-//! * 0.10.0
-//!     * Improved typed `TypedHandler` to handle deserialization failures on
-//! individual events   * Updated metrix to 0.8
-//! * 0.9.0
-//!    * Updated metrix to 0.7
+//! See `CHANGELOG.md` in repository
 //!
 //! ## License
 //!

@@ -51,6 +51,7 @@ impl BatchLine {
         &self.bytes[a..=b]
     }
 
+    #[cfg(test)]
     pub fn event_type_str(&self) -> Result<&str, Error> {
         ::std::str::from_utf8(self.event_type())
             .map_err(|err| format_err!("Partition is not UTF-8: {}", err))
