@@ -3,7 +3,8 @@ use std::fmt;
 
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
+use url::Url;
 
 use crate::event_stream::EventStream;
 use crate::model::*;
@@ -189,7 +190,7 @@ pub enum Committed {
     NotAllCommitted(Vec<CommitResult>),
 }
 
-pub struct NakadiApiError;
+type NakadiApiError = RemoteCallError;
 
 pub struct PublishError;
 
@@ -265,6 +266,8 @@ impl RemoteCallError {
     }
 }
 
+pub type RemoteCallResult<T> = Result<T, RemoteCallError>;
+
 impl fmt::Display for RemoteCallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use RemoteCallErrorKind::*;
@@ -337,4 +340,167 @@ pub(crate) enum RemoteCallErrorKind {
     Serialization,
     Io,
     Other,
+}
+
+pub trait DispatchHttp {
+    fn get<R: DeserializeOwned, T: Into<FlowId>>(
+        &self,
+        endpoint: Url,
+        flow_id: T,
+    ) -> RemoteCallResult<R>;
+
+    fn put<S: Serialize, R: DeserializeOwned, T: Into<FlowId>>(
+        &self,
+        endpoint: Url,
+        body: &S,
+        flow_id: T,
+    ) -> RemoteCallResult<R>;
+
+    fn post<S: Serialize, R: DeserializeOwned, T: Into<FlowId>>(
+        &self,
+        endpoint: Url,
+        body: &S,
+        flow_id: T,
+    ) -> RemoteCallResult<R>;
+
+    fn connect<T: Into<FlowId>>(
+        &self,
+        endpoint: Url,
+        parameters: &StreamParameters,
+        flow_id: T,
+    ) -> Result<EventStream, ConnectError>;
+}
+
+
+impl<T> MonitoringApi for T where T: DispatchHttp {
+     fn get_cursor_distances<T: Into<FlowId>>(
+        name: &EventTypeName,
+        query: &CursorDistanceQuery,
+        flow_id: T,
+    ) -> NakadiApiResult<CursorDistanceResult> {
+
+    }
+   
+   fn get_cursor_lag<T: Into<FlowId>>(
+        name: &EventTypeName,
+        cursors: &[Cursor],
+        flow_id: T,
+    ) -> NakadiApiResult<CursorLagResult> {
+
+    }
+   
+}
+
+struct Urls {
+    event_types: Url,
+    subscriptions: Url,
+}
+
+mod urls {
+    pub fn new(base_url: Url) -> Self {
+        Self {
+            event_types: base_url.join("event-types").unwrap(),
+            subscriptions: base_url.join("subscriptions").unwrap(),
+        }
+    }
+
+    pub fn monitoring_cursor_distances(&self, event_type: &EventTypeName) -> Url {
+        self.event_types
+            .join(event_type.as_ref())
+            .unwrap()
+            .join("cursor-distances")
+            .unwrap()
+    }
+
+    pub fn monitoring_cursor_lag(&self, event_type: &EventTypeName) -> Url {
+        self.event_types
+            .join(event_type.as_ref())
+            .unwrap()
+            .join("cursor-lag")
+            .unwrap()
+    }
+
+    pub fn schema_registry_list_event_types(&self) -> &Url {
+        &self.event_types
+    }
+
+    pub fn schema_registry_create_event_type(&self) -> &Url {
+        &self.event_types
+    }
+
+    pub fn schema_registry_get_event_type(&self, event_type: &EventTypeName) -> Url {
+        self.event_types.join(event_type.as_ref()).unwrap()
+    }
+
+    pub fn schema_registry_update_event_type(&self, event_type: &EventTypeName) -> Url {
+        self.event_types.join(event_type.as_ref()).unwrap()
+    }
+
+    pub fn schema_registry_delete_event_type(&self, event_type: &EventTypeName) -> Url {
+        self.event_types.join(event_type.as_ref()).unwrap()
+    }
+
+    pub fn stream_api_publish(&self, event_type: &EventTypeName) -> Url {
+        self.event_types
+            .join(event_type.as_ref())
+            .unwrap()
+            .join("events")
+            .unwrap()
+    }
+
+    pub fn subscriptions_create_subscription(&self) -> &Url {
+        &self.subscriptions
+    }
+
+    pub fn subscriptions_delete_subscription(&self, id: SubscriptionId) -> Url {
+        self.subscriptions.join(&id.to_string()).unwrap()
+    }
+
+    pub fn subscriptions_get_subscription(&self, id: SubscriptionId) -> Url {
+        self.subscriptions.join(&id.to_string()).unwrap()
+    }
+
+    pub fn subscriptions_update_auth(&self, id: SubscriptionId) -> Url {
+        self.subscriptions.join(&id.to_string()).unwrap()
+    }
+
+    pub fn subscriptions_get_committed_offsets(&self, id: SubscriptionId) -> Url {
+        self.subscriptions
+            .join(&id.to_string())
+            .unwrap()
+            .join("cursors")
+            .unwrap()
+    }
+
+    pub fn subscriptions_get_commit_cursors(&self, id: SubscriptionId) -> Url {
+        self.subscriptions
+            .join(&id.to_string())
+            .unwrap()
+            .join("cursors")
+            .unwrap()
+    }
+
+    pub fn subscriptions_reset_subscription_cursors(&self, id: SubscriptionId) -> Url {
+        self.subscriptions
+            .join(&id.to_string())
+            .unwrap()
+            .join("cursors")
+            .unwrap()
+    }
+
+    pub fn subscriptions_events(&self, id: SubscriptionId) -> Url {
+        self.subscriptions
+            .join(&id.to_string())
+            .unwrap()
+            .join("events")
+            .unwrap()
+    }
+
+    pub fn subscriptions_stats(&self, id: SubscriptionId) -> Url {
+        self.subscriptions
+            .join(&id.to_string())
+            .unwrap()
+            .join("stats")
+            .unwrap()
+    }
 }

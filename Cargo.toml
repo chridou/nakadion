@@ -14,7 +14,7 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 uuid = {version = "0.7", features=["serde", "v4"] }
-url = { version = "1.7" }
+url = { version = "2.1" }
 reqwest = "0.9"
 http = "0.1"
 http-api-problem = "0.13"
