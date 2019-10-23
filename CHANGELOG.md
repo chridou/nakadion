@@ -1,5 +1,7 @@
 //! ## Changelog
 //!
+//! * 0.14.0
+//!     * update uuid crate to 0.8 and url crate to 2.1
 //! * 0.13.1
 //!     * TypeBatchHandler also gets cursors on deserialization errors
 //! * 0.13.0
@@ -7,7 +9,7 @@
 //!     Simply adjust the signature of your handlers to take the parameter.
 //!     * Pushed Url crate to 2.0
 //! * 0.12.0
-//!     * Breaking change in NakadiPubisher: Flag on retry startegy required on creation
+//!     * Breaking change in NakadiPublisher: Flag on retry strategy required on creation
 //! * 0.10.2
 //!     * update crate uuid to 0.7
 //! * 0.10.1
