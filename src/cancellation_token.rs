@@ -6,7 +6,7 @@ use nakadi::metrics::*;
 pub struct CancellationTokenSource {
     cancellation_requested: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
-    metrics_collector: Arc<MetricsCollector + Sync + Send + 'static>,
+    metrics_collector: Arc<dyn MetricsCollector + Sync + Send + 'static>,
 }
 
 impl Drop for CancellationTokenSource {
@@ -70,7 +70,7 @@ pub trait CancellationToken {
 pub struct AutoCancellationToken {
     cancellation_requested: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
-    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
+    metrics_collector: Arc<dyn MetricsCollector + Send + Sync + 'static>,
 }
 
 impl Drop for AutoCancellationToken {

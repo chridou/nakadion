@@ -31,7 +31,7 @@ pub struct Committer {
     stream_id: StreamId,
     lifecycle: Arc<CancellationTokenSource>,
     subscription_id: SubscriptionId,
-    metrics_collector: Arc<MetricsCollector + Send + Sync + 'static>,
+    metrics_collector: Arc<dyn MetricsCollector + Send + Sync + 'static>,
 }
 
 enum CommitterMessage {

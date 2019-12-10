@@ -384,7 +384,7 @@ impl ConfigBuilder {
     /// The configuration was invalid.
     pub fn build_client_with_shared_access_token_provider<M>(
         self,
-        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+        token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
         metrics_collector: M,
     ) -> Result<NakadiStreamingClient<M>, Error>
     where
@@ -405,7 +405,7 @@ impl ConfigBuilder {
 #[derive(Clone)]
 pub struct NakadiStreamingClient<M> {
     http_client: HttpClient,
-    token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
     config: Config,
     metrics_collector: M,
 }
@@ -443,7 +443,7 @@ where
     /// Create a new `NakadiStreamingClient<M>` with a shared access token provider.
     pub fn with_shared_access_token_provider(
         config: Config,
-        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+        token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
         metrics_collector: M,
     ) -> Result<NakadiStreamingClient<M>, Error> {
         let http_client = HttpClientBuilder::new()

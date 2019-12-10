@@ -240,7 +240,7 @@ impl ConfigBuilder {
     /// Fails if this builder is in an invalid state.
     pub fn build_client_with_shared_access_token_provider(
         self,
-        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+        token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
     ) -> Result<NakadiApiClient, Error> {
         let config = self.build().context("Could not build client config")?;
 
@@ -256,7 +256,7 @@ impl ConfigBuilder {
 pub struct NakadiApiClient {
     nakadi_host: String,
     http_client: HttpClient,
-    token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+    token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
 }
 
 impl NakadiApiClient {
@@ -279,7 +279,7 @@ impl NakadiApiClient {
     /// Fails if no HTTP client could be created.
     pub fn with_shared_access_token_provider(
         config: Config,
-        token_provider: Arc<ProvidesAccessToken + Send + Sync + 'static>,
+        token_provider: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
     ) -> Result<NakadiApiClient, Error> {
         let http_client = HttpClientBuilder::new()
             .timeout(config.request_timeout)
@@ -629,7 +629,7 @@ impl From<::reqwest::Error> for StatsError {
 fn create_event_type(
     client: &HttpClient,
     url: &str,
-    token_provider: &ProvidesAccessToken,
+    token_provider: &dyn ProvidesAccessToken,
     event_type: &EventTypeDefinition,
 ) -> Result<(), CreateEventTypeError> {
     let mut headers = HeaderMap::new();
@@ -671,7 +671,7 @@ fn create_event_type(
 fn delete_event_type(
     client: &HttpClient,
     url: &str,
-    token_provider: &ProvidesAccessToken,
+    token_provider: &dyn ProvidesAccessToken,
 ) -> Result<(), DeleteEventTypeError> {
     let request_builder = client.delete(url);
 
@@ -704,7 +704,7 @@ fn delete_event_type(
 fn delete_subscription(
     client: &HttpClient,
     url: &str,
-    token_provider: &ProvidesAccessToken,
+    token_provider: &dyn ProvidesAccessToken,
 ) -> Result<(), DeleteSubscriptionError> {
     let request_builder = client.delete(url);
 
@@ -749,7 +749,7 @@ fn read_response_body(response: &mut Response) -> String {
 fn create_subscription(
     client: &HttpClient,
     url: &str,
-    token_provider: &ProvidesAccessToken,
+    token_provider: &dyn ProvidesAccessToken,
     request: &SubscriptionRequest,
 ) -> Result<CreateSubscriptionStatus, CreateSubscriptionError> {
     let mut headers = HeaderMap::new();

@@ -1,5 +1,7 @@
 //! ## Changelog
 //!
+//! * 0.15.0
+//!     * upgraded `metrix` feature to 0.10 which has breaking changes
 //! * 0.14.0
 //!     * update uuid crate to 0.8 and url crate to 2.1
 //! * 0.13.1

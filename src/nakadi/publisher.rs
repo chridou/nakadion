@@ -27,7 +27,7 @@ use nakadi::model::FlowId;
 pub struct NakadiPublisher {
     nakadi_base_url: Arc<String>,
     http_client: HttpClient,
-    token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
+    token_provider: Arc<dyn ProvidesAccessToken + Sync + Send + 'static>,
     retry_on_partial_success: bool,
 }
 
@@ -50,7 +50,7 @@ impl NakadiPublisher {
     pub fn with_shared_access_token_provider<U: Into<String>>(
         nakadi_base_url: U,
         retry_on_partial_success: bool,
-        token_provider: Arc<ProvidesAccessToken + Sync + Send + 'static>,
+        token_provider: Arc<dyn ProvidesAccessToken + Sync + Send + 'static>,
     ) -> NakadiPublisher {
         NakadiPublisher {
             nakadi_base_url: Arc::new(nakadi_base_url.into()),
@@ -137,7 +137,7 @@ impl NakadiPublisher {
 fn publish_events(
     client: &HttpClient,
     url: &str,
-    token_provider: &ProvidesAccessToken,
+    token_provider: &dyn ProvidesAccessToken,
     bytes: Vec<u8>,
     flow_id: &FlowId,
     retry_on_partial_success: bool,

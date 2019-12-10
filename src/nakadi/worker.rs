@@ -22,7 +22,7 @@ pub struct Worker {
     lifecycle: CancellationTokenSource,
     /// The partition this worker is responsible for.
     partition: PartitionId,
-    metrics_collector: Box<MetricsCollector>,
+    metrics_collector: Box<dyn MetricsCollector>,
 }
 
 impl Worker {

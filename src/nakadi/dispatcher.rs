@@ -24,7 +24,7 @@ pub struct Dispatcher {
     /// Send batches with this sender
     sender: mpsc::Sender<Batch>,
     lifecycle: CancellationTokenSource,
-    metrics_collector: Box<MetricsCollector>,
+    metrics_collector: Box<dyn MetricsCollector>,
 }
 
 impl Dispatcher {
@@ -266,7 +266,7 @@ fn dispatcher_loop<HF, M>(
 
 fn kill_idle_workers(
     workers: Vec<(Worker, Instant)>,
-    metrics_collector: &MetricsCollector,
+    metrics_collector: &dyn MetricsCollector,
     min_idle_worker_lifetime: Duration,
     stream: &StreamId,
 ) -> Vec<(Worker, Instant)> {

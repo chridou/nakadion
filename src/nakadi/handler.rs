@@ -264,7 +264,7 @@ pub trait TypedBatchHandler {
     // whole events batch at once failed.
     fn handle_deserialization_errors(
         &mut self,
-        cursor: &SubscriptionCursor,
+        _cursor: &SubscriptionCursor,
         results: Vec<EventDeserializationResult<Self::Event>>,
     ) -> TypedProcessingStatus {
         let num_events = results.len();

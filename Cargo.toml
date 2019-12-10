@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -20,7 +20,7 @@ backoff = "0.1"
 serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-metrix = { version = "0.9", optional = true }
+metrix = { version = "0.10", optional = true }
 
 [dev-dependencies]
 env_logger = "0.7"

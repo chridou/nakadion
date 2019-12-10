@@ -1,11 +1,10 @@
 use std::time::{Duration, Instant};
 
 use metrix::cockpit::*;
-use metrix::instruments::other_instruments::*;
-use metrix::instruments::switches::*;
 use metrix::instruments::*;
 use metrix::processor::*;
 use metrix::TelemetryTransmitterSync;
+use metrix::TimeUnit;
 use metrix::TransmitsTelemetryData;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -247,24 +246,24 @@ fn create_other_metrics() -> (
     TelemetryTransmitterSync<OtherMetrics>,
     TelemetryProcessor<OtherMetrics>,
 ) {
-    let mut cockpit: Cockpit<OtherMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<OtherMetrics> = Cockpit::without_name();
 
-    let mut panel = Panel::with_name(OtherMetrics::Panicked, "panicked");
+    let mut panel = Panel::named(OtherMetrics::Panicked, "panicked");
     let switch = StaircaseTimer::new_with_defaults("occurred");
     panel.add_instrument(switch);
     cockpit.add_panel(panel);
 
-    let mut panel = Panel::with_name(OtherMetrics::DispatcherGone, "dispatcher_gone");
+    let mut panel = Panel::named(OtherMetrics::DispatcherGone, "dispatcher_gone");
     let switch = StaircaseTimer::new_with_defaults("occurred");
     panel.add_instrument(switch);
     cockpit.add_panel(panel);
 
-    let mut panel = Panel::with_name(OtherMetrics::WorkerGone, "worker_gone");
+    let mut panel = Panel::named(OtherMetrics::WorkerGone, "worker_gone");
     let switch = StaircaseTimer::new_with_defaults("occurred");
     panel.add_instrument(switch);
     cockpit.add_panel(panel);
 
-    let mut panel = Panel::with_name(OtherMetrics::CommitterGone, "committer_gone");
+    let mut panel = Panel::named(OtherMetrics::CommitterGone, "committer_gone");
     let switch = StaircaseTimer::new_with_defaults("occurred");
     panel.add_instrument(switch);
     cockpit.add_panel(panel);
@@ -280,12 +279,11 @@ fn create_connector_metrics() -> (
     TelemetryTransmitterSync<ConnectorMetrics>,
     TelemetryProcessor<ConnectorMetrics>,
 ) {
-    let mut cockpit: Cockpit<ConnectorMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<ConnectorMetrics> = Cockpit::without_name();
 
-    let connect_attempts_panel =
-        Panel::with_name(ConnectorMetrics::ConnectAttempt, "connect_attempts");
+    let connect_attempts_panel = Panel::named(ConnectorMetrics::ConnectAttempt, "connect_attempts");
     add_counting_instruments_to_cockpit(connect_attempts_panel, &mut cockpit);
-    let connect_attempts_failed_panel = Panel::with_name(
+    let connect_attempts_failed_panel = Panel::named(
         ConnectorMetrics::ConnectAttemptFailed,
         "connect_attempts_failed",
     );
@@ -302,42 +300,42 @@ fn create_consumer_metrics() -> (
     TelemetryTransmitterSync<ConsumerMetrics>,
     TelemetryProcessor<ConsumerMetrics>,
 ) {
-    let mut cockpit: Cockpit<ConsumerMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<ConsumerMetrics> = Cockpit::without_name();
 
-    let connected_panel = Panel::with_name(ConsumerMetrics::Connected, "connected");
+    let connected_panel = Panel::named(ConsumerMetrics::Connected, "connected");
     add_counting_and_time_ms_instruments_to_cockpit(connected_panel, &mut cockpit);
 
     let connection_lifetimes_panel =
-        Panel::with_name(ConsumerMetrics::ConnectionLifetime, "connection_lifetimes");
+        Panel::named(ConsumerMetrics::ConnectionLifetime, "connection_lifetimes");
     add_ms_histogram_instruments_to_cockpit(connection_lifetimes_panel, &mut cockpit);
 
-    let line_received_panel = Panel::with_name(ConsumerMetrics::LineReceived, "all_lines");
+    let line_received_panel = Panel::named(ConsumerMetrics::LineReceived, "all_lines");
     add_line_instruments_to_cockpit(line_received_panel, &mut cockpit);
 
-    let info_line_received_panel =
-        Panel::with_name(ConsumerMetrics::InfoLineReceived, "info_lines");
+    let info_line_received_panel = Panel::named(ConsumerMetrics::InfoLineReceived, "info_lines");
     add_line_instruments_to_cockpit(info_line_received_panel, &mut cockpit);
 
     let keep_alive_line_received_panel =
-        Panel::with_name(ConsumerMetrics::KeepAliveLineReceived, "keep_alive_lines");
+        Panel::named(ConsumerMetrics::KeepAliveLineReceived, "keep_alive_lines");
     add_line_instruments_to_cockpit(keep_alive_line_received_panel, &mut cockpit);
 
     let mut batch_line_received_panel =
-        Panel::with_name(ConsumerMetrics::BatchLineReceived, "batch_lines");
+        Panel::named(ConsumerMetrics::BatchLineReceived, "batch_lines");
     let last_batch_line_received_tracker =
         LastOccurrenceTracker::new_with_defaults("last_received_seconds_ago");
     batch_line_received_panel.add_instrument(last_batch_line_received_tracker);
     add_line_instruments_to_cockpit(batch_line_received_panel, &mut cockpit);
 
     let mut batches_received_panel =
-        Panel::with_name(ConsumerMetrics::BatchReceived, "batches_received");
-    batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        Panel::named(ConsumerMetrics::BatchReceived, "batches_received");
     batches_received_panel.set_counter(Counter::new_with_defaults("count"));
     batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
-    batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+    batches_received_panel.set_histogram(
+        Histogram::new_with_defaults("elapsed_us").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(batches_received_panel);
 
-    let mut alerts_panel = Panel::with_name(ConsumerMetrics::BatchLineReceived, "alerts");
+    let mut alerts_panel = Panel::named(ConsumerMetrics::BatchLineReceived, "alerts");
     let mut no_batches_for_one_minute_alert =
         NonOccurrenceIndicator::new_with_defaults("no_batches_for_one_minute");
     no_batches_for_one_minute_alert.set_if_not_happened_within(Duration::from_secs(60));
@@ -376,14 +374,15 @@ fn create_dispatcher_metrics() -> (
     TelemetryTransmitterSync<DispatcherMetrics>,
     TelemetryProcessor<DispatcherMetrics>,
 ) {
-    let mut cockpit: Cockpit<DispatcherMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<DispatcherMetrics> = Cockpit::without_name();
 
     let mut batches_received_panel =
-        Panel::with_name(DispatcherMetrics::BatchReceived, "batches_received");
-    batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        Panel::named(DispatcherMetrics::BatchReceived, "batches_received");
     batches_received_panel.set_counter(Counter::new_with_defaults("count"));
     batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
-    batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+    batches_received_panel.set_histogram(
+        Histogram::new_with_defaults("elapsed_us").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(batches_received_panel);
 
     let mut num_workers_panel = Panel::new(DispatcherMetrics::NumWorkers);
@@ -401,28 +400,26 @@ fn create_worker_metrics() -> (
     TelemetryTransmitterSync<WorkerMetrics>,
     TelemetryProcessor<WorkerMetrics>,
 ) {
-    let mut cockpit: Cockpit<WorkerMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<WorkerMetrics> = Cockpit::without_name();
 
-    let mut batches_received_panel =
-        Panel::with_name(WorkerMetrics::BatchReceived, "batches_received");
-    batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+    let mut batches_received_panel = Panel::named(WorkerMetrics::BatchReceived, "batches_received");
     batches_received_panel.set_counter(Counter::new_with_defaults("count"));
     batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
-    batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+    batches_received_panel.set_histogram(
+        Histogram::new_with_defaults("elapsed_us").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(batches_received_panel);
 
-    let mut event_bytes_panel =
-        Panel::with_name(WorkerMetrics::BatchSizeInBytes, "incoming_batches");
+    let mut event_bytes_panel = Panel::named(WorkerMetrics::BatchSizeInBytes, "incoming_batches");
     event_bytes_panel.add_instrument(ValueMeter::new_with_defaults("bytes_per_second"));
     event_bytes_panel.set_histogram(Histogram::new_with_defaults("bytes_distribution"));
     cockpit.add_panel(event_bytes_panel);
 
-    let batches_processed_panel =
-        Panel::with_name(WorkerMetrics::BatchProcessed, "batches_processed");
+    let batches_processed_panel = Panel::named(WorkerMetrics::BatchProcessed, "batches_processed");
     add_counting_and_time_us_instruments_to_cockpit(batches_processed_panel, &mut cockpit);
 
     let mut events_processed_panel =
-        Panel::with_name(WorkerMetrics::EventsProcessed, "events_processed");
+        Panel::named(WorkerMetrics::EventsProcessed, "events_processed");
     events_processed_panel.add_instrument(ValueMeter::new_with_defaults("per_second"));
     events_processed_panel.set_histogram(Histogram::new_with_defaults("batch_size"));
     cockpit.add_panel(events_processed_panel);
@@ -456,39 +453,40 @@ fn create_committer_metrics() -> (
     TelemetryTransmitterSync<CommitterMetrics>,
     TelemetryProcessor<CommitterMetrics>,
 ) {
-    let mut cockpit: Cockpit<CommitterMetrics> = Cockpit::without_name(None);
+    let mut cockpit: Cockpit<CommitterMetrics> = Cockpit::without_name();
 
     let mut batches_received_panel =
-        Panel::with_name(CommitterMetrics::BatchReceived, "batches_received");
-    batches_received_panel.set_value_scaling(ValueScaling::NanosToMicros);
+        Panel::named(CommitterMetrics::BatchReceived, "batches_received");
     batches_received_panel.set_counter(Counter::new_with_defaults("count"));
     batches_received_panel.set_meter(Meter::new_with_defaults("per_second"));
-    batches_received_panel.set_histogram(Histogram::new_with_defaults("elapsed_us"));
+    batches_received_panel.set_histogram(
+        Histogram::new_with_defaults("elapsed_us").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(batches_received_panel);
 
     let cursors_committed_panel =
-        Panel::with_name(CommitterMetrics::CursorCommitted, "cursors_committed");
+        Panel::named(CommitterMetrics::CursorCommitted, "cursors_committed");
     add_counting_and_time_us_instruments_to_cockpit(cursors_committed_panel, &mut cockpit);
 
     let batches_committed_panel =
-        Panel::with_name(CommitterMetrics::BatchesCommitted, "batches_committed");
+        Panel::named(CommitterMetrics::BatchesCommitted, "batches_committed");
     add_counting_and_distribution_instruments_to_cockpit(batches_committed_panel, &mut cockpit);
 
     let events_committed_panel =
-        Panel::with_name(CommitterMetrics::EventsCommitted, "events_committed");
+        Panel::named(CommitterMetrics::EventsCommitted, "events_committed");
     add_counting_and_distribution_instruments_to_cockpit(events_committed_panel, &mut cockpit);
 
     let commit_attempts_panel =
-        Panel::with_name(CommitterMetrics::CursorCommitAttempt, "commit_attempts");
+        Panel::named(CommitterMetrics::CursorCommitAttempt, "commit_attempts");
     add_counting_instruments_to_cockpit(commit_attempts_panel, &mut cockpit);
 
-    let commit_attempts_failed_panel = Panel::with_name(
+    let commit_attempts_failed_panel = Panel::named(
         CommitterMetrics::CursorCommitAttemptFailed,
         "commit_attempts_failed",
     );
     add_counting_instruments_to_cockpit(commit_attempts_failed_panel, &mut cockpit);
 
-    let mut first_cursor_age_on_commit_panel = Panel::with_name(
+    let mut first_cursor_age_on_commit_panel = Panel::named(
         CommitterMetrics::FirstCursorAgeOnCommit,
         "first_cursor_age_on_commit",
     );
@@ -499,7 +497,7 @@ fn create_committer_metrics() -> (
     );
     add_us_histogram_instruments_to_cockpit(first_cursor_age_on_commit_panel, &mut cockpit);
 
-    let mut last_cursor_age_on_commit_panel = Panel::with_name(
+    let mut last_cursor_age_on_commit_panel = Panel::named(
         CommitterMetrics::LastCursorAgeOnCommit,
         "last_cursor_age_on_commit",
     );
@@ -511,12 +509,12 @@ fn create_committer_metrics() -> (
     add_us_histogram_instruments_to_cockpit(last_cursor_age_on_commit_panel, &mut cockpit);
 
     let mut cursor_buffer_time_panel =
-        Panel::with_name(CommitterMetrics::CursorBufferTime, "cursor_buffer_time");
+        Panel::named(CommitterMetrics::CursorBufferTime, "cursor_buffer_time");
     cursor_buffer_time_panel
         .set_description("The time a cursor has been buffered until it was finally committed.");
     add_us_histogram_instruments_to_cockpit(cursor_buffer_time_panel, &mut cockpit);
 
-    let mut time_left_panel = Panel::with_name(
+    let mut time_left_panel = Panel::named(
         CommitterMetrics::TimeLeftUntilInvalid,
         "cursor_time_left_until_invalid",
     );
@@ -569,10 +567,11 @@ fn add_counting_and_time_us_instruments_to_cockpit<L>(mut panel: Panel<L>, cockp
 where
     L: Clone + Eq + Send + 'static,
 {
-    panel.set_value_scaling(ValueScaling::NanosToMicros);
     panel.set_counter(Counter::new_with_defaults("count"));
     panel.set_meter(Meter::new_with_defaults("per_second"));
-    panel.set_histogram(Histogram::new_with_defaults("time_us"));
+    panel.set_histogram(
+        Histogram::new_with_defaults("time_us").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(panel);
 }
 
@@ -580,10 +579,11 @@ fn add_counting_and_time_ms_instruments_to_cockpit<L>(mut panel: Panel<L>, cockp
 where
     L: Clone + Eq + Send + 'static,
 {
-    panel.set_value_scaling(ValueScaling::NanosToMillis);
     panel.set_counter(Counter::new_with_defaults("count"));
     panel.set_meter(Meter::new_with_defaults("per_second"));
-    panel.set_histogram(Histogram::new_with_defaults("time_ms"));
+    panel.set_histogram(
+        Histogram::new_with_defaults("time_ms").display_time_unit(TimeUnit::Milliseconds),
+    );
     cockpit.add_panel(panel);
 }
 
@@ -591,9 +591,10 @@ fn add_us_histogram_instruments_to_cockpit<L>(mut panel: Panel<L>, cockpit: &mut
 where
     L: Clone + Eq + Send + 'static,
 {
-    panel.set_value_scaling(ValueScaling::NanosToMicros);
     panel.set_counter(Counter::new_with_defaults("count"));
-    panel.set_histogram(Histogram::new_with_defaults("microseconds"));
+    panel.set_histogram(
+        Histogram::new_with_defaults("microseconds").display_time_unit(TimeUnit::Microseconds),
+    );
     cockpit.add_panel(panel);
 }
 
@@ -601,8 +602,9 @@ fn add_ms_histogram_instruments_to_cockpit<L>(mut panel: Panel<L>, cockpit: &mut
 where
     L: Clone + Eq + Send + 'static,
 {
-    panel.set_value_scaling(ValueScaling::NanosToMillis);
     panel.set_counter(Counter::new_with_defaults("count"));
-    panel.set_histogram(Histogram::new_with_defaults("milliseconds"));
+    panel.set_histogram(
+        Histogram::new_with_defaults("milliseconds").display_time_unit(TimeUnit::Milliseconds),
+    );
     cockpit.add_panel(panel);
 }
