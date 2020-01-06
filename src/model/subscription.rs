@@ -1,8 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::fmt;
-use std::convert::AsRef;
+use uuid::Uuid;
 
 use crate::model::cursor::CursorOffset;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
@@ -25,7 +24,7 @@ impl fmt::Display for SubscriptionId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventTypeNames(Vec<EventTypeName>);
+pub struct EventTypeNames(pub Vec<EventTypeName>);
 
 /// The value describing the use case of this subscription.
 /// In general that is an additional identifier used to differ subscriptions having the same
@@ -44,16 +43,16 @@ impl ConsumerGroup {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionEventTypeStatus {
-    event_type: EventTypeName,
-    partitions: Vec<SubscriptionPartitionStatus>,
+    pub event_type: EventTypeName,
+    pub partitions: Vec<SubscriptionPartitionStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionPartitionStatus {
-    partition: PartitionId,
-    state: PartitionState,
-    stream_id: Option<StreamId>,
-    assignment_type: Option<PartitionAssignmentType>,
+    pub partition: PartitionId,
+    pub state: PartitionState,
+    pub stream_id: Option<StreamId>,
+    pub assignment_type: Option<PartitionAssignmentType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,8 +75,8 @@ pub enum PartitionAssignmentType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionAuthorization {
-    admins: Vec<AuthorizationAttribute>,
-    readers: Vec<AuthorizationAttribute>,
+    pub admins: Vec<AuthorizationAttribute>,
+    pub readers: Vec<AuthorizationAttribute>,
 }
 
 impl Default for SubscriptionAuthorization {
@@ -98,14 +97,14 @@ impl Default for SubscriptionAuthorization {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Deserialize)]
-pub struct Subcription {
-    id: SubscriptionId,
-    owning_application: OwningApplication,
-    event_types: EventTypeNames,
+pub struct Subscription {
+    pub id: SubscriptionId,
+    pub owning_application: OwningApplication,
+    pub event_types: EventTypeNames,
     #[serde(skip_serializing_if = "Option::is_none")]
-    consumer_group: Option<ConsumerGroup>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    pub consumer_group: Option<ConsumerGroup>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Subscription is a high level consumption unit.
@@ -118,10 +117,11 @@ pub struct Subcription {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Serialize)]
 pub struct SubscriptionInput {
-    id: SubscriptionId,
-    owning_application: OwningApplication,
-    event_types: EventTypeNames,
-    consumer_group: Option<ConsumerGroup>,
+    pub id: SubscriptionId,
+    pub owning_application: OwningApplication,
+    pub event_types: EventTypeNames,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consumer_group: Option<ConsumerGroup>,
     /// Position to start reading events from.
     ///
     /// Currently supported values:
@@ -130,15 +130,16 @@ pub struct SubscriptionInput {
     /// * End - read from the most recent offset.
     /// * Cursors - read from cursors provided in initial_cursors property.
     /// Applied when the client starts reading from a subscription.
-    read_from: ReadFrom,
+    pub read_from: ReadFrom,
     /// List of cursors to start reading from.
     ///
     /// This property is required when `read_from` = `ReadFrom::Cursors`.
     /// The initial cursors should cover all partitions of subscription.
     /// Clients will get events starting from next offset positions.
-    initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
-    status: Vec<SubscriptionEventTypeStatus>,
-    authorization: SubscriptionAuthorization,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
+    pub status: Vec<SubscriptionEventTypeStatus>,
+    pub authorization: SubscriptionAuthorization,
 }
 
 /// Position to start reading events from. Currently supported values:

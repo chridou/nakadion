@@ -1,17 +1,20 @@
 use std::error::Error;
 use std::fmt;
+use std::future::Future;
 
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
-use crate::event_stream::EventStream;
+//use crate::event_stream::EventStream;
 use crate::model::*;
 
-mod reqwest_client;
+// mod reqwest_client;
 
-pub type NakadiApiResult<T> = Result<T, NakadiApiError>;
+struct ApiFuture<T> {
+    inner: Box<dyn Future<Result<T, NakadiApiError> + Send>>>
+}
 
 trait MonitoringApi {
     /// Deletes an EventType identified by its name.
@@ -21,7 +24,7 @@ trait MonitoringApi {
         name: &EventTypeName,
         query: &CursorDistanceQuery,
         flow_id: T,
-    ) -> NakadiApiResult<CursorDistanceResult>;
+    ) -> ApiFuture<CursorDistanceResult>;
 
     /// Deletes an EventType identified by its name.
     ///
@@ -30,14 +33,14 @@ trait MonitoringApi {
         name: &EventTypeName,
         cursors: &[Cursor],
         flow_id: T,
-    ) -> NakadiApiResult<CursorLagResult>;
+    ) -> ApiFuture<CursorLagResult>;
 }
 
 trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(flow_id: T) -> NakadiApiResult<Vec<EventType>>;
+    fn list_event_types<T: Into<FlowId>>(flow_id: T) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///
@@ -45,7 +48,7 @@ trait SchemaRegistryApi {
     fn create_event_type<T: Into<FlowId>>(
         event_type: &EventType,
         flow_id: T,
-    ) -> NakadiApiResult<()>;
+    ) -> ApiFuture<()>;
 
     /// Returns the EventType identified by its name.
     ///
@@ -53,7 +56,7 @@ trait SchemaRegistryApi {
     fn get_event_type<T: Into<FlowId>>(
         name: &EventTypeName,
         flow_id: T,
-    ) -> NakadiApiResult<EventType>;
+    ) -> ApiFuture<EventType>;
 
     /// Updates the EventType identified by its name.
     ///
@@ -62,15 +65,19 @@ trait SchemaRegistryApi {
         name: &EventTypeName,
         event_type: &EventType,
         flow_id: T,
-    ) -> NakadiApiResult<()>;
+    ) -> ApiFuture<()>;
 
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type<T: Into<FlowId>>(name: &EventTypeName, flow_id: T) -> NakadiApiResult<()>;
+    fn delete_event_type<T: Into<FlowId>>(name: &EventTypeName, flow_id: T) -> ApiFuture<()>;
 }
 
-trait StreamApi {
+struct PublishFuture {
+    inner: Box<dyn Future<Result<(), PublishError> + Send>>>
+}
+
+trait PublishApi {
     /// Publishes a batch of Events of this EventType. All items must be of the EventType
     /// identified by name.
     ///
@@ -79,7 +86,7 @@ trait StreamApi {
         name: &EventTypeName,
         events: &[E],
         flow_id: T,
-    ) -> Result<(), PublishError> {
+    ) -> PublishFuture {
         unimplemented!()
     }
 
@@ -87,7 +94,7 @@ trait StreamApi {
         name: &EventTypeName,
         event: &E,
         flow_id: T,
-    ) -> Result<(), PublishError> {
+    ) -> PublishFuture {
         unimplemented!()
     }
 
@@ -95,7 +102,7 @@ trait StreamApi {
         name: &EventTypeName,
         raw_events: &[u8],
         flow_id: T,
-    ) -> Result<(), PublishError>;
+    ) -> PublishFuture;
 }
 
 trait SubscriptionApi {
@@ -105,7 +112,7 @@ trait SubscriptionApi {
     fn create_subscription<T: Into<FlowId>>(
         input: &SubscriptionInput,
         flow_id: T,
-    ) -> NakadiApiResult<Subcription>;
+    ) -> ApiFuture<Subcription>;
 
     /// Returns a subscription identified by id.
     ///
@@ -113,7 +120,7 @@ trait SubscriptionApi {
     fn get_subscription<T: Into<FlowId>>(
         name: SubscriptionId,
         flow_id: T,
-    ) -> NakadiApiResult<Subcription>;
+    ) -> ApiFuture<Subcription>;
 
     /// This endpoint only allows to update the authorization section of a subscription.
     ///
@@ -125,7 +132,7 @@ trait SubscriptionApi {
     fn update_auth<T: Into<FlowId>>(
         name: &SubscriptionInput,
         flow_id: T,
-    ) -> NakadiApiResult<Subcription>;
+    ) -> ApiFuture<Subcription>;
 
     /// Deletes a subscription.
     ///
@@ -138,7 +145,24 @@ trait SubscriptionApi {
     fn get_committed_offsets<T: Into<FlowId>>(
         id: SubscriptionId,
         flow_id: T,
-    ) -> NakadiApiResult<Vec<SubscriptionCursor>>;
+    ) -> ApiFuture<Vec<SubscriptionCursor>>;
+
+    fn subscription_stats<T: Into<FlowId>>(
+        id: SubscriptionId,
+        show_time_lag: bool,
+        flow_id: T,
+    ) -> ApiFuture<Vec<SubscriptionEventTypeStats>>;
+
+    /// Reset subscription offsets to specified values.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
+    fn reset_subscription_cursors<T: Into<FlowId>>(
+        id: SubscriptionId,
+        cursors: &[SubscriptionCursor],
+        flow_id: T,
+    ) -> ApiFuture<()>;
+}
+
 
     /// Endpoint for committing offsets of the subscription.
     ///
@@ -150,14 +174,6 @@ trait SubscriptionApi {
         flow_id: T,
     ) -> Result<Committed, CommitError>;
 
-    /// Reset subscription offsets to specified values.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
-    fn reset_subscription_cursors<T: Into<FlowId>>(
-        id: SubscriptionId,
-        cursors: &[SubscriptionCursor],
-        flow_id: T,
-    ) -> Result<Committed, CommitError>;
 
     /// Starts a new stream for reading events from this subscription.
     ///
@@ -168,12 +184,7 @@ trait SubscriptionApi {
         flow_id: T,
     ) -> Result<EventStream, ConnectError>;
 
-    fn subscription_stats<T: Into<FlowId>>(
-        id: SubscriptionId,
-        show_time_lag: bool,
-        flow_id: T,
-    ) -> Result<Vec<SubscriptionEventTypeStats>, NakadiApiError>;
-}
+ }
 
 pub struct StreamParameters {
     partitions: Vec<Partition>,
@@ -380,7 +391,7 @@ impl<T> MonitoringApi for T where T: DispatchHttp {
     ) -> NakadiApiResult<CursorDistanceResult> {
 
     }
-   
+
    fn get_cursor_lag<T: Into<FlowId>>(
         name: &EventTypeName,
         cursors: &[Cursor],
@@ -388,7 +399,7 @@ impl<T> MonitoringApi for T where T: DispatchHttp {
     ) -> NakadiApiResult<CursorLagResult> {
 
     }
-   
+
 }
 
 struct Urls {

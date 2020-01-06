@@ -26,8 +26,6 @@ pub struct StreamId(Uuid);
 pub struct FlowId(String);
 
 /// Generates a random `FlowId` if passed as a parameter.
-///
-/// This struct is just for readability. `()` can also be used.
 pub struct RandomFlowId;
 
 impl FlowId {

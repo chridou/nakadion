@@ -152,6 +152,7 @@ impl Default for CleanupPolicy {
 /// The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
 /// future there could be others.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum SchemaType {
     #[serde(rename = "json_schema")]
     JsonSchema,
@@ -160,19 +161,19 @@ pub enum SchemaType {
 /// The most recent schema for this EventType. Submitted events will be validated against it.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeSchema {
-    version: String,
-    created_at: DateTime<Utc>,
+    pub version: String,
+    pub created_at: DateTime<Utc>,
     #[serde(rename = "type")]
-    schema_type: SchemaType,
-    schema: String,
+    pub schema_type: SchemaType,
+    pub schema: String,
 }
 
 /// The most recent schema for this EventType. Submitted events will be validated against it.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeSchemaInput {
     #[serde(rename = "type")]
-    schema_type: SchemaType,
-    schema: String,
+    pub schema_type: SchemaType,
+    pub schema: String,
 }
 
 /// Number of milliseconds that Nakadi stores events published to this event type.
@@ -213,14 +214,14 @@ impl<'de> Deserialize<'de> for RetentionTime {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct EventTypeOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
-    retention_time: Option<RetentionTime>,
+    pub retention_time: Option<RetentionTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeAuthorization {
-    admins: Vec<AuthorizationAttribute>,
-    readers: Vec<AuthorizationAttribute>,
-    writers: Vec<AuthorizationAttribute>,
+    pub admins: Vec<AuthorizationAttribute>,
+    pub readers: Vec<AuthorizationAttribute>,
+    pub writers: Vec<AuthorizationAttribute>,
 }
 
 impl Default for EventTypeAuthorization {
@@ -262,6 +263,7 @@ pub enum EventTypeAudience {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*enrichment_strategies)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum EnrichmentStrategy {
     MetadataEnrichment,
 }
@@ -276,15 +278,15 @@ pub struct EventTypeStatistics {
     /// EventType for a Nakadi cluster.
     ///
     /// Measured in event count per minute.
-    messages_per_minute: u64,
+    pub messages_per_minute: u64,
     /// Average message size for each Event of this EventType. Includes in the count the whole serialized
     /// form of the event, including metadata.
     /// Measured in bytes.
-    message_size: u64,
+    pub message_size: u64,
     /// Amount of parallel readers (consumers) to this EventType.
-    read_parallelism: u64,
+    pub read_parallelism: u64,
     /// Amount of parallel writers (producers) to this EventType.
-    write_parallelism: u64,
+    pub write_parallelism: u64,
 }
 
 /// Definition of an event type
@@ -294,21 +296,26 @@ pub struct EventTypeStatistics {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventType {
-    name: EventTypeName,
-    owning_application: OwningApplication,
-    category: Category,
-    enrichment_strategy: Option<EnrichmentStrategy>,
-    partition_strategy: PartitionStrategy,
-    compatibility_mode: CompatibilityMode,
-    schema: EventTypeSchema,
-    partition_key_fields: Option<PartitionKeyFields>,
-    cleanup_policy: CleanupPolicy,
-    default_statistic: Option<EventTypeStatistics>,
-    options: Option<EventTypeOptions>,
-    authorization: EventTypeAuthorization,
-    audience: Option<EventTypeAudience>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    pub name: EventTypeName,
+    pub owning_application: OwningApplication,
+    pub category: Category,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enrichment_strategy: Option<EnrichmentStrategy>,
+    pub partition_strategy: PartitionStrategy,
+    pub compatibility_mode: CompatibilityMode,
+    pub schema: EventTypeSchema,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition_key_fields: Option<PartitionKeyFields>,
+    pub cleanup_policy: CleanupPolicy,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_statistic: Option<EventTypeStatistics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<EventTypeOptions>,
+    pub authorization: EventTypeAuthorization,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audience: Option<EventTypeAudience>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Definition of an event type
@@ -318,23 +325,23 @@ pub struct EventType {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeInput {
-    name: EventTypeName,
-    owning_application: OwningApplication,
-    category: Category,
+    pub name: EventTypeName,
+    pub owning_application: OwningApplication,
+    pub category: Category,
     #[serde(skip_serializing_if = "Option::is_none")]
-    enrichment_strategy: Option<EnrichmentStrategy>,
-    partition_strategy: PartitionStrategy,
-    compatibility_mode: CompatibilityMode,
-    schema: EventTypeSchemaInput,
+    pub enrichment_strategy: Option<EnrichmentStrategy>,
+    pub partition_strategy: PartitionStrategy,
+    pub compatibility_mode: CompatibilityMode,
+    pub schema: EventTypeSchemaInput,
     #[serde(skip_serializing_if = "Option::is_none")]
-    partition_key_fields: Option<PartitionKeyFields>,
-    cleanup_policy: CleanupPolicy,
+    pub partition_key_fields: Option<PartitionKeyFields>,
+    pub cleanup_policy: CleanupPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
-    default_statistic: Option<EventTypeStatistics>,
+    pub default_statistic: Option<EventTypeStatistics>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    options: Option<EventTypeOptions>,
+    pub options: Option<EventTypeOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    authorization: Option<EventTypeAuthorization>,
+    pub authorization: Option<EventTypeAuthorization>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    audience: Option<EventTypeAudience>,
+    pub audience: Option<EventTypeAudience>,
 }
