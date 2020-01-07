@@ -25,12 +25,13 @@ pub struct StreamId(Uuid);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowId(String);
 
-/// Generates a random `FlowId` if passed as a parameter.
-pub struct RandomFlowId;
-
 impl FlowId {
-    pub fn new<T: Into<String>>(v: T) -> Self {
-        Self(v.into())
+    pub fn new() -> Self {
+        FlowId(uuid::Uuid::new_v4().to_string())
+    }
+
+    pub fn from_string<T: Into<String>>(s: T) -> Self {
+        FlowId(s.into())
     }
 }
 
@@ -40,18 +41,12 @@ impl fmt::Display for FlowId {
     }
 }
 
-impl From<RandomFlowId> for FlowId {
-    fn from(_v: RandomFlowId) -> Self {
-        FlowId(uuid::Uuid::new_v4().to_string())
-    }
-}
-
 impl<T> From<T> for FlowId
 where
     T: Into<String>,
 {
     fn from(v: T) -> Self {
-        FlowId::new(v.into())
+        FlowId::from_string(v)
     }
 }
 

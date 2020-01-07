@@ -1,38 +1,45 @@
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 
+use bytes::Bytes;
+use futures::stream::Stream;
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
-//use crate::event_stream::EventStream;
+use crate::event_stream::EventStream;
 use crate::model::*;
 
+use dispatch_http_request::RemoteCallError;
+
 // mod reqwest_client;
+pub mod client;
+pub mod dispatch_http_request;
 
 struct ApiFuture<T> {
-    inner: Box<dyn Future<Result<T, NakadiApiError> + Send>>>
+    inner: Box<dyn Future<Output = Result<T, NakadiApiError>> + Send>,
 }
 
 trait MonitoringApi {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
-    fn get_cursor_distances<T: Into<FlowId>>(
+    fn get_cursor_distances(
         name: &EventTypeName,
         query: &CursorDistanceQuery,
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<CursorDistanceResult>;
 
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursors-lag_post)
-    fn get_cursor_lag<T: Into<FlowId>>(
+    fn get_cursor_lag(
         name: &EventTypeName,
         cursors: &[Cursor],
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult>;
 }
 
@@ -40,41 +47,35 @@ trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(flow_id: T) -> ApiFuture<Vec<EventType>>;
+    fn list_event_types(flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
-    fn create_event_type<T: Into<FlowId>>(
-        event_type: &EventType,
-        flow_id: T,
-    ) -> ApiFuture<()>;
+    fn create_event_type(event_type: &EventType, flow_id: FlowId) -> ApiFuture<()>;
 
     /// Returns the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
-    fn get_event_type<T: Into<FlowId>>(
-        name: &EventTypeName,
-        flow_id: T,
-    ) -> ApiFuture<EventType>;
+    fn get_event_type(name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType>;
 
     /// Updates the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
-    fn update_event_type<T: Into<FlowId>>(
+    fn update_event_type(
         name: &EventTypeName,
         event_type: &EventType,
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<()>;
 
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type<T: Into<FlowId>>(name: &EventTypeName, flow_id: T) -> ApiFuture<()>;
+    fn delete_event_type(name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
 }
 
 struct PublishFuture {
-    inner: Box<dyn Future<Result<(), PublishError> + Send>>>
+    inner: Box<dyn Future<Output = Result<(), PublishError>> + Send>,
 }
 
 trait PublishApi {
@@ -85,7 +86,7 @@ trait PublishApi {
     fn publish_events<T: Into<FlowId>, E: Serialize>(
         name: &EventTypeName,
         events: &[E],
-        flow_id: T,
+        flow_id: FlowId,
     ) -> PublishFuture {
         unimplemented!()
     }
@@ -93,15 +94,15 @@ trait PublishApi {
     fn publish_event<T: Into<FlowId>, E: Serialize>(
         name: &EventTypeName,
         event: &E,
-        flow_id: T,
+        flow_id: FlowId,
     ) -> PublishFuture {
         unimplemented!()
     }
 
-    fn publish_raw_events<T: Into<FlowId>>(
+    fn publish_raw_events(
         name: &EventTypeName,
         raw_events: &[u8],
-        flow_id: T,
+        flow_id: FlowId,
     ) -> PublishFuture;
 }
 
@@ -109,18 +110,12 @@ trait SubscriptionApi {
     /// This endpoint creates a subscription for EventTypes.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
-    fn create_subscription<T: Into<FlowId>>(
-        input: &SubscriptionInput,
-        flow_id: T,
-    ) -> ApiFuture<Subcription>;
+    fn create_subscription(input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
 
     /// Returns a subscription identified by id.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
-    fn get_subscription<T: Into<FlowId>>(
-        name: SubscriptionId,
-        flow_id: T,
-    ) -> ApiFuture<Subcription>;
+    fn get_subscription(name: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription>;
 
     /// This endpoint only allows to update the authorization section of a subscription.
     ///
@@ -129,62 +124,64 @@ trait SubscriptionApi {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth<T: Into<FlowId>>(
-        name: &SubscriptionInput,
-        flow_id: T,
-    ) -> ApiFuture<Subcription>;
+    fn update_auth(name: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
 
     /// Deletes a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
-    fn delete_subscription<T: Into<FlowId>>(id: SubscriptionId, flow_id: T) -> NakadiApiResult<()>;
+    fn delete_subscription(id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()>;
 
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_committed_offsets<T: Into<FlowId>>(
+    fn get_committed_offsets(
         id: SubscriptionId,
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<Vec<SubscriptionCursor>>;
 
-    fn subscription_stats<T: Into<FlowId>>(
+    fn subscription_stats(
         id: SubscriptionId,
         show_time_lag: bool,
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<Vec<SubscriptionEventTypeStats>>;
 
     /// Reset subscription offsets to specified values.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
-    fn reset_subscription_cursors<T: Into<FlowId>>(
+    fn reset_subscription_cursors(
         id: SubscriptionId,
         cursors: &[SubscriptionCursor],
-        flow_id: T,
+        flow_id: FlowId,
     ) -> ApiFuture<()>;
 }
 
+pub struct CommitFuture {
+    inner: Box<dyn Future<Output = Result<Committed, CommitError>> + Send + 'static>,
+}
 
+pub trait CommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)
-    fn commit_cursors<T: Into<FlowId>>(
+    fn commit_cursors(
         id: SubscriptionId,
         stream: StreamId,
         cursors: &[SubscriptionCursor],
-        flow_id: T,
-    ) -> Result<Committed, CommitError>;
+        flow_id: FlowId,
+    ) -> CommitFuture;
+}
 
+pub struct ConnectFuture {
+    inner: Box<dyn Future<Output = Result<EventStream, ConnectError>> + Send + 'static>,
+}
 
+pub trait ConnectApi {
     /// Starts a new stream for reading events from this subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
-    fn events<T: Into<FlowId>>(
-        id: SubscriptionId,
-        parameters: &StreamParameters,
-        flow_id: T,
-    ) -> Result<EventStream, ConnectError>;
-
- }
+    fn connect(id: SubscriptionId, parameters: &StreamParameters, flow_id: FlowId)
+        -> ConnectFuture;
+}
 
 pub struct StreamParameters {
     partitions: Vec<Partition>,
@@ -209,199 +206,7 @@ pub struct CommitError;
 
 pub struct ConnectError;
 
-#[derive(Debug)]
-pub struct RemoteCallError {
-    pub(crate) message: Option<String>,
-    pub(crate) status_code: Option<StatusCode>,
-    pub(crate) cause: Option<Box<dyn Error + Send + 'static>>,
-    pub(crate) problem: Option<HttpApiProblem>,
-    kind: RemoteCallErrorKind,
-}
-
-impl RemoteCallError {
-    pub(crate) fn new<M: Into<String>>(
-        kind: RemoteCallErrorKind,
-        message: M,
-        status_code: Option<StatusCode>,
-    ) -> Self {
-        Self {
-            message: Some(message.into()),
-            status_code,
-            kind,
-            problem: None,
-            cause: None,
-        }
-    }
-
-    pub fn is_server(&self) -> bool {
-        self.kind == RemoteCallErrorKind::Server
-    }
-
-    pub fn is_client(&self) -> bool {
-        self.kind == RemoteCallErrorKind::Client
-    }
-
-    pub fn is_serialization(&self) -> bool {
-        self.kind == RemoteCallErrorKind::Serialization
-    }
-
-    pub fn is_io(&self) -> bool {
-        self.kind == RemoteCallErrorKind::Io
-    }
-
-    pub fn is_other(&self) -> bool {
-        self.kind == RemoteCallErrorKind::Other
-    }
-
-    pub fn status_code(&self) -> Option<StatusCode> {
-        self.status_code
-    }
-
-    pub fn problem(&self) -> Option<&HttpApiProblem> {
-        self.problem.as_ref()
-    }
-
-    pub fn is_retry_suggested(&self) -> bool {
-        match self.kind {
-            RemoteCallErrorKind::Client => false,
-            RemoteCallErrorKind::Server => true,
-            RemoteCallErrorKind::Serialization => false,
-            RemoteCallErrorKind::Io => true,
-            RemoteCallErrorKind::Other => false,
-        }
-    }
-
-    pub(crate) fn with_cause<E: Error + Send + 'static>(mut self, cause: E) -> Self {
-        self.cause = Some(Box::new(cause));
-        self
-    }
-}
-
-pub type RemoteCallResult<T> = Result<T, RemoteCallError>;
-
-impl fmt::Display for RemoteCallError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use RemoteCallErrorKind::*;
-
-        match self.kind {
-            Client => {
-                write!(f, "client error")?;
-            }
-            Server => {
-                write!(f, "server error")?;
-            }
-            Serialization => {
-                write!(f, "serialization error")?;
-            }
-            Io => {
-                write!(f, "io error")?;
-            }
-            Other => {
-                write!(f, "other error")?;
-            }
-        }
-
-        if let Some(status_code) = self.status_code {
-            write!(f, " - status: {}", status_code)?;
-        }
-
-        if let Some(ref message) = self.message {
-            write!(f, " - message: {}", message)?;
-        } else if let Some(detail) = self.problem.as_ref().and_then(|p| p.detail.as_ref()) {
-            write!(f, " - message: {}", detail)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Error for RemoteCallError {
-    fn cause(&self) -> Option<&Error> {
-        self.cause.as_ref().map(|e| &**e as &Error)
-    }
-}
-
-impl From<RemoteCallErrorKind> for RemoteCallError {
-    fn from(kind: RemoteCallErrorKind) -> Self {
-        Self {
-            message: None,
-            status_code: None,
-            cause: None,
-            problem: None,
-            kind,
-        }
-    }
-}
-
-impl From<serde_json::Error> for RemoteCallError {
-    fn from(err: serde_json::Error) -> Self {
-        Self {
-            message: Some("de/-serialization error".to_string()),
-            status_code: None,
-            cause: Some(Box::new(err)),
-            problem: None,
-            kind: RemoteCallErrorKind::Serialization,
-        }
-    }
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RemoteCallErrorKind {
-    Client,
-    Server,
-    Serialization,
-    Io,
-    Other,
-}
-
-pub trait DispatchHttp {
-    fn get<R: DeserializeOwned, T: Into<FlowId>>(
-        &self,
-        endpoint: Url,
-        flow_id: T,
-    ) -> RemoteCallResult<R>;
-
-    fn put<S: Serialize, R: DeserializeOwned, T: Into<FlowId>>(
-        &self,
-        endpoint: Url,
-        body: &S,
-        flow_id: T,
-    ) -> RemoteCallResult<R>;
-
-    fn post<S: Serialize, R: DeserializeOwned, T: Into<FlowId>>(
-        &self,
-        endpoint: Url,
-        body: &S,
-        flow_id: T,
-    ) -> RemoteCallResult<R>;
-
-    fn connect<T: Into<FlowId>>(
-        &self,
-        endpoint: Url,
-        parameters: &StreamParameters,
-        flow_id: T,
-    ) -> Result<EventStream, ConnectError>;
-}
-
-
-impl<T> MonitoringApi for T where T: DispatchHttp {
-     fn get_cursor_distances<T: Into<FlowId>>(
-        name: &EventTypeName,
-        query: &CursorDistanceQuery,
-        flow_id: T,
-    ) -> NakadiApiResult<CursorDistanceResult> {
-
-    }
-
-   fn get_cursor_lag<T: Into<FlowId>>(
-        name: &EventTypeName,
-        cursors: &[Cursor],
-        flow_id: T,
-    ) -> NakadiApiResult<CursorLagResult> {
-
-    }
-
-}
-
+/*
 struct Urls {
     event_types: Url,
     subscriptions: Url,
@@ -515,3 +320,4 @@ mod urls {
             .unwrap()
     }
 }
+*/
