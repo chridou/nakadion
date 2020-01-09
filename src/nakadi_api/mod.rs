@@ -15,7 +15,6 @@ use crate::model::*;
 
 use dispatch_http_request::RemoteCallError;
 
-// mod reqwest_client;
 pub mod client;
 pub mod dispatch_http_request;
 
