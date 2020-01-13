@@ -1,7 +1,14 @@
 //! Optional OAUTH authorization for connecting to Nakadi
-use std::fmt;
 use std::convert::AsRef;
+use std::env;
 use std::error::Error;
+use std::fmt;
+use std::path::PathBuf;
+
+use futures::future::{self, BoxFuture, FutureExt, TryFutureExt};
+use tokio::fs;
+
+pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;
 
 /// A token used for authentication against `Nakadi`.
 #[derive(Clone, Debug)]
@@ -31,15 +38,55 @@ impl AsRef<str> for AccessToken {
 /// Authentication can be disabled by returning `None` on `get_token`.
 pub trait ProvidesAccessToken {
     /// Get a new `Token`. Return `None` to disable authentication.
-    fn get_token(&self) -> Result<Option<AccessToken>, TokenError>;
+    fn get_token(&self) -> TokenFuture;
 }
 
 /// Using this access token provider disables OAUTH.
 pub struct NoAuthAccessTokenProvider;
 
 impl ProvidesAccessToken for NoAuthAccessTokenProvider {
-    fn get_token(&self) -> Result<Option<AccessToken>, TokenError> {
-        Ok(None)
+    fn get_token(&self) -> TokenFuture {
+        future::ok(None).boxed()
+    }
+}
+
+/// Reads an `AccessToken` from a file.
+///
+/// Simply clone it around.
+#[derive(Clone)]
+pub struct FileAccessTokenProvider {
+    path: PathBuf,
+}
+
+impl FileAccessTokenProvider {
+    pub fn new<P: Into<PathBuf>>(path: P) -> FileAccessTokenProvider {
+        FileAccessTokenProvider { path: path.into() }
+    }
+
+    /// Create a new `FileAccessTokenProvider` which reads the token from a
+    /// fully qualified file path contained in the env var `file_path_env_var`.
+    pub fn from_env<V: AsRef<str>>(
+        file_path_env_var: V,
+    ) -> Result<FileAccessTokenProvider, Box<dyn Error>> {
+        let path = env::var(file_path_env_var.as_ref()).map_err(Box::new)?;
+        Ok(FileAccessTokenProvider::new(path))
+    }
+}
+
+impl ProvidesAccessToken for FileAccessTokenProvider {
+    fn get_token(&self) -> TokenFuture {
+        async move {
+            let bytes = fs::read(self.path.clone())
+                .map_err(|err| TokenError(err.to_string()))
+                .await?;
+
+            let token = String::from_utf8(bytes)
+                .map(AccessToken)
+                .map_err(|err| TokenError(err.to_string()))?;
+
+            Ok(Some(token))
+        }
+        .boxed()
     }
 }
 
@@ -49,11 +96,11 @@ impl ProvidesAccessToken for NoAuthAccessTokenProvider {
 ///
 /// It is the duty of the implementor of `ProvidesAccessToken` to log errors.
 #[derive(Debug)]
-pub struct TokenError;
+pub struct TokenError(String);
 
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Failed to get access token")
+        write!(f, "Failed to get access token: {}", self.0)
     }
 }
 
