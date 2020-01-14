@@ -71,18 +71,7 @@ impl ApiClient {
             let deserialized = deserialize_stream(response.into_body()).await?;
             Ok(deserialized)
         } else {
-            let (parts, body) = response.into_parts();
-            match deserialize_stream::<HttpApiProblem>(body).await {
-                Ok(problem) => {
-                    let kind = if parts.status.is_server() {
-                        NakadiApiErrorKind::ServerError
-                    } else if parts.status.is_client() {
-                        NakadiApiErrorKind::Client
-
-                    }
-                }
-                Err(err) => {}
-            }
+            evaluate_error_for_problem(response).and_then(|ok| future::err(ok)).await
         }
     }
 
@@ -154,6 +143,21 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
     let deserialized = serde_json::from_slice(&bytes)?;
 
     Ok(deserialized)
+}
+
+async fn evaluate_error_for_problem<'a>(req: Response<BytesStream<'a>>) -> NakadiApiError {
+    let (parts, body) = response.into_parts();
+    match deserialize_stream::<HttpApiProblem>(body).await {
+        Ok(problem) => {
+            let kind = if parts.status.is_server() {
+                NakadiApiErrorKind::ServerError
+            } else if parts.status.is_client() {
+                NakadiApiErrorKind::Client
+            }
+        }
+        Err(err) => {}
+    }
+
 }
 
 impl From<http::header::InvalidHeaderValue> for NakadiApiError {
