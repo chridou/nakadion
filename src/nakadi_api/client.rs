@@ -7,8 +7,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::{future, FutureExt, Stream, TryFutureExt, TryStreamExt};
 use http::{
-    header::{HeaderName, HeaderValue, AUTHORIZATION},
-    Error as HttpError, Request, StatusCode, Uri,
+    header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
+    Error as HttpError, Method, Request, Response, StatusCode, Uri,
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
@@ -55,23 +55,26 @@ impl ApiClient {
         })
     }
 
-    async fn get_with_payload<P: Serialize, R: DeserializeOwned>(
-        &self,
+    fn get_with_payload<'a, P: Serialize, R: DeserializeOwned>(
+        &'a self,
         url: Url,
         payload: &P,
         flow_id: FlowId,
-    ) -> Result<R, NakadiApiError> {
+    ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
         let serialized = serde_json::to_vec(&payload).unwrap();
 
-        let request = self.create_request(&url, serialized, flow_id).await?;
+        async move {
+            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            *request.method_mut() = Method::POST;
 
-        let response = self.http_client().dispatch(request).await?;
+            let response = self.http_client().dispatch(request).await?;
 
-        if response.status().is_success() {
-            let deserialized = deserialize_stream(response.into_body()).await?;
-            Ok(deserialized)
-        } else {
-            evaluate_error_for_problem(response).and_then(|ok| future::err(ok)).await
+            if response.status().is_success() {
+                let deserialized = deserialize_stream(response.into_body()).await?;
+                Ok(deserialized)
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
+            }
         }
     }
 
@@ -96,31 +99,47 @@ impl ApiClient {
             HeaderValue::from_str(flow_id.as_ref())?,
         );
 
+        request
+            .headers_mut()
+            .append(CONTENT_LENGTH, content_length.into());
+
         *request.uri_mut() = url.as_str().parse()?;
 
         Ok(request)
     }
 
-    fn http_client(&self) -> &dyn DispatchHttpRequest {
-        &self.inner.http_client
+    fn http_client(&self) -> &(dyn DispatchHttpRequest + Send + Sync + 'static) {
+        &*self.inner.http_client
+    }
+
+    fn urls(&self) -> &Urls {
+        &self.inner.urls
     }
 }
 
 impl MonitoringApi for ApiClient {
     fn get_cursor_distances(
+        &self,
         name: &EventTypeName,
         query: &CursorDistanceQuery,
         flow_id: FlowId,
     ) -> ApiFuture<CursorDistanceResult> {
-        async { Ok(()) }.boxed()
+        self.get_with_payload(
+            self.urls().monitoring_cursor_distances(name),
+            query,
+            flow_id,
+        )
+        .boxed()
     }
 
     fn get_cursor_lag(
+        &self,
         name: &EventTypeName,
-        cursors: &[Cursor],
+        cursors: &Vec<Cursor>,
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult> {
-        future::err(NakadiApiErrorKind::ServerError.into()).boxed()
+        self.get_with_payload(self.urls().monitoring_cursor_lag(name), cursors, flow_id)
+            .boxed()
     }
 }
 
@@ -133,7 +152,7 @@ fn construct_authorization_bearer_value<T: AsRef<str>>(
 }
 
 async fn deserialize_stream<'a, T: DeserializeOwned>(
-    stream: BytesStream<'a>,
+    mut stream: BytesStream<'a>,
 ) -> Result<T, NakadiApiError> {
     let mut bytes = Vec::new();
     while let Some(next) = stream.try_next().await? {
@@ -145,42 +164,49 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
     Ok(deserialized)
 }
 
-async fn evaluate_error_for_problem<'a>(req: Response<BytesStream<'a>>) -> NakadiApiError {
+async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> NakadiApiError {
     let (parts, body) = response.into_parts();
-    match deserialize_stream::<HttpApiProblem>(body).await {
-        Ok(problem) => {
-            let kind = if parts.status.is_server() {
+    let kind = match parts.status {
+        StatusCode::NOT_FOUND => NakadiApiErrorKind::NotFound,
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => NakadiApiErrorKind::AccessDenied,
+        status => {
+            if status.is_server_error() {
                 NakadiApiErrorKind::ServerError
-            } else if parts.status.is_client() {
-                NakadiApiErrorKind::Client
+            } else if status.is_client_error() {
+                NakadiApiErrorKind::BadRequest
+            } else {
+                NakadiApiErrorKind::Other
             }
         }
-        Err(err) => {}
+    };
+    match deserialize_stream::<HttpApiProblem>(body).await {
+        Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_payload(problem),
+        Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
+            .caused_by(err),
     }
-
 }
 
 impl From<http::header::InvalidHeaderValue> for NakadiApiError {
     fn from(err: http::header::InvalidHeaderValue) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid header value").with_cause(err)
+        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid header value").caused_by(err)
     }
 }
 
 impl From<http::uri::InvalidUri> for NakadiApiError {
-    fn from(err: http::header::InvalidHeaderValue) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid URI").with_cause(err)
+    fn from(err: http::uri::InvalidUri) -> Self {
+        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid URI").caused_by(err)
     }
 }
 
 impl From<TokenError> for NakadiApiError {
-    fn from(err: http::header::InvalidHeaderValue) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "failed to get access token").with_cause(err)
+    fn from(err: TokenError) -> Self {
+        NakadiApiError::new(NakadiApiErrorKind::Other, "failed to get access token").caused_by(err)
     }
 }
 
 impl From<serde_json::error::Error> for NakadiApiError {
     fn from(err: serde_json::error::Error) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "serialization failure").with_cause(err)
+        NakadiApiError::new(NakadiApiErrorKind::Other, "serialization failure").caused_by(err)
     }
 }
 
@@ -198,7 +224,7 @@ impl From<RemoteCallError> for NakadiApiError {
             "remote call error"
         };
 
-        NakadiApiError::new(kind, message).with_cause(err)
+        NakadiApiError::new(kind, message).caused_by(err)
     }
 }
 

@@ -4,7 +4,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures::stream::Stream;
+use futures::{future::BoxFuture, stream::Stream};
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
@@ -18,15 +18,14 @@ use dispatch_http_request::RemoteCallError;
 pub mod client;
 pub mod dispatch_http_request;
 
-struct ApiFuture<T> {
-    inner: Box<dyn Future<Output = Result<T, NakadiApiError>> + Send>,
-}
+type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
 
 trait MonitoringApi {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
     fn get_cursor_distances(
+        &self,
         name: &EventTypeName,
         query: &CursorDistanceQuery,
         flow_id: FlowId,
@@ -36,12 +35,13 @@ trait MonitoringApi {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursors-lag_post)
     fn get_cursor_lag(
+        &self,
         name: &EventTypeName,
-        cursors: &[Cursor],
+        cursors: &Vec<Cursor>,
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult>;
 }
-
+/*
 trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
@@ -182,6 +182,7 @@ pub trait ConnectApi {
         -> ConnectFuture;
 }
 
+*/
 pub struct StreamParameters {
     partitions: Vec<Partition>,
     max_uncommitted_events: u32,
@@ -197,6 +198,7 @@ pub enum Committed {
     NotAllCommitted(Vec<CommitResult>),
 }
 
+#[derive(Debug)]
 struct NakadiApiError<P = HttpApiProblem> {
     message: String,
     cause: Option<Box<dyn Error + Send + 'static>>,
@@ -204,7 +206,7 @@ struct NakadiApiError<P = HttpApiProblem> {
     kind: NakadiApiErrorKind,
 }
 
-impl<P> NakadiApiError<P> {
+impl NakadiApiError<HttpApiProblem> {
     pub fn new<T: Into<String>>(kind: NakadiApiErrorKind, message: T) -> Self {
         Self {
             message: message.into(),
@@ -213,8 +215,10 @@ impl<P> NakadiApiError<P> {
             kind,
         }
     }
+}
 
-    pub fn with_cause<E>(mut self, err: E) -> Self
+impl<P> NakadiApiError<P> {
+    pub fn caused_by<E>(mut self, err: E) -> Self
     where
         E: Error + Send + 'static,
     {
@@ -250,9 +254,25 @@ impl<P> NakadiApiError<P> {
             Err(self)
         }
     }
+}
 
-    pub fn cause(&self) -> Option<&(dyn Error + Send)> {
-        self.cause.as_ref().map(|p| &**p)
+impl<P> Error for NakadiApiError<P>
+where
+    P: fmt::Debug + fmt::Display,
+{
+    fn cause(&self) -> Option<&dyn Error> {
+        self.cause.as_ref().map(|p| &**p as &dyn Error)
+    }
+}
+
+impl<P> fmt::Display for NakadiApiError<P>
+where
+    P: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)?;
+
+        Ok(())
     }
 }
 
