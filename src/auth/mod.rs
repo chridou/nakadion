@@ -19,6 +19,10 @@ impl AccessToken {
     pub fn new<T: Into<String>>(token: T) -> AccessToken {
         AccessToken(token.into())
     }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
 
 impl fmt::Display for AccessToken {
@@ -87,6 +91,35 @@ impl ProvidesAccessToken for FileAccessTokenProvider {
             Ok(Some(token))
         }
         .boxed()
+    }
+}
+
+/// Always returns the same token.
+///
+/// Simply clone it around.
+#[derive(Clone)]
+pub struct FixedAccessTokenProvider {
+    token: AccessToken,
+}
+
+impl FixedAccessTokenProvider {
+    pub fn new<P: Into<String>>(token: P) -> Self {
+        FixedAccessTokenProvider {
+            token: AccessToken(token.into()),
+        }
+    }
+
+    /// Create a new `FixedAccessTokenProvider` initializes the token from the
+    /// the value of the given env var `token_env_var`.
+    pub fn from_env<V: AsRef<str>>(token_env_var: V) -> Result<Self, Box<dyn Error>> {
+        let token = env::var(token_env_var.as_ref()).map_err(Box::new)?;
+        Ok(Self::new(token))
+    }
+}
+
+impl ProvidesAccessToken for FixedAccessTokenProvider {
+    fn get_token(&self) -> TokenFuture {
+        future::ok(Some(self.token.clone())).boxed()
     }
 }
 

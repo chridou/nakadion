@@ -50,6 +50,12 @@ where
     }
 }
 
+impl AsRef<str> for FlowId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Name of an EventType. The name is constrained by a regular expression.
 ///
 /// Note: the name can encode the owner/responsible for this EventType and ideally should

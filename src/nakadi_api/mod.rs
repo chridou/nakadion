@@ -197,126 +197,109 @@ pub enum Committed {
     NotAllCommitted(Vec<CommitResult>),
 }
 
-type NakadiApiError = RemoteCallError;
+struct NakadiApiError<P = HttpApiProblem> {
+    message: String,
+    cause: Option<Box<dyn Error + Send + 'static>>,
+    payload: Option<P>,
+    kind: NakadiApiErrorKind,
+}
 
+impl<P> NakadiApiError<P> {
+    pub fn new<T: Into<String>>(kind: NakadiApiErrorKind, message: T) -> Self {
+        Self {
+            message: message.into(),
+            cause: None,
+            payload: None,
+            kind,
+        }
+    }
+
+    pub fn with_cause<E>(mut self, err: E) -> Self
+    where
+        E: Error + Send + 'static,
+    {
+        self.cause = Some(Box::new(err));
+        self
+    }
+
+    pub fn with_payload<PP>(self, payload: PP) -> NakadiApiError<PP> {
+        NakadiApiError {
+            message: self.message,
+            cause: self.cause,
+            payload: Some(payload),
+            kind: self.kind,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn kind(&self) -> NakadiApiErrorKind {
+        self.kind
+    }
+
+    pub fn payload(&self) -> Option<&P> {
+        self.payload.as_ref()
+    }
+
+    pub fn try_into_payload(self) -> Result<P, Self> {
+        if self.payload.is_some() {
+            Ok(self.payload.unwrap())
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn cause(&self) -> Option<&(dyn Error + Send)> {
+        self.cause.as_ref().map(|p| &**p)
+    }
+}
+
+impl From<NakadiApiErrorKind> for NakadiApiError {
+    fn from(kind: NakadiApiErrorKind) -> Self {
+        Self::new(kind, kind.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NakadiApiErrorKind {
+    NotFound,
+    BadRequest,
+    AccessDenied,
+    ServerError,
+    Io,
+    Other,
+}
+
+impl fmt::Display for NakadiApiErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NakadiApiErrorKind::NotFound => {
+                write!(f, "not found")?;
+            }
+            NakadiApiErrorKind::BadRequest => {
+                write!(f, "bad request")?;
+            }
+            NakadiApiErrorKind::AccessDenied => {
+                write!(f, "access denied")?;
+            }
+            NakadiApiErrorKind::ServerError => {
+                write!(f, "server error")?;
+            }
+            NakadiApiErrorKind::Io => {
+                write!(f, "io error")?;
+            }
+            NakadiApiErrorKind::Other => {
+                write!(f, "other error")?;
+            }
+        }
+
+        Ok(())
+    }
+}
 pub struct PublishError;
 
 pub struct CommitError;
 
 pub struct ConnectError;
-
-/*
-struct Urls {
-    event_types: Url,
-    subscriptions: Url,
-}
-
-mod urls {
-    pub fn new(base_url: Url) -> Self {
-        Self {
-            event_types: base_url.join("event-types").unwrap(),
-            subscriptions: base_url.join("subscriptions").unwrap(),
-        }
-    }
-
-    pub fn monitoring_cursor_distances(&self, event_type: &EventTypeName) -> Url {
-        self.event_types
-            .join(event_type.as_ref())
-            .unwrap()
-            .join("cursor-distances")
-            .unwrap()
-    }
-
-    pub fn monitoring_cursor_lag(&self, event_type: &EventTypeName) -> Url {
-        self.event_types
-            .join(event_type.as_ref())
-            .unwrap()
-            .join("cursor-lag")
-            .unwrap()
-    }
-
-    pub fn schema_registry_list_event_types(&self) -> &Url {
-        &self.event_types
-    }
-
-    pub fn schema_registry_create_event_type(&self) -> &Url {
-        &self.event_types
-    }
-
-    pub fn schema_registry_get_event_type(&self, event_type: &EventTypeName) -> Url {
-        self.event_types.join(event_type.as_ref()).unwrap()
-    }
-
-    pub fn schema_registry_update_event_type(&self, event_type: &EventTypeName) -> Url {
-        self.event_types.join(event_type.as_ref()).unwrap()
-    }
-
-    pub fn schema_registry_delete_event_type(&self, event_type: &EventTypeName) -> Url {
-        self.event_types.join(event_type.as_ref()).unwrap()
-    }
-
-    pub fn stream_api_publish(&self, event_type: &EventTypeName) -> Url {
-        self.event_types
-            .join(event_type.as_ref())
-            .unwrap()
-            .join("events")
-            .unwrap()
-    }
-
-    pub fn subscriptions_create_subscription(&self) -> &Url {
-        &self.subscriptions
-    }
-
-    pub fn subscriptions_delete_subscription(&self, id: SubscriptionId) -> Url {
-        self.subscriptions.join(&id.to_string()).unwrap()
-    }
-
-    pub fn subscriptions_get_subscription(&self, id: SubscriptionId) -> Url {
-        self.subscriptions.join(&id.to_string()).unwrap()
-    }
-
-    pub fn subscriptions_update_auth(&self, id: SubscriptionId) -> Url {
-        self.subscriptions.join(&id.to_string()).unwrap()
-    }
-
-    pub fn subscriptions_get_committed_offsets(&self, id: SubscriptionId) -> Url {
-        self.subscriptions
-            .join(&id.to_string())
-            .unwrap()
-            .join("cursors")
-            .unwrap()
-    }
-
-    pub fn subscriptions_get_commit_cursors(&self, id: SubscriptionId) -> Url {
-        self.subscriptions
-            .join(&id.to_string())
-            .unwrap()
-            .join("cursors")
-            .unwrap()
-    }
-
-    pub fn subscriptions_reset_subscription_cursors(&self, id: SubscriptionId) -> Url {
-        self.subscriptions
-            .join(&id.to_string())
-            .unwrap()
-            .join("cursors")
-            .unwrap()
-    }
-
-    pub fn subscriptions_events(&self, id: SubscriptionId) -> Url {
-        self.subscriptions
-            .join(&id.to_string())
-            .unwrap()
-            .join("events")
-            .unwrap()
-    }
-
-    pub fn subscriptions_stats(&self, id: SubscriptionId) -> Url {
-        self.subscriptions
-            .join(&id.to_string())
-            .unwrap()
-            .join("stats")
-            .unwrap()
-    }
-}
-*/

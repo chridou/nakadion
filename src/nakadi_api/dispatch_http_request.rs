@@ -14,13 +14,6 @@ pub trait DispatchHttpRequest {
 }
 
 #[derive(Debug)]
-pub struct RemoteCallError {
-    message: Option<String>,
-    cause: Option<Box<dyn Error + Send + 'static>>,
-    detail: RemoteCallErrorDetail,
-}
-
-#[derive(Debug)]
 pub struct IoError(pub String);
 
 impl fmt::Display for IoError {
@@ -29,6 +22,13 @@ impl fmt::Display for IoError {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub struct RemoteCallError {
+    message: Option<String>,
+    cause: Option<Box<dyn Error + Send + 'static>>,
+    detail: RemoteCallErrorDetail,
 }
 
 impl Error for IoError {
@@ -70,6 +70,10 @@ impl RemoteCallError {
 
     pub fn is_other(&self) -> bool {
         self.detail.is_other()
+    }
+
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_ref().map(|m| &**m)
     }
 
     pub fn is_retry_suggested(&self) -> bool {
