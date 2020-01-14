@@ -24,17 +24,17 @@ impl fmt::Display for IoError {
     }
 }
 
+impl Error for IoError {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
+
 #[derive(Debug)]
 pub struct RemoteCallError {
     message: Option<String>,
     cause: Option<Box<dyn Error + Send + 'static>>,
     detail: RemoteCallErrorDetail,
-}
-
-impl Error for IoError {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
 }
 
 impl RemoteCallError {

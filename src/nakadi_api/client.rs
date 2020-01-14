@@ -55,7 +55,7 @@ impl ApiClient {
         })
     }
 
-    fn get_with_payload<'a, P: Serialize, R: DeserializeOwned>(
+    fn get_by_post<'a, P: Serialize, R: DeserializeOwned>(
         &'a self,
         url: Url,
         payload: &P,
@@ -124,7 +124,7 @@ impl MonitoringApi for ApiClient {
         query: &CursorDistanceQuery,
         flow_id: FlowId,
     ) -> ApiFuture<CursorDistanceResult> {
-        self.get_with_payload(
+        self.get_by_post(
             self.urls().monitoring_cursor_distances(name),
             query,
             flow_id,
@@ -138,7 +138,7 @@ impl MonitoringApi for ApiClient {
         cursors: &Vec<Cursor>,
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult> {
-        self.get_with_payload(self.urls().monitoring_cursor_lag(name), cursors, flow_id)
+        self.get_by_post(self.urls().monitoring_cursor_lag(name), cursors, flow_id)
             .boxed()
     }
 }

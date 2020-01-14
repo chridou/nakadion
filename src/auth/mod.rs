@@ -4,14 +4,21 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use futures::future::{self, BoxFuture, FutureExt, TryFutureExt};
 use tokio::fs;
 
+use crate::helpers::MessageError;
+
+const TOKEN_PATH_ENV_VAR: &str = "NAKADION_ACCESS_TOKEN_PATH";
+const TOKEN_FIXED_ENV_PATH: &str = "NAKADION_ACCESS_TOKEN_FIXED";
+const ALLOW_NO_TOKEN_ENV_PATH: &str = "NAKADION_ACCESS_TOKEN_ALLOW_NONE";
+
 pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;
 
 /// A token used for authentication against `Nakadi`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AccessToken(String);
 
 impl AccessToken {
@@ -31,6 +38,12 @@ impl fmt::Display for AccessToken {
     }
 }
 
+impl fmt::Debug for AccessToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "AccessToken(<secret>)")
+    }
+}
+
 impl AsRef<str> for AccessToken {
     fn as_ref(&self) -> &str {
         &self.0
@@ -45,8 +58,29 @@ pub trait ProvidesAccessToken {
     fn get_token(&self) -> TokenFuture;
 }
 
+pub struct AccessTokenProvider {
+    inner: Arc<dyn ProvidesAccessToken + Send + Sync + 'static>,
+}
+
+impl AccessTokenProvider {
+    pub fn new<P>(provider: P) -> Self
+    where
+        P: ProvidesAccessToken + Send + Sync + 'static,
+    {
+        Self {
+            inner: Arc::new(provider),
+        }
+    }
+
+    pub fn from_env() -> Box<dyn std::error::Error> {}
+}
+
 /// Using this access token provider disables OAUTH.
 pub struct NoAuthAccessTokenProvider;
+
+impl NoAuthAccessTokenProvider {
+    pub fn from_env() -> Box<dyn std::error::Error> {}
+}
 
 impl ProvidesAccessToken for NoAuthAccessTokenProvider {
     fn get_token(&self) -> TokenFuture {
