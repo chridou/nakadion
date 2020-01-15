@@ -148,6 +148,9 @@ pub trait SubscriptionApi {
         flow_id: FlowId,
     ) -> ApiFuture<Vec<SubscriptionCursor>>;
 
+    /// Exposes statistics of specified subscription.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/stats_get)
     fn get_subscription_stats(
         &self,
         id: SubscriptionId,

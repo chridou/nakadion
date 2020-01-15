@@ -113,12 +113,20 @@ impl NoAuthAccessTokenProvider {
     /// The env var must exist and must be set to `true` to not make this
     /// function fail.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
-        let allowed: bool = must_env_parsed!(ALLOW_NO_TOKEN_ENV_VAR)?;
+        Self::from_env_named(ALLOW_NO_TOKEN_ENV_VAR)
+    }
+
+    /// Initializes from the env var `name`.
+    ///
+    /// The env var must exist and must be set to `true` to not make this
+    /// function fail.
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error>> {
+        let allowed: bool = must_env_parsed!(name.as_ref())?;
 
         if allowed {
             Ok(Self)
         } else {
-            Err(MessageError::new("'NAKADION_ACCESS_TOKEN_ALLOW_NONE' was set to 'false'.").boxed())
+            Err(MessageError::new(format!("'{}' was set to 'false'.", name.as_ref())).boxed())
         }
     }
 }
@@ -138,7 +146,11 @@ pub struct FileAccessTokenProvider {
 }
 
 impl FileAccessTokenProvider {
-    pub fn new<P: Into<PathBuf>>(path: P) -> FileAccessTokenProvider {
+    /// Create a new `FileAccessTokenProvider` which reads the token from a file
+    /// at the given path.
+    ///
+    /// The existence of the file at the given path is not checked.
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
         FileAccessTokenProvider { path: path.into() }
     }
 
@@ -150,8 +162,19 @@ impl FileAccessTokenProvider {
     ///
     /// The existence of the file at the given path is not checked.
     pub fn from_env() -> Result<FileAccessTokenProvider, Box<dyn Error>> {
-        let path: PathBuf = must_env_parsed!(TOKEN_PATH_ENV_VAR)?;
-        Ok(FileAccessTokenProvider::new(path))
+        Self::from_env_named(TOKEN_PATH_ENV_VAR)
+    }
+
+    /// Create a new `FileAccessTokenProvider` which reads the token from a file
+    /// at the given path.
+    ///
+    /// The path must be a fully qualified file path contained
+    /// in the env var `name`.
+    ///
+    /// The existence of the file at the given path is not checked.
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error>> {
+        let path: PathBuf = must_env_parsed!(name.as_ref())?;
+        Ok(Self::new(path))
     }
 }
 
@@ -190,7 +213,13 @@ impl FixedAccessTokenProvider {
     /// Create a new `FixedAccessTokenProvider` initializes the token with the
     /// the value of the given env var `NAKADION_ACCESS_TOKEN_FIXED`.
     pub fn from_env() -> Result<Self, Box<dyn Error>> {
-        let token = must_env!(TOKEN_FIXED_ENV_VAR)?;
+        Self::from_env_named(TOKEN_FIXED_ENV_VAR)
+    }
+
+    /// Create a new `FixedAccessTokenProvider` initializes the token with the
+    /// the value of the given env var `name`.
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error>> {
+        let token = must_env!(name.as_ref())?;
         Ok(Self::new(token))
     }
 }

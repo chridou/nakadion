@@ -12,7 +12,7 @@ pub struct Cursor {
     pub offset: CursorOffset,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CursorOffset {
     Begin,
     N(String),

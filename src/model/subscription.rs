@@ -48,7 +48,7 @@ impl FromStr for SubscriptionId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventTypeNames(pub Vec<EventTypeName>);
 
 /// The value describing the use case of this subscription.
@@ -72,6 +72,9 @@ pub struct SubscriptionEventTypeStatus {
     pub partitions: Vec<SubscriptionPartitionStatus>,
 }
 
+/// Status of one event-type within a context of subscription
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionPartitionStatus {
     pub partition: PartitionId,
@@ -80,6 +83,9 @@ pub struct SubscriptionPartitionStatus {
     pub assignment_type: Option<PartitionAssignmentType>,
 }
 
+/// Assignment state of a partition within a context of subscription
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PartitionState {
     #[serde(rename = "unassigned")]
@@ -90,6 +96,9 @@ pub enum PartitionState {
     Assigned,
 }
 
+/// Assignment type of a partition within a context of subscription
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PartitionAssignmentType {
     #[serde(rename = "direct")]
@@ -98,19 +107,18 @@ pub enum PartitionAssignmentType {
     Auto,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Authorization section of a Subscription
+///
+/// This section defines two access control lists: one for consuming events and
+/// committing cursors (‘readers’), and one for administering a subscription (‘admins’).
+/// Regardless of the values of the authorization properties,
+/// administrator accounts will always be authorized.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionAuthorization)
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionAuthorization {
     pub admins: Vec<AuthorizationAttribute>,
     pub readers: Vec<AuthorizationAttribute>,
-}
-
-impl Default for SubscriptionAuthorization {
-    fn default() -> Self {
-        Self {
-            admins: Vec::default(),
-            readers: Vec::default(),
-        }
-    }
 }
 
 /// Subscription is a high level consumption unit.
@@ -183,6 +191,9 @@ pub enum ReadFrom {
     Cursors,
 }
 
+/// Cursor of a subscription without a `CursorToken`.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursorWithoutToken)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionCursorWithoutToken {
     pub partition: PartitionId,
@@ -191,10 +202,14 @@ pub struct SubscriptionCursorWithoutToken {
 }
 
 /// An opaque value defined by the server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CursorToken(String);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Cursor of a subscription with a `CursorToken` which is usually found within a
+/// `SubscriptionEventStreamBatch`.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursor)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubscriptionCursor {
     pub partition: PartitionId,
     pub offset: CursorOffset,
@@ -202,21 +217,53 @@ pub struct SubscriptionCursor {
     pub cursor_token: CursorToken,
 }
 
+/// The result of single cursor commit with the `SubscriptionCursor` itself.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommitResult {
+pub struct CursorCommitResult {
     pub cursor: SubscriptionCursor,
-    pub result: String,
+    pub result: CommitResult,
 }
 
+impl CursorCommitResult {
+    pub fn is_committed(&self) -> bool {
+        self.result == CommitResult::Committed
+    }
+
+    pub fn is_outdated(&self) -> bool {
+        self.result == CommitResult::Outdated
+    }
+}
+
+/// The result of cursor commit.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CommitResult {
+    /// Cursor was successfully committed
+    Committed,
+    /// There already was more recent (or the same) cursor committed,
+    ///so the current one was not committed as it is outdated
+    Outdated,
+}
+
+/// Statistics of one `EventType` within a context of subscription.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionEventTypeStats {
     pub event_type: EventTypeName,
     #[serde(default)]
-    pub partitions: Vec<PartitionStats>,
+    pub partitions: Vec<SubscriptionEventTypePartitionStats>,
 }
 
+/// Statistics of one partition for an `EventType` within a context of subscription.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PartitionStats {
+pub struct SubscriptionEventTypePartitionStats {
     partition: PartitionId,
     unconsumed_events: u64,
     #[serde(deserialize_with = "crate::helpers::deserialize_empty_string_is_none")]
@@ -226,5 +273,30 @@ pub struct PartitionStats {
     consumer_lag_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     assignment_type: Option<String>,
-    state: String,
+    state: SubscriptionPartitionState,
+}
+
+/// The state of this partition in current subscription.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionPartitionState {
+    /// The partition is assigned to a client
+    Assigned,
+    /// The partition is currently not assigned to any client
+    Unassigned,
+    /// The partition is currently reasssigning from one client to another
+    Reassigning,
+}
+
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionPartitionAssignmentType {
+    /// Partition can’t be transferred to another stream until the stream is closed
+    Direct,
+    /// Partition can be transferred to another stream in case of rebalance, or if another stream
+    /// requests to read from this partition
+    Auto,
 }
