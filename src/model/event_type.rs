@@ -3,8 +3,20 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+pub use crate::model::misc::AuthorizationAttribute;
 pub use crate::model::EventTypeName;
+
+/// Indicator of the application owning this EventType.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OwningApplication(String);
+
+impl OwningApplication {
+  pub fn new(v: impl Into<String>) -> Self {
+    OwningApplication(v.into())
+  }
+}
 
 /// Defines the category of this EventType.
 ///
@@ -142,8 +154,8 @@ pub enum CleanupPolicy {
   /// actual amount of events unconsumed in that subscription as ‘compact’ cleanup policy may delete older events
   /// in the middle of queue if there is a newer event for the same key published.
   ///
-  /// For more details about compaction implementation please read the documentation of Log Compaction in Kafka
-  /// https://kafka.apache.org/documentation/#compaction, Nakadi currently relies on this implementation.
+  /// For more details about compaction implementation please read the documentation of Log Compaction in
+  /// [Kafka](https://kafka.apache.org/documentation/#compaction), Nakadi currently relies on this implementation.
   Compact,
 }
 
@@ -322,6 +334,10 @@ pub struct EventType {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub authorization: Option<EventTypeAuthorization>,
   pub audience: Option<EventTypeAudience>,
+  #[serde(default)]
+  pub ordering_key_fields: Vec<String>,
+  #[serde(default)]
+  pub ordering_instance_ids: Vec<String>,
   pub created_at: DateTime<Utc>,
   pub updated_at: DateTime<Utc>,
 }

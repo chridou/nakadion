@@ -70,9 +70,10 @@ impl ApiClient {
         }
     }
 
-    fn get_by_post<'a, P: Serialize, R: DeserializeOwned>(
+    fn send_receive_payload<'a, P: Serialize, R: DeserializeOwned>(
         &'a self,
         url: Url,
+        method: Method,
         payload: &P,
         flow_id: FlowId,
     ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
@@ -80,7 +81,7 @@ impl ApiClient {
 
         async move {
             let mut request = self.create_request(&url, serialized, flow_id).await?;
-            *request.method_mut() = Method::POST;
+            *request.method_mut() = method;
 
             let response = self.http_client().dispatch(request).await?;
 
@@ -113,17 +114,16 @@ impl ApiClient {
         }
     }
 
-    fn put<'a, P: Serialize>(
+    fn send_payload<'a>(
         &'a self,
         url: Url,
-        payload: &P,
+        method: Method,
+        payload: Vec<u8>,
         flow_id: FlowId,
     ) -> impl Future<Output = Result<(), NakadiApiError>> + Send + 'a {
-        let serialized = serde_json::to_vec(&payload).unwrap();
-
         async move {
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
-            *request.method_mut() = Method::PUT;
+            let mut request = self.create_request(&url, payload, flow_id).await?;
+            *request.method_mut() = method;
 
             let response = self.http_client().dispatch(request).await?;
 
@@ -200,8 +200,9 @@ impl MonitoringApi for ApiClient {
         query: &CursorDistanceQuery,
         flow_id: FlowId,
     ) -> ApiFuture<CursorDistanceResult> {
-        self.get_by_post(
+        self.send_receive_payload(
             self.urls().monitoring_cursor_distances(name),
+            Method::POST,
             query,
             flow_id,
         )
@@ -214,8 +215,13 @@ impl MonitoringApi for ApiClient {
         cursors: &Vec<Cursor>,
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult> {
-        self.get_by_post(self.urls().monitoring_cursor_lag(name), cursors, flow_id)
-            .boxed()
+        self.send_receive_payload(
+            self.urls().monitoring_cursor_lag(name),
+            Method::POST,
+            cursors,
+            flow_id,
+        )
+        .boxed()
     }
 }
 
@@ -231,8 +237,9 @@ impl SchemaRegistryApi for ApiClient {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
     fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()> {
-        self.get_by_post(
+        self.send_receive_payload(
             self.urls().schema_registry_create_event_type(),
+            Method::POST,
             event_type,
             flow_id,
         )
@@ -256,9 +263,10 @@ impl SchemaRegistryApi for ApiClient {
         event_type: &EventType,
         flow_id: FlowId,
     ) -> ApiFuture<()> {
-        self.put(
+        self.send_payload(
             self.urls().schema_registry_update_event_type(name),
-            event_type,
+            Method::PUT,
+            serde_json::to_vec(event_type).unwrap(),
             flow_id,
         )
         .boxed()
@@ -282,7 +290,30 @@ impl SubscriptionApi for ApiClient {
         input: &SubscriptionInput,
         flow_id: FlowId,
     ) -> ApiFuture<Subscription> {
-        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+        let url = self.urls().subscriptions_create_subscription();
+        let serialized = serde_json::to_vec(input).unwrap();
+
+        async move {
+            let mut request = self
+                .create_request(&url, serialized, flow_id.clone())
+                .await?;
+            *request.method_mut() = Method::POST;
+
+            let response = self.http_client().dispatch(request).await?;
+
+            let status = response.status();
+            if status.is_success() {
+                let deserialized: Subscription = deserialize_stream(response.into_body()).await?;
+                if status == StatusCode::OK {
+                    Ok(deserialized)
+                } else {
+                    self.get_subscription(deserialized.id, flow_id).await
+                }
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
+            }
+        }
+        .boxed()
     }
 
     /// Returns a subscription identified by id.
@@ -300,15 +331,23 @@ impl SubscriptionApi for ApiClient {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription> {
-        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<()> {
+        let url = self.urls().subscriptions_update_auth(input.id);
+        self.send_payload(
+            url,
+            Method::PUT,
+            serde_json::to_vec(input).unwrap(),
+            flow_id,
+        )
+        .boxed()
     }
 
     /// Deletes a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
     fn delete_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()> {
-        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+        let url = self.urls().subscriptions_delete_subscription(id);
+        self.delete(url, flow_id).boxed()
     }
 
     /// Exposes the currently committed offsets of a subscription.
@@ -357,7 +396,19 @@ impl SubscriptionApi for ApiClient {
         cursors: &[SubscriptionCursor],
         flow_id: FlowId,
     ) -> ApiFuture<()> {
-        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+        #[derive(Serialize)]
+        struct EntityWrapper<'b> {
+            items: &'b [SubscriptionCursor],
+        };
+        let data = EntityWrapper { items: cursors };
+        let url = self.urls().subscriptions_reset_subscription_cursors(id);
+        self.send_payload(
+            url,
+            Method::PATCH,
+            serde_json::to_vec(&data).unwrap(),
+            flow_id,
+        )
+        .boxed()
     }
 }
 
@@ -397,6 +448,7 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> 
             }
         }
     };
+
     match deserialize_stream::<HttpApiProblem>(body).await {
         Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_payload(problem),
         Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
@@ -504,15 +556,6 @@ mod urls {
         pub fn schema_registry_delete_event_type(&self, event_type: &EventTypeName) -> Url {
             self.event_types.join(event_type.as_ref()).unwrap()
         }
-
-        /*
-        pub fn stream_api_publish(&self, event_type: &EventTypeName) -> Url {
-            self.event_types
-                .join(event_type.as_ref())
-                .unwrap()
-                .join("events")
-                .unwrap()
-        }*/
 
         pub fn subscriptions_create_subscription(&self) -> &Url {
             &self.subscriptions

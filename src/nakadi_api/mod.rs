@@ -132,7 +132,7 @@ pub trait SubscriptionApi {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
+    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<()>;
 
     /// Deletes a subscription.
     ///

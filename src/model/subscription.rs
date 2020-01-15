@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::env_vars::*;
 use crate::helpers::MessageError;
 use crate::model::cursor::CursorOffset;
-use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::event_type::OwningApplication;
+use crate::model::misc::AuthorizationAttribute;
 use crate::model::{EventTypeName, PartitionId, StreamId};
 
 use must_env_parsed;

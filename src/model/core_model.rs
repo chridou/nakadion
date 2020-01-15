@@ -33,6 +33,7 @@ impl FromStr for StreamId {
         })?))
     }
 }
+
 /// The flow id of the request, which is written into the logs and passed to called services. Helpful
 /// for operational troubleshooting and log analysis.
 ///
