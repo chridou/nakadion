@@ -209,4 +209,22 @@ pub struct CommitResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SubscriptionEventTypeStats;
+pub struct SubscriptionEventTypeStats {
+    pub event_type: EventTypeName,
+    #[serde(default)]
+    pub partitions: Vec<PartitionStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartitionStats {
+    partition: PartitionId,
+    unconsumed_events: u64,
+    #[serde(deserialize_with = "crate::helpers::deserialize_empty_string_is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_id: Option<StreamId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    consumer_lag_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assignment_type: Option<String>,
+    state: String,
+}

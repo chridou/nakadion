@@ -108,18 +108,22 @@ trait PublishApi {
         raw_events: &[u8],
         flow_id: FlowId,
     ) -> PublishFuture;
-}
+}*/
 
-trait SubscriptionApi {
+pub trait SubscriptionApi {
     /// This endpoint creates a subscription for EventTypes.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
-    fn create_subscription(input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
+    fn create_subscription(
+        &self,
+        input: &SubscriptionInput,
+        flow_id: FlowId,
+    ) -> ApiFuture<Subscription>;
 
     /// Returns a subscription identified by id.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
-    fn get_subscription(name: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription>;
+    fn get_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription>;
 
     /// This endpoint only allows to update the authorization section of a subscription.
     ///
@@ -128,22 +132,24 @@ trait SubscriptionApi {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth(name: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
+    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription>;
 
     /// Deletes a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
-    fn delete_subscription(id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()>;
+    fn delete_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()>;
 
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
     fn get_committed_offsets(
+        &self,
         id: SubscriptionId,
         flow_id: FlowId,
     ) -> ApiFuture<Vec<SubscriptionCursor>>;
 
-    fn subscription_stats(
+    fn get_subscription_stats(
+        &self,
         id: SubscriptionId,
         show_time_lag: bool,
         flow_id: FlowId,
@@ -153,12 +159,14 @@ trait SubscriptionApi {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
     fn reset_subscription_cursors(
+        &self,
         id: SubscriptionId,
         cursors: &[SubscriptionCursor],
         flow_id: FlowId,
     ) -> ApiFuture<()>;
 }
 
+/*
 pub struct CommitFuture {
     inner: Box<dyn Future<Output = Result<Committed, CommitError>> + Send + 'static>,
 }

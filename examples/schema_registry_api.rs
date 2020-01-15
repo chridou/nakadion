@@ -1,5 +1,3 @@
-use tokio::prelude::*;
-
 use nakadion::model::*;
 use nakadion::nakadi_api::ApiClient;
 use nakadion::nakadi_api::SchemaRegistryApi;

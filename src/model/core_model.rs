@@ -2,11 +2,14 @@
 use std::convert::AsRef;
 use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::env_vars::*;
+use crate::helpers::MessageError;
+
 use must_env;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -21,6 +24,15 @@ pub struct Partition {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StreamId(Uuid);
 
+impl FromStr for StreamId {
+    type Err = Box<dyn Error + 'static>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(StreamId(s.parse().map_err(|err| {
+            MessageError::new(format!("could not parse stream id: {}", err))
+        })?))
+    }
+}
 /// The flow id of the request, which is written into the logs and passed to called services. Helpful
 /// for operational troubleshooting and log analysis.
 ///

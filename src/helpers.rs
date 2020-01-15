@@ -2,6 +2,9 @@
 
 use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
+
+use serde::{de::Error as SerdeError, Deserialize, Deserializer};
 
 macro_rules! try_env {
     ($ENV_VAR_NAME:expr) => {
@@ -87,5 +90,22 @@ where
 {
     fn from(msg: T) -> Self {
         Self::new(msg)
+    }
+}
+
+pub fn deserialize_empty_string_is_none<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: std::fmt::Display,
+{
+    let s = String::deserialize(deserializer)?;
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        let parsed = s
+            .parse::<T>()
+            .map_err(|err| SerdeError::custom(err.to_string()))?;
+        Ok(Some(parsed))
     }
 }

@@ -11,7 +11,7 @@ use http::{
     Error as HttpError, Method, Request, Response, StatusCode, Uri,
 };
 use http_api_problem::HttpApiProblem;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
 use crate::auth::{AccessToken, AccessTokenProvider, ProvidesAccessToken, TokenError};
@@ -273,6 +273,94 @@ impl SchemaRegistryApi for ApiClient {
     }
 }
 
+impl SubscriptionApi for ApiClient {
+    /// This endpoint creates a subscription for EventTypes.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
+    fn create_subscription(
+        &self,
+        input: &SubscriptionInput,
+        flow_id: FlowId,
+    ) -> ApiFuture<Subscription> {
+        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+    }
+
+    /// Returns a subscription identified by id.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
+    fn get_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription> {
+        let url = self.urls().subscriptions_get_subscription(id);
+        self.get(url, flow_id).boxed()
+    }
+
+    /// This endpoint only allows to update the authorization section of a subscription.
+    ///
+    /// All other properties are immutable.
+    /// This operation is restricted to subjects with administrative role.
+    /// This call captures the timestamp of the update request.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
+    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<Subscription> {
+        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+    }
+
+    /// Deletes a subscription.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
+    fn delete_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()> {
+        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+    }
+
+    /// Exposes the currently committed offsets of a subscription.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
+    fn get_committed_offsets(
+        &self,
+        id: SubscriptionId,
+        flow_id: FlowId,
+    ) -> ApiFuture<Vec<SubscriptionCursor>> {
+        #[derive(Deserialize)]
+        struct EntityWrapper {
+            #[serde(default)]
+            items: Vec<SubscriptionCursor>,
+        };
+
+        let url = self.urls().subscriptions_get_committed_offsets(id);
+        self.get::<EntityWrapper>(url, flow_id)
+            .map_ok(|wrapper| wrapper.items)
+            .boxed()
+    }
+
+    fn get_subscription_stats(
+        &self,
+        id: SubscriptionId,
+        show_time_lag: bool,
+        flow_id: FlowId,
+    ) -> ApiFuture<Vec<SubscriptionEventTypeStats>> {
+        #[derive(Deserialize)]
+        struct EntityWrapper {
+            #[serde(default)]
+            items: Vec<SubscriptionEventTypeStats>,
+        };
+        let url = self.urls().subscriptions_stats(id, show_time_lag);
+        self.get::<EntityWrapper>(url, flow_id)
+            .map_ok(|wrapper| wrapper.items)
+            .boxed()
+    }
+
+    /// Reset subscription offsets to specified values.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
+    fn reset_subscription_cursors(
+        &self,
+        id: SubscriptionId,
+        cursors: &[SubscriptionCursor],
+        flow_id: FlowId,
+    ) -> ApiFuture<()> {
+        future::err(NakadiApiError::new(NakadiApiErrorKind::Other, "")).boxed()
+    }
+}
+
 fn construct_authorization_bearer_value<T: AsRef<str>>(
     token: T,
 ) -> Result<HeaderValue, NakadiApiError> {
@@ -424,7 +512,7 @@ mod urls {
                 .unwrap()
                 .join("events")
                 .unwrap()
-        }
+        }*/
 
         pub fn subscriptions_create_subscription(&self) -> &Url {
             &self.subscriptions
@@ -444,23 +532,23 @@ mod urls {
 
         pub fn subscriptions_get_committed_offsets(&self, id: SubscriptionId) -> Url {
             self.subscriptions
-                .join(&id.to_string())
+                .join(&format!("{}/", id))
                 .unwrap()
-                .join("cursors")
+                .join("cursors/")
                 .unwrap()
         }
 
-        pub fn subscriptions_get_commit_cursors(&self, id: SubscriptionId) -> Url {
+        /*       pub fn subscriptions_get_commit_cursors(&self, id: SubscriptionId) -> Url {
             self.subscriptions
                 .join(&id.to_string())
                 .unwrap()
                 .join("cursors")
                 .unwrap()
-        }
+        }*/
 
         pub fn subscriptions_reset_subscription_cursors(&self, id: SubscriptionId) -> Url {
             self.subscriptions
-                .join(&id.to_string())
+                .join(&format!("{}/", id))
                 .unwrap()
                 .join("cursors")
                 .unwrap()
@@ -468,18 +556,18 @@ mod urls {
 
         pub fn subscriptions_events(&self, id: SubscriptionId) -> Url {
             self.subscriptions
-                .join(&id.to_string())
+                .join(&format!("{}/", id))
                 .unwrap()
                 .join("events")
                 .unwrap()
         }
 
-        pub fn subscriptions_stats(&self, id: SubscriptionId) -> Url {
+        pub fn subscriptions_stats(&self, id: SubscriptionId, show_time_lag: bool) -> Url {
             self.subscriptions
-                .join(&id.to_string())
+                .join(&format!("{}/", id))
                 .unwrap()
-                .join("stats")
+                .join(&format!("stats/?show_time_lag={}", show_time_lag))
                 .unwrap()
-        }*/
+        }
     }
 }
