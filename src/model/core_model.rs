@@ -1,10 +1,13 @@
 //! Essential types
-//!
 use std::convert::AsRef;
+use std::error::Error;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::env_vars::*;
+use must_env;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
@@ -26,12 +29,14 @@ pub struct StreamId(Uuid);
 pub struct FlowId(String);
 
 impl FlowId {
-    pub fn new() -> Self {
-        FlowId(uuid::Uuid::new_v4().to_string())
-    }
-
-    pub fn from_string<T: Into<String>>(s: T) -> Self {
+    pub fn new<T: Into<String>>(s: T) -> Self {
         FlowId(s.into())
+    }
+}
+
+impl Default for FlowId {
+    fn default() -> Self {
+        FlowId(uuid::Uuid::new_v4().to_string())
     }
 }
 
@@ -46,7 +51,7 @@ where
     T: Into<String>,
 {
     fn from(v: T) -> Self {
-        FlowId::from_string(v)
+        FlowId::new(v)
     }
 }
 
@@ -70,6 +75,14 @@ pub struct EventTypeName(String);
 impl EventTypeName {
     pub fn new(v: impl Into<String>) -> Self {
         EventTypeName(v.into())
+    }
+
+    pub fn from_env() -> Result<Self, Box<dyn Error + 'static>> {
+        Self::from_env_named(NAKADION_EVENT_TYPE_ENV_VAR)
+    }
+
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error + 'static>> {
+        Ok(Self::new(must_env!(name.as_ref())?))
     }
 }
 

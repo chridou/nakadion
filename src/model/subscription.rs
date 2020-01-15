@@ -1,11 +1,18 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::env_vars::*;
+use crate::helpers::MessageError;
 use crate::model::cursor::CursorOffset;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::{EventTypeName, PartitionId, StreamId};
+
+use must_env_parsed;
 
 /// Id of subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,11 +22,29 @@ impl SubscriptionId {
     pub fn new(id: Uuid) -> Self {
         SubscriptionId(id)
     }
+
+    pub fn from_env() -> Result<Self, Box<dyn Error + 'static>> {
+        Self::from_env_named(NAKADION_SUBSCRIPTION_ID_ENV_VAR)
+    }
+
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error + 'static>> {
+        must_env_parsed!(name.as_ref())
+    }
 }
 
 impl fmt::Display for SubscriptionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for SubscriptionId {
+    type Err = Box<dyn Error + 'static>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SubscriptionId(s.parse().map_err(|err| {
+            MessageError::new(format!("could not parse subscription id: {}", err))
+        })?))
     }
 }
 

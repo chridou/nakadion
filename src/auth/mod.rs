@@ -1,6 +1,6 @@
 //! Optional OAUTH authorization for connecting to Nakadi
+//!
 use std::convert::AsRef;
-use std::env;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -9,11 +9,10 @@ use std::sync::Arc;
 use futures::future::{self, BoxFuture, FutureExt, TryFutureExt};
 use tokio::fs;
 
-use crate::helpers::MessageError;
+use must_env_parsed;
 
-const TOKEN_PATH_ENV_VAR: &str = "NAKADION_ACCESS_TOKEN_PATH";
-const TOKEN_FIXED_ENV_PATH: &str = "NAKADION_ACCESS_TOKEN_FIXED";
-const ALLOW_NO_TOKEN_ENV_PATH: &str = "NAKADION_ACCESS_TOKEN_ALLOW_NONE";
+use crate::env_vars::*;
+use crate::helpers::MessageError;
 
 pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;
 
@@ -72,14 +71,56 @@ impl AccessTokenProvider {
         }
     }
 
-    pub fn from_env() -> Box<dyn std::error::Error> {}
+    /// Creates a new `AccessTokenProvider` from the environment
+    ///
+    /// This will attempt to create the following providers in the given
+    /// order with all their restrictions as if configured from the
+    /// environment individually
+    ///
+    /// 1. `FileAccessTokenProvider`
+    /// 2. `FixedAccessTokenProvider`
+    /// 3. `NoAuthAccessTokenProvider`
+    /// 4. Fail
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        if let Ok(provider) = FileAccessTokenProvider::from_env() {
+            return Ok(Self::new(provider));
+        }
+
+        if let Ok(provider) = FixedAccessTokenProvider::from_env() {
+            return Ok(Self::new(provider));
+        }
+
+        if let Ok(provider) = NoAuthAccessTokenProvider::from_env() {
+            return Ok(Self::new(provider));
+        }
+
+        Err(MessageError::new("no access token provider could be initialized").boxed())
+    }
+}
+
+impl ProvidesAccessToken for AccessTokenProvider {
+    fn get_token(&self) -> TokenFuture {
+        self.inner.get_token()
+    }
 }
 
 /// Using this access token provider disables OAUTH.
 pub struct NoAuthAccessTokenProvider;
 
 impl NoAuthAccessTokenProvider {
-    pub fn from_env() -> Box<dyn std::error::Error> {}
+    /// Initializes from the env var `NAKADION_ACCESS_TOKEN_ALLOW_NONE`.
+    ///
+    /// The env var must exist and must be set to `true` to not make this
+    /// function fail.
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let allowed: bool = must_env_parsed!(ALLOW_NO_TOKEN_ENV_VAR)?;
+
+        if allowed {
+            Ok(Self)
+        } else {
+            Err(MessageError::new("'NAKADION_ACCESS_TOKEN_ALLOW_NONE' was set to 'false'.").boxed())
+        }
+    }
 }
 
 impl ProvidesAccessToken for NoAuthAccessTokenProvider {
@@ -101,12 +142,15 @@ impl FileAccessTokenProvider {
         FileAccessTokenProvider { path: path.into() }
     }
 
-    /// Create a new `FileAccessTokenProvider` which reads the token from a
-    /// fully qualified file path contained in the env var `file_path_env_var`.
-    pub fn from_env<V: AsRef<str>>(
-        file_path_env_var: V,
-    ) -> Result<FileAccessTokenProvider, Box<dyn Error>> {
-        let path = env::var(file_path_env_var.as_ref()).map_err(Box::new)?;
+    /// Create a new `FileAccessTokenProvider` which reads the token from a file
+    /// at the given path.
+    ///
+    /// The path must be a fully qualified file path contained
+    /// in the env var `NAKADION_ACCESS_TOKEN_PATH`.
+    ///
+    /// The existence of the file at the given path is not checked.
+    pub fn from_env() -> Result<FileAccessTokenProvider, Box<dyn Error>> {
+        let path: PathBuf = must_env_parsed!(TOKEN_PATH_ENV_VAR)?;
         Ok(FileAccessTokenProvider::new(path))
     }
 }
@@ -143,10 +187,10 @@ impl FixedAccessTokenProvider {
         }
     }
 
-    /// Create a new `FixedAccessTokenProvider` initializes the token from the
-    /// the value of the given env var `token_env_var`.
-    pub fn from_env<V: AsRef<str>>(token_env_var: V) -> Result<Self, Box<dyn Error>> {
-        let token = env::var(token_env_var.as_ref()).map_err(Box::new)?;
+    /// Create a new `FixedAccessTokenProvider` initializes the token with the
+    /// the value of the given env var `NAKADION_ACCESS_TOKEN_FIXED`.
+    pub fn from_env() -> Result<Self, Box<dyn Error>> {
+        let token = must_env!(TOKEN_FIXED_ENV_VAR)?;
         Ok(Self::new(token))
     }
 }

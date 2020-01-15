@@ -17,7 +17,7 @@ tokio = {version = "0.2", features = ["fs"] }
 bytes = "0.5"
 log = "0.4"
 uuid = {version = "0.8", features=["serde", "v4"] }
-url = { version = "2.1" }
+url = { version = "2.1", features = ["serde"] }
 reqwest = {version = "0.10", features = ["stream"] }
 http = "0.2"
 http-api-problem = "0.14"
@@ -29,3 +29,4 @@ metrix = { version = "0.10", optional = true }
 
 [dev-dependencies]
 env_logger = "0.7"
+tokio = {version = "0.2", features = ["macros"] }

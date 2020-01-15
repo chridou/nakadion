@@ -5,6 +5,8 @@ use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
 use http::{Request, Response};
 
+pub use reqwest_dispatch_http_request::ReqwestDispatchHttpRequest;
+
 pub type BytesStream<'a> = BoxStream<'a, Result<Bytes, IoError>>;
 
 pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream<'a>>, RemoteCallError>>;
@@ -195,6 +197,13 @@ mod reqwest_dispatch_http_request {
                 Ok(response)
             }
             .boxed()
+        }
+    }
+
+    impl Default for ReqwestDispatchHttpRequest {
+        fn default() -> Self {
+            let client = Client::new();
+            Self { client }
         }
     }
 

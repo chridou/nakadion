@@ -13,19 +13,20 @@ pub use crate::model::EventTypeName;
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*category)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Category {
-    /// No predefined changes apply. The effective schema for the validation is
-    /// exactly the same as the EventTypeSchema.
-    Undefined,
-    /// Events of this category will be DataChangeEvents. The effective schema during
-    /// the validation contains metadata, and adds fields data_op and data_type. The
-    /// passed EventTypeSchema defines the schema of data.
-    Data,
-    /// Events of this category will be BusinessEvents. The effective schema for
-    /// validation contains metadata and any additionally defined properties passed in the
-    /// EventTypeSchema directly on top level of the Event. If name conflicts arise, creation
-    /// of this EventType will be rejected.
-    Business,
+  /// No predefined changes apply. The effective schema for the validation is
+  /// exactly the same as the EventTypeSchema.
+  Undefined,
+  /// Events of this category will be DataChangeEvents. The effective schema during
+  /// the validation contains metadata, and adds fields data_op and data_type. The
+  /// passed EventTypeSchema defines the schema of data.
+  Data,
+  /// Events of this category will be BusinessEvents. The effective schema for
+  /// validation contains metadata and any additionally defined properties passed in the
+  /// EventTypeSchema directly on top level of the Event. If name conflicts arise, creation
+  /// of this EventType will be rejected.
+  Business,
 }
 
 /// Determines how the assignment of the event to a partition should be handled.
@@ -34,27 +35,28 @@ pub enum Category {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/registry/partition-strategies_get)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PartitionStrategy {
-    /// Resolution of the target partition happens randomly (events are evenly
-    /// distributed on the topic’s partitions).
-    Random,
-    /// Resolution of the partition follows the computation of a hash from the value of
-    /// the fields indicated in the EventType’s partition_key_fields, guaranteeing that Events
-    /// with same values on those fields end in the same partition. Given the event type’s category
-    /// is DataChangeEvent, field path is considered relative to “data”.
-    Hash,
-    /// Target partition is defined by the client. As long as the indicated
-    /// partition exists, Event assignment will respect this value. Correctness of the relative
-    /// ordering of events is under the responsibility of the Producer. Requires that the client
-    /// provides the target partition on metadata.partition (See EventMetadata). Failure to do
-    /// so will reject the publishing of the Event.
-    UserDefined,
+  /// Resolution of the target partition happens randomly (events are evenly
+  /// distributed on the topic’s partitions).
+  Random,
+  /// Resolution of the partition follows the computation of a hash from the value of
+  /// the fields indicated in the EventType’s partition_key_fields, guaranteeing that Events
+  /// with same values on those fields end in the same partition. Given the event type’s category
+  /// is DataChangeEvent, field path is considered relative to “data”.
+  Hash,
+  /// Target partition is defined by the client. As long as the indicated
+  /// partition exists, Event assignment will respect this value. Correctness of the relative
+  /// ordering of events is under the responsibility of the Producer. Requires that the client
+  /// provides the target partition on metadata.partition (See EventMetadata). Failure to do
+  /// so will reject the publishing of the Event.
+  UserDefined,
 }
 
 impl Default for PartitionStrategy {
-    fn default() -> Self {
-        PartitionStrategy::Random
-    }
+  fn default() -> Self {
+    PartitionStrategy::Random
+  }
 }
 
 /// Compatibility mode provides a mean for event owners to evolve their schema, given changes respect the
@@ -70,26 +72,27 @@ impl Default for PartitionStrategy {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*compatibility_mode)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CompatibilityMode {
-    /// Consumers can reliably parse events produced under different versions. Every event published
-    /// since the first version is still valid based on the newest schema. When in compatible mode, it’s allowed to
-    /// add new optional properties and definitions to an existing schema, but no other changes are allowed.
-    /// Under this mode, the following json-schema attributes are not supported: `not`, `patternProperties`,
-    /// `additionalProperties` and `additionalItems`. When validating events, additional properties is `false`.
-    Compatible,
-    /// Compatible schema changes are allowed. It’s possible to use the full json schema specification
-    /// for defining schemas. Consumers of forward compatible event types can safely read events tagged with the
-    /// latest schema version as long as they follow the robustness principle.
-    Forward,
-    /// Any schema modification is accepted, even if it might break existing producers or consumers. When
-    /// validating events, no additional properties are accepted unless explicitly stated in the schema.
-    None,
+  /// Consumers can reliably parse events produced under different versions. Every event published
+  /// since the first version is still valid based on the newest schema. When in compatible mode, it’s allowed to
+  /// add new optional properties and definitions to an existing schema, but no other changes are allowed.
+  /// Under this mode, the following json-schema attributes are not supported: `not`, `patternProperties`,
+  /// `additionalProperties` and `additionalItems`. When validating events, additional properties is `false`.
+  Compatible,
+  /// Compatible schema changes are allowed. It’s possible to use the full json schema specification
+  /// for defining schemas. Consumers of forward compatible event types can safely read events tagged with the
+  /// latest schema version as long as they follow the robustness principle.
+  Forward,
+  /// Any schema modification is accepted, even if it might break existing producers or consumers. When
+  /// validating events, no additional properties are accepted unless explicitly stated in the schema.
+  None,
 }
 
 impl Default for CompatibilityMode {
-    fn default() -> Self {
-        CompatibilityMode::Forward
-    }
+  fn default() -> Self {
+    CompatibilityMode::Forward
+  }
 }
 
 /// Part of `PartitionKeyFields`
@@ -97,9 +100,9 @@ impl Default for CompatibilityMode {
 pub struct PartitionKey(String);
 
 impl PartitionKey {
-    pub fn new(v: impl Into<String>) -> Self {
-        PartitionKey(v.into())
-    }
+  pub fn new(v: impl Into<String>) -> Self {
+    PartitionKey(v.into())
+  }
 }
 
 /// Required when 'partition_resolution_strategy' is set to ‘hash’. Must be absent otherwise.
@@ -108,7 +111,7 @@ impl PartitionKey {
 /// If this is set it MUST be a valid required field as defined in the schema.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*partition_key_fields)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PartitionKeyFields(Vec<PartitionKey>);
 
 /// Event type cleanup policy. There are two possible values.
@@ -117,63 +120,65 @@ pub struct PartitionKeyFields(Vec<PartitionKey>);
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*cleanup_policy)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CleanupPolicy {
-    /// This cleanup policy will delete old events after retention time expires. Nakadi guarantees that each
-    /// event will be available for at least the retention time period. However Nakadi doesn’t guarantee that event
-    /// will be deleted right after retention time expires.
-    Delete,
-    /// This cleanup policy will keep only the latest event for each event key. The compaction is performed per
-    /// partition, there is no compaction across partitions. The key that will be used as a compaction key should be
-    /// specified in ‘partition_compaction_key’ field of event metadata. This cleanup policy is not available for
-    /// ‘undefined’ category of event types.
-    ///
-    /// The compaction can be not applied to events that were published recently and located at the head of the
-    /// queue, which means that the actual amount of events received by consumers can be different depending on time
-    /// when the consumption happened.
-    ///
-    /// When using ‘compact’ cleanup policy user should consider that different Nakadi endpoints showing the amount
-    /// of events will actually show the original amount of events published, not the actual amount of events that
-    /// are currently there.
-    /// E.g. subscription /stats endpoint will show the value ‘unconsumed_events’ - but that may not match with the
-    /// actual amount of events unconsumed in that subscription as ‘compact’ cleanup policy may delete older events
-    /// in the middle of queue if there is a newer event for the same key published.
-    ///
-    /// For more details about compaction implementation please read the documentation of Log Compaction in Kafka
-    /// https://kafka.apache.org/documentation/#compaction, Nakadi currently relies on this implementation.
-    Compact,
+  /// This cleanup policy will delete old events after retention time expires. Nakadi guarantees that each
+  /// event will be available for at least the retention time period. However Nakadi doesn’t guarantee that event
+  /// will be deleted right after retention time expires.
+  Delete,
+  /// This cleanup policy will keep only the latest event for each event key. The compaction is performed per
+  /// partition, there is no compaction across partitions. The key that will be used as a compaction key should be
+  /// specified in ‘partition_compaction_key’ field of event metadata. This cleanup policy is not available for
+  /// ‘undefined’ category of event types.
+  ///
+  /// The compaction can be not applied to events that were published recently and located at the head of the
+  /// queue, which means that the actual amount of events received by consumers can be different depending on time
+  /// when the consumption happened.
+  ///
+  /// When using ‘compact’ cleanup policy user should consider that different Nakadi endpoints showing the amount
+  /// of events will actually show the original amount of events published, not the actual amount of events that
+  /// are currently there.
+  /// E.g. subscription /stats endpoint will show the value ‘unconsumed_events’ - but that may not match with the
+  /// actual amount of events unconsumed in that subscription as ‘compact’ cleanup policy may delete older events
+  /// in the middle of queue if there is a newer event for the same key published.
+  ///
+  /// For more details about compaction implementation please read the documentation of Log Compaction in Kafka
+  /// https://kafka.apache.org/documentation/#compaction, Nakadi currently relies on this implementation.
+  Compact,
 }
 
 impl Default for CleanupPolicy {
-    fn default() -> Self {
-        CleanupPolicy::Delete
-    }
+  fn default() -> Self {
+    CleanupPolicy::Delete
+  }
 }
 
 /// The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
 /// future there could be others.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
+#[serde(rename_all = "snake_case")]
 pub enum SchemaType {
-    #[serde(rename = "json_schema")]
-    JsonSchema,
+  #[serde(rename = "json_schema")]
+  JsonSchema,
 }
 
 /// The most recent schema for this EventType. Submitted events will be validated against it.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeSchema {
-    pub version: String,
-    pub created_at: DateTime<Utc>,
-    #[serde(rename = "type")]
-    pub schema_type: SchemaType,
-    pub schema: String,
+  pub version: String,
+  pub created_at: DateTime<Utc>,
+  #[serde(rename = "type")]
+  pub schema_type: SchemaType,
+  pub schema: String,
 }
 
 /// The most recent schema for this EventType. Submitted events will be validated against it.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeSchemaInput {
-    #[serde(rename = "type")]
-    pub schema_type: SchemaType,
-    pub schema: String,
+  #[serde(rename = "type")]
+  pub schema_type: SchemaType,
+  pub schema: String,
 }
 
 /// Number of milliseconds that Nakadi stores events published to this event type.
@@ -183,55 +188,48 @@ pub struct EventTypeSchemaInput {
 pub struct RetentionTime(Duration);
 
 impl RetentionTime {
-    pub fn new(d: Duration) -> Self {
-        RetentionTime(d)
-    }
+  pub fn new(d: Duration) -> Self {
+    RetentionTime(d)
+  }
 }
 
 impl Serialize for RetentionTime {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let millis = self.0.as_millis();
-        serializer.serialize_u128(millis)
-    }
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let millis = self.0.as_millis();
+    serializer.serialize_u128(millis)
+  }
 }
 
 impl<'de> Deserialize<'de> for RetentionTime {
-    fn deserialize<D>(deserializer: D) -> Result<RetentionTime, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let millis = u64::deserialize(deserializer)?;
-        Ok(RetentionTime(Duration::from_millis(millis)))
-    }
+  fn deserialize<D>(deserializer: D) -> Result<RetentionTime, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let millis = u64::deserialize(deserializer)?;
+    Ok(RetentionTime(Duration::from_millis(millis)))
+  }
 }
 
 /// Additional parameters for tuning internal behavior of Nakadi.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypeOptions)
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct EventTypeOptions {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub retention_time: Option<RetentionTime>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub retention_time: Option<RetentionTime>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EventTypeAuthorization {
-    pub admins: Vec<AuthorizationAttribute>,
-    pub readers: Vec<AuthorizationAttribute>,
-    pub writers: Vec<AuthorizationAttribute>,
-}
-
-impl Default for EventTypeAuthorization {
-    fn default() -> Self {
-        Self {
-            admins: Vec::default(),
-            readers: Vec::default(),
-            writers: Vec::default(),
-        }
-    }
+  #[serde(default)]
+  pub admins: Vec<AuthorizationAttribute>,
+  #[serde(default)]
+  pub readers: Vec<AuthorizationAttribute>,
+  #[serde(default)]
+  pub writers: Vec<AuthorizationAttribute>,
 }
 
 /// Intended target audience of the event type. Relevant for standards around quality of design and documentation,
@@ -243,11 +241,16 @@ impl Default for EventTypeAuthorization {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*audience)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum EventTypeAudience {
-    ComponentInternal,
-    BusinessUnitInternal,
-    CompanyInternal,
-    ExternalPartner,
-    ExternalPublic,
+  #[serde(rename = "component-internal")]
+  ComponentInternal,
+  #[serde(rename = "business-unit-internal")]
+  BusinessUnitInternal,
+  #[serde(rename = "company-internal")]
+  CompanyInternal,
+  #[serde(rename = "external-partner")]
+  ExternalPartner,
+  #[serde(rename = "external-public")]
+  ExternalPublic,
 }
 
 /// Determines the enrichment to be performed on an Event upon reception. Enrichment is
@@ -264,8 +267,9 @@ pub enum EventTypeAudience {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*enrichment_strategies)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
+#[serde(rename_all = "snake_case")]
 pub enum EnrichmentStrategy {
-    MetadataEnrichment,
+  MetadataEnrichment,
 }
 
 /// Operational statistics for an EventType. This data may be provided by users on Event Type creation.
@@ -274,19 +278,19 @@ pub enum EnrichmentStrategy {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypeStatistics)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeStatistics {
-    /// Write rate for events of this EventType. This rate encompasses all producers of this
-    /// EventType for a Nakadi cluster.
-    ///
-    /// Measured in event count per minute.
-    pub messages_per_minute: u64,
-    /// Average message size for each Event of this EventType. Includes in the count the whole serialized
-    /// form of the event, including metadata.
-    /// Measured in bytes.
-    pub message_size: u64,
-    /// Amount of parallel readers (consumers) to this EventType.
-    pub read_parallelism: u64,
-    /// Amount of parallel writers (producers) to this EventType.
-    pub write_parallelism: u64,
+  /// Write rate for events of this EventType. This rate encompasses all producers of this
+  /// EventType for a Nakadi cluster.
+  ///
+  /// Measured in event count per minute.
+  pub messages_per_minute: u64,
+  /// Average message size for each Event of this EventType. Includes in the count the whole serialized
+  /// form of the event, including metadata.
+  /// Measured in bytes.
+  pub message_size: u64,
+  /// Amount of parallel readers (consumers) to this EventType.
+  pub read_parallelism: u64,
+  /// Amount of parallel writers (producers) to this EventType.
+  pub write_parallelism: u64,
 }
 
 /// Definition of an event type
@@ -296,26 +300,30 @@ pub struct EventTypeStatistics {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventType {
-    pub name: EventTypeName,
-    pub owning_application: OwningApplication,
-    pub category: Category,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enrichment_strategy: Option<EnrichmentStrategy>,
-    pub partition_strategy: PartitionStrategy,
-    pub compatibility_mode: CompatibilityMode,
-    pub schema: EventTypeSchema,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub partition_key_fields: Option<PartitionKeyFields>,
-    pub cleanup_policy: CleanupPolicy,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_statistic: Option<EventTypeStatistics>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<EventTypeOptions>,
-    pub authorization: EventTypeAuthorization,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audience: Option<EventTypeAudience>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+  pub name: EventTypeName,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub owning_application: Option<OwningApplication>,
+  pub category: Category,
+  #[serde(default)]
+  pub enrichment_strategies: Vec<EnrichmentStrategy>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub partition_strategy: Option<PartitionStrategy>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub compatibility_mode: Option<CompatibilityMode>,
+  pub schema: EventTypeSchema,
+  #[serde(default)]
+  pub partition_key_fields: PartitionKeyFields,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub cleanup_policy: Option<CleanupPolicy>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub default_statistic: Option<EventTypeStatistics>,
+  #[serde(default)]
+  pub options: EventTypeOptions,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub authorization: Option<EventTypeAuthorization>,
+  pub audience: Option<EventTypeAudience>,
+  pub created_at: DateTime<Utc>,
+  pub updated_at: DateTime<Utc>,
 }
 
 /// Definition of an event type
@@ -325,23 +333,23 @@ pub struct EventType {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventTypeInput {
-    pub name: EventTypeName,
-    pub owning_application: OwningApplication,
-    pub category: Category,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enrichment_strategy: Option<EnrichmentStrategy>,
-    pub partition_strategy: PartitionStrategy,
-    pub compatibility_mode: CompatibilityMode,
-    pub schema: EventTypeSchemaInput,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub partition_key_fields: Option<PartitionKeyFields>,
-    pub cleanup_policy: CleanupPolicy,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_statistic: Option<EventTypeStatistics>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<EventTypeOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authorization: Option<EventTypeAuthorization>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audience: Option<EventTypeAudience>,
+  pub name: EventTypeName,
+  pub owning_application: OwningApplication,
+  pub category: Category,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub enrichment_strategy: Option<EnrichmentStrategy>,
+  pub partition_strategy: PartitionStrategy,
+  pub compatibility_mode: CompatibilityMode,
+  pub schema: EventTypeSchemaInput,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub partition_key_fields: Option<PartitionKeyFields>,
+  pub cleanup_policy: CleanupPolicy,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub default_statistic: Option<EventTypeStatistics>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub options: Option<EventTypeOptions>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub authorization: Option<EventTypeAuthorization>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub audience: Option<EventTypeAudience>,
 }

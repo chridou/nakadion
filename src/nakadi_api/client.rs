@@ -14,8 +14,10 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
-use crate::auth::{AccessToken, ProvidesAccessToken, TokenError};
+use crate::auth::{AccessToken, AccessTokenProvider, ProvidesAccessToken, TokenError};
+pub use crate::env_vars::*;
 use crate::model::*;
+use must_env_parsed;
 
 use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, IoError};
 use super::*;
@@ -35,24 +37,37 @@ struct Inner {
 }
 
 impl ApiClient {
-    pub fn with_dispatcher<U, D, P>(
-        base_url: U,
+    pub fn new_from_env() -> Result<Self, Box<dyn Error + 'static>> {
+        let nakadi_host: NakadiHost = must_env_parsed!(NAKADION_NAKADI_HOST_ENV_VAR)?;
+        let access_token_provider = AccessTokenProvider::from_env()?;
+        let http_client =
+            crate::nakadi_api::dispatch_http_request::ReqwestDispatchHttpRequest::default();
+
+        Ok(Self::with_dispatcher(
+            nakadi_host,
+            http_client,
+            access_token_provider,
+        ))
+    }
+}
+
+impl ApiClient {
+    pub fn with_dispatcher<D, P>(
+        nakadi_host: NakadiHost,
         http_client: D,
         access_token_provider: P,
-    ) -> Result<Self, Box<dyn Error + 'static>>
+    ) -> Self
     where
         D: DispatchHttpRequest + Send + Sync + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
-        U: TryInto<Url>,
-        U::Error: Error + 'static,
     {
-        Ok(Self {
+        Self {
             inner: Arc::new(Inner {
                 http_client: Box::new(http_client),
                 access_token_provider: Box::new(access_token_provider),
-                urls: Urls::new(base_url.try_into().map_err(Box::new)?),
+                urls: Urls::new(nakadi_host.into_inner()),
             }),
-        })
+        }
     }
 
     fn get_by_post<'a, P: Serialize, R: DeserializeOwned>(
@@ -72,6 +87,67 @@ impl ApiClient {
             if response.status().is_success() {
                 let deserialized = deserialize_stream(response.into_body()).await?;
                 Ok(deserialized)
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
+            }
+        }
+    }
+
+    fn get<'a, R: DeserializeOwned>(
+        &'a self,
+        url: Url,
+        flow_id: FlowId,
+    ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
+        async move {
+            let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
+            *request.method_mut() = Method::GET;
+
+            let response = self.http_client().dispatch(request).await?;
+
+            if response.status().is_success() {
+                let deserialized = deserialize_stream(response.into_body()).await?;
+                Ok(deserialized)
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
+            }
+        }
+    }
+
+    fn put<'a, P: Serialize>(
+        &'a self,
+        url: Url,
+        payload: &P,
+        flow_id: FlowId,
+    ) -> impl Future<Output = Result<(), NakadiApiError>> + Send + 'a {
+        let serialized = serde_json::to_vec(&payload).unwrap();
+
+        async move {
+            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            *request.method_mut() = Method::PUT;
+
+            let response = self.http_client().dispatch(request).await?;
+
+            if response.status().is_success() {
+                Ok(())
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
+            }
+        }
+    }
+
+    fn delete<'a>(
+        &'a self,
+        url: Url,
+        flow_id: FlowId,
+    ) -> impl Future<Output = Result<(), NakadiApiError>> + Send + 'a {
+        async move {
+            let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
+            *request.method_mut() = Method::DELETE;
+
+            let response = self.http_client().dispatch(request).await?;
+
+            if response.status().is_success() {
+                Ok(())
             } else {
                 evaluate_error_for_problem(response).map(Err).await
             }
@@ -139,6 +215,60 @@ impl MonitoringApi for ApiClient {
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult> {
         self.get_by_post(self.urls().monitoring_cursor_lag(name), cursors, flow_id)
+            .boxed()
+    }
+}
+
+impl SchemaRegistryApi for ApiClient {
+    /// Returns a list of all registered EventTypes
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
+    fn list_event_types(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>> {
+        self.get(self.urls().schema_registry_list_event_types(), flow_id)
+            .boxed()
+    }
+    /// Creates a new EventType.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
+    fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()> {
+        self.get_by_post(
+            self.urls().schema_registry_create_event_type(),
+            event_type,
+            flow_id,
+        )
+        .boxed()
+    }
+
+    /// Returns the EventType identified by its name.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
+    fn get_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType> {
+        let url = self.urls().schema_registry_get_event_type(name);
+        self.get(url, flow_id).boxed()
+    }
+
+    /// Updates the EventType identified by its name.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
+    fn update_event_type(
+        &self,
+        name: &EventTypeName,
+        event_type: &EventType,
+        flow_id: FlowId,
+    ) -> ApiFuture<()> {
+        self.put(
+            self.urls().schema_registry_update_event_type(name),
+            event_type,
+            flow_id,
+        )
+        .boxed()
+    }
+
+    /// Deletes an EventType identified by its name.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
+    fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()> {
+        self.delete(self.urls().schema_registry_delete_event_type(name), flow_id)
             .boxed()
     }
 }
@@ -246,8 +376,8 @@ mod urls {
     impl Urls {
         pub fn new(base_url: Url) -> Self {
             Self {
-                event_types: base_url.join("event-types").unwrap(),
-                subscriptions: base_url.join("subscriptions").unwrap(),
+                event_types: base_url.join("event-types/").unwrap(),
+                subscriptions: base_url.join("subscriptions/").unwrap(),
             }
         }
 
@@ -267,12 +397,12 @@ mod urls {
                 .unwrap()
         }
 
-        /* pub fn schema_registry_list_event_types(&self) -> &Url {
-            &self.event_types
+        pub fn schema_registry_list_event_types(&self) -> Url {
+            self.event_types.clone()
         }
 
-        pub fn schema_registry_create_event_type(&self) -> &Url {
-            &self.event_types
+        pub fn schema_registry_create_event_type(&self) -> Url {
+            self.event_types.clone()
         }
 
         pub fn schema_registry_get_event_type(&self, event_type: &EventTypeName) -> Url {
@@ -287,6 +417,7 @@ mod urls {
             self.event_types.join(event_type.as_ref()).unwrap()
         }
 
+        /*
         pub fn stream_api_publish(&self, event_type: &EventTypeName) -> Url {
             self.event_types
                 .join(event_type.as_ref())

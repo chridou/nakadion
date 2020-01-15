@@ -15,12 +15,14 @@ use crate::model::*;
 
 use dispatch_http_request::RemoteCallError;
 
-pub mod client;
+pub use self::client::ApiClient;
+
+mod client;
 pub mod dispatch_http_request;
 
 type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
 
-trait MonitoringApi {
+pub trait MonitoringApi {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
@@ -41,27 +43,28 @@ trait MonitoringApi {
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult>;
 }
-/*
-trait SchemaRegistryApi {
+
+pub trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types(flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
+    fn list_event_types(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
-    fn create_event_type(event_type: &EventType, flow_id: FlowId) -> ApiFuture<()>;
+    fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()>;
 
     /// Returns the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
-    fn get_event_type(name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType>;
+    fn get_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType>;
 
     /// Updates the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
     fn update_event_type(
+        &self,
         name: &EventTypeName,
         event_type: &EventType,
         flow_id: FlowId,
@@ -70,8 +73,10 @@ trait SchemaRegistryApi {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type(name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
+    fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
 }
+
+/*
 
 struct PublishFuture {
     inner: Box<dyn Future<Output = Result<(), PublishError>> + Send>,
@@ -184,13 +189,13 @@ pub trait ConnectApi {
 
 */
 pub struct StreamParameters {
-    partitions: Vec<Partition>,
-    max_uncommitted_events: u32,
-    batch_limit: u32,
-    stream_limit: u32,
-    batch_flush_timeout: u32,
-    stream_timeout: u32,
-    commit_timeout: u32,
+    pub partitions: Vec<Partition>,
+    pub max_uncommitted_events: u32,
+    pub batch_limit: u32,
+    pub stream_limit: u32,
+    pub batch_flush_timeout: u32,
+    pub stream_timeout: u32,
+    pub commit_timeout: u32,
 }
 
 pub enum Committed {
@@ -199,7 +204,7 @@ pub enum Committed {
 }
 
 #[derive(Debug)]
-struct NakadiApiError<P = HttpApiProblem> {
+pub struct NakadiApiError<P = HttpApiProblem> {
     message: String,
     cause: Option<Box<dyn Error + Send + 'static>>,
     payload: Option<P>,
