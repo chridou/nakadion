@@ -412,6 +412,43 @@ impl SubscriptionApi for ApiClient {
     }
 }
 
+impl SubscriptionCommitApi for ApiClient {
+    fn commit_cursors(
+        &self,
+        id: SubscriptionId,
+        stream: StreamId,
+        cursors: &[SubscriptionCursor],
+        flow_id: FlowId,
+    ) -> ApiFuture<CursorCommitResults> {
+        let serialized = serde_json::to_vec(&cursors).unwrap();
+
+        async {
+            let url = self.urls().subscriptions_commit_cursors(id);
+            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            *request.method_mut() = Method::POST;
+
+            request.headers_mut().append(
+                HeaderName::from_static("x-nakadi-stream-id"),
+                HeaderValue::from_str(stream.to_string().as_ref())?,
+            );
+
+            let response = self.http_client().dispatch(request).await?;
+
+            match response.status() {
+                StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
+                StatusCode::OK => {
+                    let deserialized = deserialize_stream(response.into_body()).await?;
+                    Ok(CursorCommitResults {
+                        results: deserialized,
+                    })
+                }
+                _ => evaluate_error_for_problem(response).map(Err).await,
+            }
+        }
+        .boxed()
+    }
+}
+
 fn construct_authorization_bearer_value<T: AsRef<str>>(
     token: T,
 ) -> Result<HeaderValue, NakadiApiError> {
@@ -581,14 +618,6 @@ mod urls {
                 .unwrap()
         }
 
-        /*       pub fn subscriptions_get_commit_cursors(&self, id: SubscriptionId) -> Url {
-            self.subscriptions
-                .join(&id.to_string())
-                .unwrap()
-                .join("cursors")
-                .unwrap()
-        }*/
-
         pub fn subscriptions_reset_subscription_cursors(&self, id: SubscriptionId) -> Url {
             self.subscriptions
                 .join(&format!("{}/", id))
@@ -610,6 +639,14 @@ mod urls {
                 .join(&format!("{}/", id))
                 .unwrap()
                 .join(&format!("stats/?show_time_lag={}", show_time_lag))
+                .unwrap()
+        }
+
+        pub fn subscriptions_commit_cursors(&self, id: SubscriptionId) -> Url {
+            self.subscriptions
+                .join(&format!("{}/", id))
+                .unwrap()
+                .join("cursors")
                 .unwrap()
         }
     }

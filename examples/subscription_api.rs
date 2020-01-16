@@ -5,7 +5,7 @@ use nakadion::nakadi_api::{ApiClient, SubscriptionApi};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ApiClient::new_from_env()?;
 
-    let subscription_id = SubscriptionId::from_env_named("SUBSCRIPTION_ID")?;
+    let subscription_id = SubscriptionId::from_env()?;
 
     let subscription = client
         .get_subscription(subscription_id, FlowId::default())

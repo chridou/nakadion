@@ -169,22 +169,20 @@ pub trait SubscriptionApi {
     ) -> ApiFuture<()>;
 }
 
-/*
-pub struct CommitFuture {
-    inner: Box<dyn Future<Output = Result<Committed, CommitError>> + Send + 'static>,
-}
-
-pub trait CommitApi {
+pub trait SubscriptionCommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)
     fn commit_cursors(
+        &self,
         id: SubscriptionId,
         stream: StreamId,
         cursors: &[SubscriptionCursor],
         flow_id: FlowId,
-    ) -> CommitFuture;
+    ) -> ApiFuture<CursorCommitResults>;
 }
+
+/*
 
 pub struct ConnectFuture {
     inner: Box<dyn Future<Output = Result<EventStream, ConnectError>> + Send + 'static>,

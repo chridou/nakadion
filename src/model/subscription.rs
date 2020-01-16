@@ -218,6 +218,13 @@ pub struct SubscriptionCursor {
     pub cursor_token: CursorToken,
 }
 
+/// The result of all cursor commits with the `SubscriptionCursor`s themselves.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct CursorCommitResults {
+    pub results: Vec<CursorCommitResult>,
+}
 /// The result of single cursor commit with the `SubscriptionCursor` itself.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)

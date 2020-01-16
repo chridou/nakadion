@@ -34,6 +34,12 @@ impl FromStr for StreamId {
     }
 }
 
+impl fmt::Display for StreamId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// The flow id of the request, which is written into the logs and passed to called services. Helpful
 /// for operational troubleshooting and log analysis.
 ///
