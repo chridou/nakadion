@@ -20,7 +20,7 @@ use super::EventId;
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BatchResponse {
-    items: Vec<BatchItemResponse>,
+    pub items: Vec<BatchItemResponse>,
 }
 
 /// A status corresponding to one individual Event’s publishing attempt.
@@ -29,14 +29,14 @@ pub struct BatchResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchItemResponse {
     /// Eid of the corresponding item. Will be absent if missing on the incoming Event.
-    eid: Option<EventId>,
+    pub eid: Option<EventId>,
     /// Indicator of the submission of the Event within a Batch.
-    publishing_status: PublishingStatus,
+    pub publishing_status: PublishingStatus,
     /// Indicator of the step in the publishing process this Event reached.
-    step: Option<PublishingStep>,
+    pub step: Option<PublishingStep>,
     /// Human readable information about the failure on this item.
     /// Items that are not “submitted” should have a description.
-    detail: Option<String>,
+    pub detail: Option<String>,
 }
 
 /// Indicator of the submission of the Event within a Batch.

@@ -76,6 +76,40 @@ pub trait SchemaRegistryApi {
     fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
 }
 
+/// Publishes a batch of Events.
+///
+/// All items must be of the EventType identified by name.
+///
+/// Reception of Events will always respect the configuration of its EventType with respect to
+/// validation, enrichment and partition. The steps performed on reception of incoming message
+/// are:
+///
+/// 1.  Every validation rule specified for the EventType will be checked in order against the
+///     incoming Events. Validation rules are evaluated in the order they are defined and the Event
+///     is rejected in the first case of failure. If the offending validation rule provides
+///     information about the violation it will be included in the BatchItemResponse. If the
+///     EventType defines schema validation it will be performed at this moment. The size of each
+///     Event will also be validated. The maximum size per Event is configured by the adminitrator.
+///     We use the batch input to measure the size of events, so unnecessary spaces, tabs, and
+///     carriage returns will count towards the event size.
+///
+/// 2.  Once the validation succeeded, the content of the Event is updated according to the
+///     enrichment rules in the order the rules are defined in the EventType. No preexisting
+///     value might be changed (even if added by an enrichment rule). Violations on this will force
+///     the immediate rejection of the Event. The invalid overwrite attempt will be included in
+///     the item’s BatchItemResponse object.
+///
+/// 3.  The incoming Event’s relative ordering is evaluated according to the rule on the
+///     EventType. Failure to evaluate the rule will reject the Event.
+///
+///     Given the batched nature of this operation, any violation on validation or failures on
+///     enrichment or partitioning will cause the whole batch to be rejected, i.e. none of its
+///     elements are pushed to the underlying broker.
+///
+///     Failures on writing of specific partitions to the broker might influence other
+///     partitions. Failures at this stage will fail only the affected partitions.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
 pub trait PublishApi {
     /// Publishes a batch of Events of this EventType. All items must be of the EventType
     /// identified by name.
