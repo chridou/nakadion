@@ -76,39 +76,18 @@ pub trait SchemaRegistryApi {
     fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
 }
 
-/*
-
-struct PublishFuture {
-    inner: Box<dyn Future<Output = Result<(), PublishError>> + Send>,
-}
-
-trait PublishApi {
+pub trait PublishApi {
     /// Publishes a batch of Events of this EventType. All items must be of the EventType
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<T: Into<FlowId>, E: Serialize>(
+    fn publish_events<E: Serialize>(
+        &self,
         name: &EventTypeName,
         events: &[E],
         flow_id: FlowId,
-    ) -> PublishFuture {
-        unimplemented!()
-    }
-
-    fn publish_event<T: Into<FlowId>, E: Serialize>(
-        name: &EventTypeName,
-        event: &E,
-        flow_id: FlowId,
-    ) -> PublishFuture {
-        unimplemented!()
-    }
-
-    fn publish_raw_events(
-        name: &EventTypeName,
-        raw_events: &[u8],
-        flow_id: FlowId,
-    ) -> PublishFuture;
-}*/
+    ) -> ApiFuture<BatchResponse>;
+}
 
 pub trait SubscriptionApi {
     /// This endpoint creates a subscription for EventTypes.
@@ -213,25 +192,25 @@ pub enum Committed {
 }
 
 #[derive(Debug)]
-pub struct NakadiApiError<P = HttpApiProblem> {
+pub struct NakadiApiError {
     message: String,
     cause: Option<Box<dyn Error + Send + 'static>>,
-    payload: Option<P>,
+    problem: Option<HttpApiProblem>,
     kind: NakadiApiErrorKind,
 }
 
-impl NakadiApiError<HttpApiProblem> {
+impl NakadiApiError {
     pub fn new<T: Into<String>>(kind: NakadiApiErrorKind, message: T) -> Self {
         Self {
             message: message.into(),
             cause: None,
-            payload: None,
+            problem: None,
             kind,
         }
     }
 }
 
-impl<P> NakadiApiError<P> {
+impl NakadiApiError {
     pub fn caused_by<E>(mut self, err: E) -> Self
     where
         E: Error + Send + 'static,
@@ -240,11 +219,11 @@ impl<P> NakadiApiError<P> {
         self
     }
 
-    pub fn with_payload<PP>(self, payload: PP) -> NakadiApiError<PP> {
+    pub fn with_problem(self, problem: HttpApiProblem) -> NakadiApiError {
         NakadiApiError {
             message: self.message,
             cause: self.cause,
-            payload: Some(payload),
+            problem: Some(problem),
             kind: self.kind,
         }
     }
@@ -257,32 +236,26 @@ impl<P> NakadiApiError<P> {
         self.kind
     }
 
-    pub fn payload(&self) -> Option<&P> {
-        self.payload.as_ref()
+    pub fn problem(&self) -> Option<&HttpApiProblem> {
+        self.problem.as_ref()
     }
 
-    pub fn try_into_payload(self) -> Result<P, Self> {
-        if self.payload.is_some() {
-            Ok(self.payload.unwrap())
+    pub fn try_into_problem(self) -> Result<HttpApiProblem, Self> {
+        if self.problem.is_some() {
+            Ok(self.problem.unwrap())
         } else {
             Err(self)
         }
     }
 }
 
-impl<P> Error for NakadiApiError<P>
-where
-    P: fmt::Debug + fmt::Display,
-{
+impl Error for NakadiApiError {
     fn cause(&self) -> Option<&dyn Error> {
         self.cause.as_ref().map(|p| &**p as &dyn Error)
     }
 }
 
-impl<P> fmt::Display for NakadiApiError<P>
-where
-    P: fmt::Display,
-{
+impl fmt::Display for NakadiApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.message)?;
 

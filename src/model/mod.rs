@@ -4,17 +4,20 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
+use uuid::Uuid;
 
 mod core_model;
 mod cursor;
 mod event_type;
 mod misc;
+mod publishing;
 mod subscription;
 
 pub use self::core_model::*;
 pub use self::cursor::*;
 pub use self::event_type::*;
 pub use self::misc::*;
+pub use self::publishing::*;
 pub use self::subscription::*;
 
 use crate::env_vars::*;
@@ -62,3 +65,6 @@ impl From<Url> for NakadiHost {
         Self(url)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventId(pub Uuid);

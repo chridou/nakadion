@@ -281,6 +281,16 @@ impl SchemaRegistryApi for ApiClient {
     }
 }
 
+impl PublishApi for ApiClient {
+    fn publish_events<E: Serialize>(
+        &self,
+        name: &EventTypeName,
+        events: &[E],
+        flow_id: FlowId,
+    ) -> ApiFuture<BatchResponse> {
+    }
+}
+
 impl SubscriptionApi for ApiClient {
     /// This endpoint creates a subscription for EventTypes.
     ///
@@ -422,7 +432,7 @@ impl SubscriptionCommitApi for ApiClient {
     ) -> ApiFuture<CursorCommitResults> {
         let serialized = serde_json::to_vec(&cursors).unwrap();
 
-        async {
+        async move {
             let url = self.urls().subscriptions_commit_cursors(id);
             let mut request = self.create_request(&url, serialized, flow_id).await?;
             *request.method_mut() = Method::POST;
@@ -434,13 +444,12 @@ impl SubscriptionCommitApi for ApiClient {
 
             let response = self.http_client().dispatch(request).await?;
 
-            match response.status() {
+            let status = response.status();
+            match status {
                 StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
                 StatusCode::OK => {
-                    let deserialized = deserialize_stream(response.into_body()).await?;
-                    Ok(CursorCommitResults {
-                        results: deserialized,
-                    })
+                    let commit_results = deserialize_stream(response.into_body()).await?;
+                    Ok(CursorCommitResults { commit_results })
                 }
                 _ => evaluate_error_for_problem(response).map(Err).await,
             }
@@ -487,7 +496,7 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> 
     };
 
     match deserialize_stream::<HttpApiProblem>(body).await {
-        Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_payload(problem),
+        Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_problem(problem),
         Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
             .caused_by(err),
     }

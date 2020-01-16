@@ -223,8 +223,55 @@ pub struct SubscriptionCursor {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CursorCommitResults {
-    pub results: Vec<CursorCommitResult>,
+    pub commit_results: Vec<CursorCommitResult>,
 }
+
+impl CursorCommitResults {
+    pub fn all_committed(&self) -> bool {
+        self.commit_results
+            .iter()
+            .all(|r| r.result == CommitResult::Committed)
+    }
+
+    pub fn iter_committed_cursors(&self) -> impl Iterator<Item = &SubscriptionCursor> {
+        self.commit_results
+            .iter()
+            .filter(|r| r.is_committed())
+            .map(|r| &r.cursor)
+    }
+
+    pub fn into_iter_committed_cursors(self) -> impl Iterator<Item = SubscriptionCursor> {
+        self.commit_results
+            .into_iter()
+            .filter(|r| r.is_committed())
+            .map(|r| r.cursor)
+    }
+
+    pub fn iter_outdated_cursors(&self) -> impl Iterator<Item = &SubscriptionCursor> {
+        self.commit_results
+            .iter()
+            .filter(|r| r.is_outdated())
+            .map(|r| &r.cursor)
+    }
+
+    pub fn into_iter_outdated_cursors(self) -> impl Iterator<Item = SubscriptionCursor> {
+        self.commit_results
+            .into_iter()
+            .filter(|r| r.is_outdated())
+            .map(|r| r.cursor)
+    }
+
+    pub fn into_inner(self) -> Vec<CursorCommitResult> {
+        self.commit_results
+    }
+}
+
+impl From<CursorCommitResults> for Vec<CursorCommitResult> {
+    fn from(v: CursorCommitResults) -> Self {
+        v.into_inner()
+    }
+}
+
 /// The result of single cursor commit with the `SubscriptionCursor` itself.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
