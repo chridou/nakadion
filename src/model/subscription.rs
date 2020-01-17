@@ -212,9 +212,13 @@ pub struct CursorToken(String);
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursor)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubscriptionCursor {
-    pub partition: PartitionId,
-    pub offset: CursorOffset,
+    /// The name of the event type this partition’s events belong to.
     pub event_type: EventTypeName,
+    /// d of the partition pointed to by this cursor.
+    pub partition: PartitionId,
+    /// Offset of the event being pointed to.
+    pub offset: CursorOffset,
+    /// An opaque value defined by the server.
     pub cursor_token: CursorToken,
 }
 

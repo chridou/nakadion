@@ -6,12 +6,25 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::model::PartitionId;
 
+/// A cursor with an offset
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Cursor)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cursor {
     pub partition: PartitionId,
     pub offset: CursorOffset,
 }
 
+/// Offset of the event being pointed to.
+///
+/// Note that if you want to specify beginning position of a stream with first event at offset N,
+/// you should specify offset N-1.
+/// This applies in cases when you create new subscription or reset subscription offsets.
+/// Also for stream start offsets one can use special value:
+///
+/// begin - read from the oldest available event.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Cursor*offset)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CursorOffset {
     Begin,
@@ -72,14 +85,23 @@ impl<'de> Deserialize<'de> for CursorOffset {
     }
 }
 
+/// A query for cursor distances
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CursorDistanceQuery {
     pub initial_cursor: Cursor,
     pub final_cursor: Cursor,
 }
 
+/// A result for `CursorDistanceQuery`
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CursorDistanceResult;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CursorLagResult;
+pub struct CursorDistanceResult {
+    pub initial_cursor: Cursor,
+    pub final_cursor: Cursor,
+    /// Number of events between two offsets. Initial offset is exclusive. It’s only zero when both provided offsets
+    /// are equal.
+    pub distance: u64,
+}

@@ -1,25 +1,18 @@
-use std::error::Error;
 use std::fmt;
-use std::str::FromStr;
-use uuid::Uuid;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::env_vars::*;
-use crate::helpers::MessageError;
-use crate::model::cursor::CursorOffset;
-use crate::model::event_type::OwningApplication;
-use crate::model::misc::AuthorizationAttribute;
-use crate::model::{EventTypeName, PartitionId, StreamId};
-
-use super::EventId;
+use super::{EventId, FlowId};
 
 /// An aggregation of status items corresponding to each individual Event’s publishing attempt.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BatchResponse {
+    /// Since this struct is usually part of a failure scenario it
+    /// can contain a `FlowId`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_id: Option<FlowId>,
     pub batch_items: Vec<BatchItemResponse>,
 }
 

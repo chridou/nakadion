@@ -60,9 +60,9 @@ pub trait MonitoringApi {
     fn get_cursor_lag(
         &self,
         name: &EventTypeName,
-        cursors: &Vec<Cursor>,
+        cursors: &[Cursor],
         flow_id: FlowId,
-    ) -> ApiFuture<CursorLagResult>;
+    ) -> ApiFuture<Vec<Partition>>;
 
     fn get_event_type_partitions(
         &self,

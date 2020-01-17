@@ -75,17 +75,15 @@ impl ApiClient {
         self.inner.http_client.dispatch(req)
     }
 
-    fn send_receive_payload<'a, P: Serialize, R: DeserializeOwned>(
+    fn send_receive_payload<'a, R: DeserializeOwned>(
         &'a self,
         url: Url,
         method: Method,
-        payload: &P,
+        payload: Vec<u8>,
         flow_id: FlowId,
     ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
-        let serialized = serde_json::to_vec(&payload).unwrap();
-
         async move {
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            let mut request = self.create_request(&url, payload, flow_id).await?;
             *request.method_mut() = method;
 
             let response = self.dispatch(request).await?;
@@ -201,10 +199,11 @@ impl MonitoringApi for ApiClient {
         query: &CursorDistanceQuery,
         flow_id: FlowId,
     ) -> ApiFuture<CursorDistanceResult> {
+        let payload_to_send = serde_json::to_vec(query).unwrap();
         self.send_receive_payload(
             self.urls().monitoring_cursor_distances(name),
             Method::POST,
-            query,
+            payload_to_send,
             flow_id,
         )
         .boxed()
@@ -213,13 +212,14 @@ impl MonitoringApi for ApiClient {
     fn get_cursor_lag(
         &self,
         name: &EventTypeName,
-        cursors: &Vec<Cursor>,
+        cursors: &[Cursor],
         flow_id: FlowId,
-    ) -> ApiFuture<CursorLagResult> {
+    ) -> ApiFuture<Vec<Partition>> {
+        let payload_to_send = serde_json::to_vec(cursors).unwrap();
         self.send_receive_payload(
             self.urls().monitoring_cursor_lag(name),
             Method::POST,
-            cursors,
+            payload_to_send,
             flow_id,
         )
         .boxed()
@@ -247,10 +247,11 @@ impl SchemaRegistryApi for ApiClient {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
     fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()> {
+        let payload_to_send = serde_json::to_vec(event_type).unwrap();
         self.send_receive_payload(
             self.urls().schema_registry_create_event_type(),
             Method::POST,
-            event_type,
+            payload_to_send,
             flow_id,
         )
         .boxed()
@@ -307,6 +308,15 @@ impl PublishApi for ApiClient {
 
             let response = self.inner.http_client.dispatch(request).await?;
 
+            let flow_id = match response.headers().get("x-flow-id") {
+                Some(header_value) => {
+                    let header_bytes = header_value.as_bytes();
+                    let header_str = String::from_utf8_lossy(header_bytes);
+                    Some(FlowId::new(header_str))
+                }
+                None => None,
+            };
+
             let status = response.status();
             match status {
                 StatusCode::OK => Ok(()),
@@ -314,10 +324,14 @@ impl PublishApi for ApiClient {
                     let batch_items = deserialize_stream(response.into_body()).await?;
                     if status == StatusCode::MULTI_STATUS {
                         Err(PublishFailure::PartialFailure(BatchResponse {
+                            flow_id,
                             batch_items,
                         }))
                     } else {
-                        Err(PublishFailure::Unprocessable(BatchResponse { batch_items }))
+                        Err(PublishFailure::Unprocessable(BatchResponse {
+                            flow_id,
+                            batch_items,
+                        }))
                     }
                 }
                 _ => {
@@ -605,7 +619,7 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> 
         }
     };
 
-    let mut err = match deserialize_stream::<HttpApiProblem>(body).await {
+    let err = match deserialize_stream::<HttpApiProblem>(body).await {
         Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_problem(problem),
         Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
             .caused_by(err),
@@ -754,14 +768,6 @@ mod urls {
                 .join(&format!("{}/", id))
                 .unwrap()
                 .join("cursors")
-                .unwrap()
-        }
-
-        pub fn subscriptions_events(&self, id: SubscriptionId) -> Url {
-            self.subscriptions
-                .join(&format!("{}/", id))
-                .unwrap()
-                .join("events")
                 .unwrap()
         }
 
