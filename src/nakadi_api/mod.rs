@@ -63,6 +63,12 @@ pub trait MonitoringApi {
         cursors: &Vec<Cursor>,
         flow_id: FlowId,
     ) -> ApiFuture<CursorLagResult>;
+
+    fn get_event_type_partitions(
+        &self,
+        name: &EventTypeName,
+        flow_id: FlowId,
+    ) -> ApiFuture<Vec<Partition>>;
 }
 
 pub trait SchemaRegistryApi {
@@ -314,6 +320,7 @@ pub struct NakadiApiError {
     cause: Option<Box<dyn Error + Send + 'static>>,
     problem: Option<HttpApiProblem>,
     kind: NakadiApiErrorKind,
+    flow_id: Option<FlowId>,
 }
 
 impl NakadiApiError {
@@ -323,17 +330,8 @@ impl NakadiApiError {
             cause: None,
             problem: None,
             kind,
+            flow_id: None,
         }
-    }
-}
-
-impl NakadiApiError {
-    pub fn caused_by<E>(mut self, err: E) -> Self
-    where
-        E: Error + Send + 'static,
-    {
-        self.cause = Some(Box::new(err));
-        self
     }
 
     pub fn with_problem(self, problem: HttpApiProblem) -> NakadiApiError {
@@ -342,7 +340,26 @@ impl NakadiApiError {
             cause: self.cause,
             problem: Some(problem),
             kind: self.kind,
+            flow_id: None,
         }
+    }
+
+    pub fn caused_by<E>(mut self, err: E) -> Self
+    where
+        E: Error + Send + 'static,
+    {
+        self.cause = Some(Box::new(err));
+        self
+    }
+
+    pub fn with_flow_id(mut self, flow_id: FlowId) -> Self {
+        self.flow_id = Some(flow_id);
+        self
+    }
+
+    pub fn with_maybe_flow_id(mut self, flow_id: Option<FlowId>) -> Self {
+        self.flow_id = flow_id;
+        self
     }
 
     pub fn message(&self) -> &str {
@@ -351,6 +368,10 @@ impl NakadiApiError {
 
     pub fn kind(&self) -> NakadiApiErrorKind {
         self.kind
+    }
+
+    pub fn flow_id(&self) -> Option<&FlowId> {
+        self.flow_id.as_ref()
     }
 
     pub fn problem(&self) -> Option<&HttpApiProblem> {

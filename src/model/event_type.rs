@@ -6,6 +6,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use crate::model::misc::AuthorizationAttribute;
 pub use crate::model::EventTypeName;
 
+use super::{CursorOffset, PartitionId};
+
 /// Indicator of the application owning this EventType.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)
@@ -368,4 +370,32 @@ pub struct EventTypeInput {
   pub authorization: Option<EventTypeAuthorization>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub audience: Option<EventTypeAudience>,
+}
+
+/// Partition information. Can be helpful when trying to start a stream using an unmanaged API.
+///
+/// This information is not related to the state of the consumer clients.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Partition)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Partition {
+  pub partition: PartitionId,
+  /// An offset of the oldest available Event in that partition. This value will be changing
+  /// upon removal of Events from the partition by the background archiving/cleanup mechanism.
+  pub oldest_available_offset: CursorOffset,
+  /// An offset of the newest available Event in that partition. This value will be changing
+  /// upon reception of new events for this partition by Nakadi.
+  ///
+  /// This value can be used to construct a cursor when opening streams (see
+  /// GET /event-type/{name}/events for details).
+  ///
+  /// Might assume the special name BEGIN, meaning a pointer to the offset of the oldest
+  /// available event in the partition.
+  pub newest_available_offset: CursorOffset,
+  /// Approximate number of events unconsumed by the client. This is also known as consumer lag and is used for
+  /// monitoring purposes by consumers interested in keeping an eye on the number of unconsumed events.
+  ///
+  /// If the event type uses ‘compact’ cleanup policy - then the actual number of unconsumed events in this
+  /// partition can be lower than the one reported in this field.
+  pub unconsumed_events: Option<u64>,
 }

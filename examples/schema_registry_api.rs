@@ -1,19 +1,23 @@
 use nakadion::model::*;
-use nakadion::nakadi_api::ApiClient;
-use nakadion::nakadi_api::SchemaRegistryApi;
+use nakadion::nakadi_api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ApiClient::new_from_env()?;
 
-    let mut event_types = client.list_event_types(FlowId::default()).await?;
+    //    let mut event_types = client.list_event_types(FlowId::default()).await?;
 
-    println!("Event types: {}", event_types.len());
+    //    println!("Event types: {}", event_types.len());
 
-    let event_type = event_types.pop().unwrap().name;
+    let event_type_name = EventTypeName::from_env()?;
 
     let event_type = client
-        .get_event_type(&event_type, FlowId::default())
+        .get_event_type(&event_type_name, FlowId::default())
+        .await?;
+
+    println!("{:#?}", event_type);
+    let event_type = client
+        .get_event_type_partitions(&event_type_name, FlowId::default())
         .await?;
 
     println!("{:#?}", event_type);

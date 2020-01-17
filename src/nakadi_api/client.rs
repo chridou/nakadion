@@ -224,6 +224,15 @@ impl MonitoringApi for ApiClient {
         )
         .boxed()
     }
+
+    fn get_event_type_partitions(
+        &self,
+        event_type: &EventTypeName,
+        flow_id: FlowId,
+    ) -> ApiFuture<Vec<Partition>> {
+        let url = self.urls().monitoring_event_type_partitions(event_type);
+        self.get(url, flow_id).boxed()
+    }
 }
 
 impl SchemaRegistryApi for ApiClient {
@@ -572,6 +581,16 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
 
 async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> NakadiApiError {
     let (parts, body) = response.into_parts();
+
+    let flow_id = match parts.headers.get("x-flow-id") {
+        Some(header_value) => {
+            let header_bytes = header_value.as_bytes();
+            let header_str = String::from_utf8_lossy(header_bytes);
+            Some(FlowId::new(header_str))
+        }
+        None => None,
+    };
+
     let kind = match parts.status {
         StatusCode::NOT_FOUND => NakadiApiErrorKind::NotFound,
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => NakadiApiErrorKind::AccessDenied,
@@ -586,11 +605,13 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> 
         }
     };
 
-    match deserialize_stream::<HttpApiProblem>(body).await {
+    let mut err = match deserialize_stream::<HttpApiProblem>(body).await {
         Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_problem(problem),
         Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
             .caused_by(err),
-    }
+    };
+
+    err.with_maybe_flow_id(flow_id)
 }
 
 impl From<http::header::InvalidHeaderValue> for NakadiApiError {
@@ -671,6 +692,16 @@ mod urls {
                 .join(event_type.as_ref())
                 .unwrap()
                 .join("cursor-lag")
+                .unwrap()
+        }
+
+        pub fn monitoring_event_type_partitions(&self, event_type: &EventTypeName) -> Url {
+            self.event_types
+                .join(event_type.as_ref())
+                .unwrap()
+                .join(&format!("{}/", event_type))
+                .unwrap()
+                .join("partitions")
                 .unwrap()
         }
 
