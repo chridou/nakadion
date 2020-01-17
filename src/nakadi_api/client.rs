@@ -284,10 +284,40 @@ impl SchemaRegistryApi for ApiClient {
 impl PublishApi for ApiClient {
     fn publish_events<E: Serialize>(
         &self,
-        name: &EventTypeName,
+        event_type: &EventTypeName,
         events: &[E],
         flow_id: FlowId,
-    ) -> ApiFuture<BatchResponse> {
+    ) -> PublishFuture {
+        let serialized = serde_json::to_vec(events).unwrap();
+        let url = self.urls().publish_events(event_type);
+
+        async move {
+            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            *request.method_mut() = Method::POST;
+
+            let response = self.http_client().dispatch(request).await?;
+
+            let status = response.status();
+            match status {
+                StatusCode::OK => Ok(()),
+                StatusCode::MULTI_STATUS | StatusCode::UNPROCESSABLE_ENTITY => {
+                    let batch_items = deserialize_stream(response.into_body()).await?;
+                    if status == StatusCode::MULTI_STATUS {
+                        Err(PublishFailure::PartialFailure(BatchResponse {
+                            batch_items,
+                        }))
+                    } else {
+                        Err(PublishFailure::Unprocessable(BatchResponse { batch_items }))
+                    }
+                }
+                _ => {
+                    evaluate_error_for_problem(response)
+                        .map(|err| Err(PublishFailure::Other(err)))
+                        .await
+                }
+            }
+        }
+        .boxed()
     }
 }
 
@@ -430,7 +460,7 @@ impl SubscriptionCommitApi for ApiClient {
         cursors: &[SubscriptionCursor],
         flow_id: FlowId,
     ) -> ApiFuture<CursorCommitResults> {
-        let serialized = serde_json::to_vec(&cursors).unwrap();
+        let serialized = serde_json::to_vec(cursors).unwrap();
 
         async move {
             let url = self.urls().subscriptions_commit_cursors(id);
@@ -656,6 +686,14 @@ mod urls {
                 .join(&format!("{}/", id))
                 .unwrap()
                 .join("cursors")
+                .unwrap()
+        }
+
+        pub fn publish_events(&self, event_type: &EventTypeName) -> Url {
+            self.event_types
+                .join(&format!("{}/", event_type))
+                .unwrap()
+                .join("events")
                 .unwrap()
         }
     }

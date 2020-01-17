@@ -76,6 +76,53 @@ pub trait SchemaRegistryApi {
     fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
 }
 
+/// Possible error variants returned from publishing events
+#[derive(Debug)]
+pub enum PublishFailure {
+    /// The submitted events were unprocessable so none were published
+    Unprocessable(BatchResponse),
+    /// Only events failed.
+    PartialFailure(BatchResponse),
+    /// There was an error that was not `Unprocessable`
+    Other(NakadiApiError),
+}
+
+impl Error for PublishFailure {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            PublishFailure::Other(err) => err.source(),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for PublishFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PublishFailure::Other(err) => write!(f, "{}", err)?,
+            PublishFailure::PartialFailure(batch) => write!(f, "{}", batch)?,
+            PublishFailure::Unprocessable(batch) => write!(f, "{}", batch)?,
+        }
+
+        Ok(())
+    }
+}
+
+impl From<NakadiApiError> for PublishFailure {
+    fn from(api_error: NakadiApiError) -> Self {
+        Self::Other(api_error)
+    }
+}
+
+impl From<RemoteCallError> for PublishFailure {
+    fn from(remote_call_error: RemoteCallError) -> Self {
+        let api_error = NakadiApiError::from(remote_call_error);
+        Self::Other(api_error)
+    }
+}
+
+type PublishFuture<'a> = BoxFuture<'a, Result<(), PublishFailure>>;
+
 /// Publishes a batch of Events.
 ///
 /// All items must be of the EventType identified by name.
@@ -89,7 +136,7 @@ pub trait SchemaRegistryApi {
 ///     is rejected in the first case of failure. If the offending validation rule provides
 ///     information about the violation it will be included in the BatchItemResponse. If the
 ///     EventType defines schema validation it will be performed at this moment. The size of each
-///     Event will also be validated. The maximum size per Event is configured by the adminitrator.
+///     Event will also be validated. The maximum size per Event is configured by the administrator.
 ///     We use the batch input to measure the size of events, so unnecessary spaces, tabs, and
 ///     carriage returns will count towards the event size.
 ///
@@ -117,10 +164,10 @@ pub trait PublishApi {
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
     fn publish_events<E: Serialize>(
         &self,
-        name: &EventTypeName,
+        event_type: &EventTypeName,
         events: &[E],
         flow_id: FlowId,
-    ) -> ApiFuture<BatchResponse>;
+    ) -> PublishFuture;
 }
 
 pub trait SubscriptionApi {
@@ -200,29 +247,40 @@ pub trait SubscriptionCommitApi {
 pub struct ConnectFuture {
     inner: Box<dyn Future<Output = Result<EventStream, ConnectError>> + Send + 'static>,
 }
+*/
 
 pub trait ConnectApi {
     /// Starts a new stream for reading events from this subscription.
     ///
+    /// Starts a new stream for reading events from this subscription. The minimal consumption unit is a partition, so
+    /// it is possible to start as many streams as the total number of partitions in event-types of this subscription.
+    /// The position of the consumption is managed by Nakadi. The client is required to commit the cursors he gets in
+    /// a stream.
+    ///
+    /// If you create a stream without specifying the partitions to read from - Nakadi will automatically assign
+    /// partitions to this new stream. By default Nakadi distributes partitions among clients trying to give an equal
+    /// number of partitions to each client (the amount of data is not considered). This is default and the most common
+    /// way to use streaming endpoint.
+    ///
+    /// It is also possible to directly request specific partitions to be delivered within the stream. If these
+    /// partitions are already consumed by another stream of this subscription - Nakadi will trigger a rebalance that
+    /// will assign these partitions to the new stream. The request will fail if user directly requests partitions that
+    /// are already requested directly by another active stream of this subscription. The overall picture will be the
+    /// following: streams which directly requested specific partitions will consume from them; streams that didn’t
+    /// specify which partitions to consume will consume partitions that left - Nakadi will autobalance free partitions
+    /// among these streams (balancing happens by number of partitions).
+    ///
+    /// Specifying partitions to consume is not a trivial way to consume as it will require additional coordination
+    /// effort from the client application, that’s why it should only be used if such way of consumption should be
+    /// implemented due to some specific requirements.
+    ///
+    /// Also, when using streams with directly assigned partitions, it is the user’s responsibility to detect, and react
+    /// to, changes in the number of partitions in the subscription (following the re-partitioning of an event type).
+    /// Using the GET /subscriptions/{subscription_id}/stats endpoint can be helpful.
+    ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
     fn connect(id: SubscriptionId, parameters: &StreamParameters, flow_id: FlowId)
         -> ConnectFuture;
-}
-
-*/
-pub struct StreamParameters {
-    pub partitions: Vec<Partition>,
-    pub max_uncommitted_events: u32,
-    pub batch_limit: u32,
-    pub stream_limit: u32,
-    pub batch_flush_timeout: u32,
-    pub stream_timeout: u32,
-    pub commit_timeout: u32,
-}
-
-pub enum Committed {
-    AllCommitted,
-    NotAllCommitted(Vec<CommitResult>),
 }
 
 #[derive(Debug)]
@@ -284,7 +342,7 @@ impl NakadiApiError {
 }
 
 impl Error for NakadiApiError {
-    fn cause(&self) -> Option<&dyn Error> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.cause.as_ref().map(|p| &**p as &dyn Error)
     }
 }

@@ -105,7 +105,7 @@ impl fmt::Display for RemoteCallError {
 }
 
 impl Error for RemoteCallError {
-    fn cause(&self) -> Option<&dyn Error> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.cause.as_ref().map(|e| &**e as &dyn Error)
     }
 }

@@ -20,7 +20,15 @@ use super::EventId;
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BatchResponse {
-    pub items: Vec<BatchItemResponse>,
+    pub batch_items: Vec<BatchItemResponse>,
+}
+
+impl fmt::Display for BatchResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "BatchResponse")?;
+
+        Ok(())
+    }
 }
 
 /// A status corresponding to one individual Event’s publishing attempt.
@@ -36,6 +44,7 @@ pub struct BatchItemResponse {
     pub step: Option<PublishingStep>,
     /// Human readable information about the failure on this item.
     /// Items that are not “submitted” should have a description.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 

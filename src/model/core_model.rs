@@ -15,12 +15,6 @@ use must_env;
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct Partition {
-    event_type: EventTypeName,
-    partition: PartitionId,
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StreamId(Uuid);
 
@@ -120,7 +114,7 @@ impl AsRef<str> for EventTypeName {
 /// Represents event-type:partition pair.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypePartition)
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct EventTypePartition {
     pub event_type: EventTypeName,
     pub partition: PartitionId,
