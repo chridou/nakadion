@@ -13,6 +13,8 @@ use crate::model::event_type::OwningApplication;
 use crate::model::misc::AuthorizationAttribute;
 use crate::model::{EventTypeName, PartitionId, StreamId};
 
+use super::Cursor;
+
 use must_env_parsed;
 
 /// Id of subscription
@@ -195,10 +197,10 @@ pub enum ReadFrom {
 /// Cursor of a subscription without a `CursorToken`.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursorWithoutToken)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubscriptionCursorWithoutToken {
-    pub partition: PartitionId,
-    pub offset: CursorOffset,
+    #[serde(flatten)]
+    pub cursor: Cursor,
     pub event_type: EventTypeName,
 }
 
@@ -206,18 +208,22 @@ pub struct SubscriptionCursorWithoutToken {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CursorToken(String);
 
+impl CursorToken {
+    pub fn new<T: Into<String>>(token: T) -> Self {
+        Self(token.into())
+    }
+}
+
 /// Cursor of a subscription with a `CursorToken` which is usually found within a
 /// `SubscriptionEventStreamBatch`.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursor)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubscriptionCursor {
+    #[serde(flatten)]
+    pub cursor: Cursor,
     /// The name of the event type this partition’s events belong to.
     pub event_type: EventTypeName,
-    /// d of the partition pointed to by this cursor.
-    pub partition: PartitionId,
-    /// Offset of the event being pointed to.
-    pub offset: CursorOffset,
     /// An opaque value defined by the server.
     pub cursor_token: CursorToken,
 }
@@ -358,4 +364,70 @@ pub enum SubscriptionPartitionAssignmentType {
     /// Partition can be transferred to another stream in case of rebalance, or if another stream
     /// requests to read from this partition
     Auto,
+}
+
+#[cfg(test)]
+mod test {
+    use super::super::CursorOffset;
+    use super::*;
+
+    use serde_json::{self, json};
+
+    #[test]
+    fn subscription_cursor_without_token() {
+        let json = json!({
+            "event_type": "the event",
+            "partition": "the partition",
+            "offset": "12345",
+        });
+
+        let sample = SubscriptionCursorWithoutToken {
+            event_type: EventTypeName::new("the event"),
+            cursor: Cursor {
+                partition: PartitionId::new("the partition"),
+                offset: CursorOffset::new("12345"),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(sample.clone()).unwrap(),
+            json,
+            "serialize"
+        );
+        assert_eq!(
+            serde_json::from_value::<SubscriptionCursorWithoutToken>(json).unwrap(),
+            sample,
+            "deserialize"
+        );
+    }
+
+    #[test]
+    fn subscription_cursor() {
+        let json = json!({
+            "event_type": "the event",
+            "partition": "the partition",
+            "offset": "12345",
+            "cursor_token": "abcdef",
+        });
+
+        let sample = SubscriptionCursor {
+            event_type: EventTypeName::new("the event"),
+            cursor_token: CursorToken::new("abcdef"),
+            cursor: Cursor {
+                partition: PartitionId::new("the partition"),
+                offset: CursorOffset::new("12345"),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(sample.clone()).unwrap(),
+            json,
+            "serialize"
+        );
+        assert_eq!(
+            serde_json::from_value::<SubscriptionCursor>(json).unwrap(),
+            sample,
+            "deserialize"
+        );
+    }
 }

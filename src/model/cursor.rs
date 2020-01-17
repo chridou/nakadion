@@ -9,7 +9,7 @@ use crate::model::PartitionId;
 /// A cursor with an offset
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Cursor)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Cursor {
     pub partition: PartitionId,
     pub offset: CursorOffset,
@@ -88,7 +88,7 @@ impl<'de> Deserialize<'de> for CursorOffset {
 /// A query for cursor distances
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CursorDistanceQuery {
     pub initial_cursor: Cursor,
     pub final_cursor: Cursor,
@@ -97,11 +97,59 @@ pub struct CursorDistanceQuery {
 /// A result for `CursorDistanceQuery`
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CursorDistanceResult {
-    pub initial_cursor: Cursor,
-    pub final_cursor: Cursor,
+    #[serde(flatten)]
+    pub query: CursorDistanceQuery,
     /// Number of events between two offsets. Initial offset is exclusive. It’s only zero when both provided offsets
     /// are equal.
     pub distance: u64,
+}
+
+#[cfg(test)]
+mod test {
+    use super::super::CursorOffset;
+    use super::*;
+
+    use serde_json::{self, json};
+
+    #[test]
+    fn cursor_distance_result() {
+        let json = json!({
+            "initial_cursor": {
+                "partition": "the partition",
+                "offset": "12345",
+            },
+            "final_cursor": {
+                "partition": "another partition",
+                "offset": "6789",
+            },
+            "distance": 12345,
+        });
+
+        let sample = CursorDistanceResult {
+            query: CursorDistanceQuery {
+                initial_cursor: Cursor {
+                    partition: PartitionId::new("the partition"),
+                    offset: CursorOffset::new("12345"),
+                },
+                final_cursor: Cursor {
+                    partition: PartitionId::new("another partition"),
+                    offset: CursorOffset::new("6789"),
+                },
+            },
+            distance: 12345,
+        };
+
+        assert_eq!(
+            serde_json::to_value(sample.clone()).unwrap(),
+            json,
+            "serialize"
+        );
+        assert_eq!(
+            serde_json::from_value::<CursorDistanceResult>(json).unwrap(),
+            sample,
+            "deserialize"
+        );
+    }
 }

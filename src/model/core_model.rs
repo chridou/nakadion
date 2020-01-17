@@ -15,6 +15,12 @@ use must_env;
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
 
+impl PartitionId {
+    pub fn new<T: Into<String>>(id: T) -> Self {
+        Self(id.into())
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StreamId(Uuid);
 
