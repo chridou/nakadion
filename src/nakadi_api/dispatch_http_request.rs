@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
+use super::IoError;
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
 use http::{Request, Response};
@@ -13,23 +14,6 @@ pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream<'a>>, Re
 
 pub trait DispatchHttpRequest {
     fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture;
-}
-
-#[derive(Debug)]
-pub struct IoError(pub String);
-
-impl fmt::Display for IoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-
-        Ok(())
-    }
-}
-
-impl Error for IoError {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
 }
 
 #[derive(Debug)]

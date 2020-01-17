@@ -4,7 +4,10 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures::{future::BoxFuture, stream::Stream};
+use futures::{
+    future::BoxFuture,
+    stream::{BoxStream, Stream},
+};
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
@@ -20,7 +23,25 @@ pub use self::client::ApiClient;
 mod client;
 pub mod dispatch_http_request;
 
-type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
+pub type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
+pub type BytesStream<'a> = BoxStream<'a, Result<Bytes, IoError>>;
+
+#[derive(Debug)]
+pub struct IoError(pub String);
+
+impl fmt::Display for IoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+
+        Ok(())
+    }
+}
+
+impl Error for IoError {
+    fn cause(&self) -> Option<&dyn Error> {
+        None
+    }
+}
 
 pub trait MonitoringApi {
     /// Deletes an EventType identified by its name.
@@ -249,7 +270,7 @@ pub struct ConnectFuture {
 }
 */
 
-pub trait ConnectApi {
+pub trait SubscriptionStreamApi {
     /// Starts a new stream for reading events from this subscription.
     ///
     /// Starts a new stream for reading events from this subscription. The minimal consumption unit is a partition, so
@@ -279,8 +300,12 @@ pub trait ConnectApi {
     /// Using the GET /subscriptions/{subscription_id}/stats endpoint can be helpful.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
-    fn connect(id: SubscriptionId, parameters: &StreamParameters, flow_id: FlowId)
-        -> ConnectFuture;
+    fn request_stream(
+        &self,
+        id: SubscriptionId,
+        parameters: &StreamParameters,
+        flow_id: FlowId,
+    ) -> ApiFuture<(StreamId, BytesStream)>;
 }
 
 #[derive(Debug)]

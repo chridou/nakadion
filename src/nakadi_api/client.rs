@@ -14,12 +14,13 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
+use super::IoError;
 use crate::auth::{AccessToken, AccessTokenProvider, ProvidesAccessToken, TokenError};
 pub use crate::env_vars::*;
 use crate::model::*;
 use must_env_parsed;
 
-use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, IoError};
+use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, ResponseFuture};
 use super::*;
 use urls::Urls;
 
@@ -70,6 +71,10 @@ impl ApiClient {
         }
     }
 
+    fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture {
+        self.inner.http_client.dispatch(req)
+    }
+
     fn send_receive_payload<'a, P: Serialize, R: DeserializeOwned>(
         &'a self,
         url: Url,
@@ -83,7 +88,7 @@ impl ApiClient {
             let mut request = self.create_request(&url, serialized, flow_id).await?;
             *request.method_mut() = method;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.dispatch(request).await?;
 
             if response.status().is_success() {
                 let deserialized = deserialize_stream(response.into_body()).await?;
@@ -103,7 +108,7 @@ impl ApiClient {
             let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
             *request.method_mut() = Method::GET;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.dispatch(request).await?;
 
             if response.status().is_success() {
                 let deserialized = deserialize_stream(response.into_body()).await?;
@@ -125,7 +130,7 @@ impl ApiClient {
             let mut request = self.create_request(&url, payload, flow_id).await?;
             *request.method_mut() = method;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.dispatch(request).await?;
 
             if response.status().is_success() {
                 Ok(())
@@ -144,7 +149,7 @@ impl ApiClient {
             let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
             *request.method_mut() = Method::DELETE;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.dispatch(request).await?;
 
             if response.status().is_success() {
                 Ok(())
@@ -182,10 +187,6 @@ impl ApiClient {
         *request.uri_mut() = url.as_str().parse()?;
 
         Ok(request)
-    }
-
-    fn http_client(&self) -> &(dyn DispatchHttpRequest + Send + Sync + 'static) {
-        &*self.inner.http_client
     }
 
     fn urls(&self) -> &Urls {
@@ -295,7 +296,7 @@ impl PublishApi for ApiClient {
             let mut request = self.create_request(&url, serialized, flow_id).await?;
             *request.method_mut() = Method::POST;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.inner.http_client.dispatch(request).await?;
 
             let status = response.status();
             match status {
@@ -339,7 +340,7 @@ impl SubscriptionApi for ApiClient {
                 .await?;
             *request.method_mut() = Method::POST;
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.dispatch(request).await?;
 
             let status = response.status();
             if status.is_success() {
@@ -472,7 +473,7 @@ impl SubscriptionCommitApi for ApiClient {
                 HeaderValue::from_str(stream.to_string().as_ref())?,
             );
 
-            let response = self.http_client().dispatch(request).await?;
+            let response = self.inner.http_client.dispatch(request).await?;
 
             let status = response.status();
             match status {
@@ -482,6 +483,66 @@ impl SubscriptionCommitApi for ApiClient {
                     Ok(CursorCommitResults { commit_results })
                 }
                 _ => evaluate_error_for_problem(response).map(Err).await,
+            }
+        }
+        .boxed()
+    }
+}
+
+impl SubscriptionStreamApi for ApiClient {
+    fn request_stream(
+        &self,
+        id: SubscriptionId,
+        parameters: &StreamParameters,
+        flow_id: FlowId,
+    ) -> ApiFuture<(StreamId, BytesStream)> {
+        let url = self.urls().subscriptions_request_stream(id);
+        let parameters = serde_json::to_vec(parameters).unwrap();
+
+        async move {
+            let mut request = self
+                .create_request(&url, parameters, flow_id.clone())
+                .await?;
+            *request.method_mut() = Method::POST;
+
+            let response = self.inner.http_client.dispatch(request).await?;
+
+            let status = response.status();
+            if status == StatusCode::OK {
+                match response.headers().get("x-nakadi-streamid") {
+                    Some(header_value) => {
+                        let header_bytes = header_value.as_bytes();
+                        let header_str = std::str::from_utf8(header_bytes).map_err(|err| {
+                            NakadiApiError::new(
+                                NakadiApiErrorKind::Other,
+                                &format!(
+                                    "the bytes of header 'x-nakadi-streamid' \
+                                     were not a valid string: {}",
+                                    err
+                                ),
+                            )
+                        })?;
+                        let stream_id = header_str.parse().map_err(|err| {
+                            NakadiApiError::new(
+                                NakadiApiErrorKind::Other,
+                                &format!(
+                                    "the value '{}' of header 'x-nakadi-streamid' \
+                                     was not a valid stream id (UUID): {}",
+                                    header_str, err
+                                ),
+                            )
+                        })?;
+                        Ok((stream_id, response.into_body()))
+                    }
+                    None => {
+                        return Err(NakadiApiError::new(
+                            NakadiApiErrorKind::Other,
+                            "response did not contain the 'x-nakadi-streamid' header",
+                        ))
+                    }
+                }
+            } else {
+                evaluate_error_for_problem(response).map(Err).await
             }
         }
         .boxed()
@@ -686,6 +747,14 @@ mod urls {
                 .join(&format!("{}/", id))
                 .unwrap()
                 .join("cursors")
+                .unwrap()
+        }
+
+        pub fn subscriptions_request_stream(&self, id: SubscriptionId) -> Url {
+            self.subscriptions
+                .join(&format!("{}/", id))
+                .unwrap()
+                .join("events")
                 .unwrap()
         }
 
