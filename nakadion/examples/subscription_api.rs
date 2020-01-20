@@ -1,5 +1,5 @@
-use nakadion_types::model::subscription::*;
-use nakadion_types::FlowId;
+use nakadi_types::model::subscription::*;
+use nakadi_types::FlowId;
 
 use nakadion::api::{ApiClient, SubscriptionApi};
 

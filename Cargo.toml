@@ -1,6 +1,6 @@
 [workspace]
 
 members = [
-    "nakadion_types",
+    "nakadi-types",
     "nakadion",
 ]

@@ -1,3 +1,7 @@
+//! # Nakadi-Types
+//!
+//! `nakadi-types` contains types for interacting with the [Nakadi](https://nakadi.io) Event Broker.
+
 use std::error::Error;
 use std::fmt;
 use std::str::FromStr;

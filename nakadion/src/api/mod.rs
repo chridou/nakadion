@@ -13,11 +13,11 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
-use nakadion_types::model::event_type::*;
-use nakadion_types::model::partition::*;
-use nakadion_types::model::publishing::*;
-use nakadion_types::model::subscription::*;
-use nakadion_types::FlowId;
+use nakadi_types::model::event_type::*;
+use nakadi_types::model::partition::*;
+use nakadi_types::model::publishing::*;
+use nakadi_types::model::subscription::*;
+use nakadi_types::FlowId;
 
 use crate::event_stream::NakadiBytesStream;
 

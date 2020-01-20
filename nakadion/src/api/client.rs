@@ -14,11 +14,11 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
-use nakadion_types::model::event_type::*;
-use nakadion_types::model::partition::*;
-use nakadion_types::model::publishing::*;
-use nakadion_types::model::subscription::*;
-use nakadion_types::{FlowId, NakadiBaseUrl};
+use nakadi_types::model::event_type::*;
+use nakadi_types::model::partition::*;
+use nakadi_types::model::publishing::*;
+use nakadi_types::model::subscription::*;
+use nakadi_types::{FlowId, NakadiBaseUrl};
 
 use super::IoError;
 
@@ -685,8 +685,8 @@ impl From<IoError> for NakadiApiError {
 mod urls {
     use url::Url;
 
-    use nakadion_types::model::event_type::EventTypeName;
-    use nakadion_types::model::subscription::SubscriptionId;
+    use nakadi_types::model::event_type::EventTypeName;
+    use nakadi_types::model::subscription::SubscriptionId;
 
     pub struct Urls {
         event_types: Url,

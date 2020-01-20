@@ -3,7 +3,7 @@ extern crate metrix;
 
 pub(crate) mod env_vars;
 
-pub use nakadion_types::GenericError;
+pub use nakadi_types::GenericError;
 
 // mod internals;
 

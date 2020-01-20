@@ -4,15 +4,15 @@ version = "0.20.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
-description = "A connector for the Nakadi Event Broker"
+description = "Types for interacting with the Nakadi Event Broker"
 documentation = "https://docs.rs/nakadion"
 homepage = "https://github.com/chridou/nakadion"
 repository = "https://github.com/chridou/nakadion"
-keywords = ["event", "broker", "distributed", "message", "nakadi"]
+keywords = [ "nakadi", "event", "broker", "distributed","messaging"]
 edition = "2018"
 
 [dependencies]
-nakadion_types = { path = "../nakadion_types", version="^0.20"}
+nakadi-types = { path = "../nakadi-types", version="^0.20"}
 futures = "0.3"
 tokio = {version = "0.2", features = ["fs"] }
 bytes = "0.5"

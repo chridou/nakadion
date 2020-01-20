@@ -6,7 +6,7 @@ use std::time::Instant;
 use bytes::Bytes;
 use futures::stream::Stream;
 
-use nakadion_types::model::subscription::StreamId;
+use nakadi_types::model::subscription::StreamId;
 
 use crate::api::BytesStream;
 
