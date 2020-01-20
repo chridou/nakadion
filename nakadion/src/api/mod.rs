@@ -19,6 +19,8 @@ use nakadion_types::model::publishing::*;
 use nakadion_types::model::subscription::*;
 use nakadion_types::FlowId;
 
+use crate::event_stream::NakadiBytesStream;
+
 use dispatch_http_request::RemoteCallError;
 
 pub use self::client::ApiClient;
@@ -314,7 +316,7 @@ pub trait SubscriptionStreamApi {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<(StreamId, BytesStream)>;
+    ) -> ApiFuture<NakadiBytesStream>;
 }
 
 #[derive(Debug)]
@@ -446,8 +448,3 @@ impl fmt::Display for NakadiApiErrorKind {
         Ok(())
     }
 }
-pub struct PublishError;
-
-pub struct CommitError;
-
-pub struct ConnectError;

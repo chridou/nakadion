@@ -6,6 +6,8 @@ use futures::stream::Stream;
 
 use nakadion_types::model::subscription::StreamId;
 
+use crate::api::BytesStream;
+
 pub type BatchBytes = Vec<u8>;
 pub type BatchResult = Result<RawBatch, IoError>;
 
@@ -17,9 +19,28 @@ pub struct RawBatch {
     pub received_at: Instant,
 }
 
-pub type ByteStream = Box<dyn Stream<Item = Result<Bytes, ()>> + Send + Sync + 'static>;
+pub struct NakadiBytesStream<'a> {
+    stream_id: StreamId,
+    bytes_stream: BytesStream<'a>,
+}
 
-pub struct NakadiStream {
-    pub stream_id: StreamId,
-    pub stream: ByteStream,
+impl<'a> NakadiBytesStream<'a> {
+    pub fn new(stream_id: StreamId, bytes_stream: BytesStream<'a>) -> Self {
+        Self {
+            stream_id,
+            bytes_stream,
+        }
+    }
+
+    pub fn stream_id(&self) -> StreamId {
+        self.stream_id
+    }
+
+    pub fn into_stream(self) -> BytesStream<'a> {
+        self.bytes_stream
+    }
+
+    pub fn explode(self) -> (StreamId, BytesStream<'a>) {
+        (self.stream_id, self.bytes_stream)
+    }
 }

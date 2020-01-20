@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::env_vars;
 
@@ -92,7 +92,7 @@ pub enum Category {
 
 /// Determines how the assignment of the event to a partition should be handled.
 ///
-/// The defualt is `random`.
+/// The default is `random`.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/registry/partition-strategies_get)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -163,6 +163,13 @@ pub struct PartitionKey(String);
 impl PartitionKey {
     pub fn new(v: impl Into<String>) -> Self {
         PartitionKey(v.into())
+    }
+}
+
+impl fmt::Display for PartitionKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        Ok(())
     }
 }
 
@@ -245,32 +252,23 @@ pub struct EventTypeSchemaInput {
 /// Number of milliseconds that Nakadi stores events published to this event type.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypeOptions*retention_time)
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct RetentionTime(Duration);
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RetentionTime(u64);
 
 impl RetentionTime {
-    pub fn new(d: Duration) -> Self {
-        RetentionTime(d)
+    pub fn new(millis: u64) -> Self {
+        RetentionTime(millis)
+    }
+
+    pub fn to_duration(self) -> Duration {
+        Duration::from_millis(self.0)
     }
 }
 
-impl Serialize for RetentionTime {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let millis = self.0.as_millis();
-        serializer.serialize_u128(millis)
-    }
-}
-
-impl<'de> Deserialize<'de> for RetentionTime {
-    fn deserialize<D>(deserializer: D) -> Result<RetentionTime, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let millis = u64::deserialize(deserializer)?;
-        Ok(RetentionTime(Duration::from_millis(millis)))
+impl fmt::Display for RetentionTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ms", self.0)?;
+        Ok(())
     }
 }
 

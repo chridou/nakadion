@@ -1,7 +1,7 @@
 use nakadion_types::model::subscription::*;
 use nakadion_types::FlowId;
 
-use nakadion::nakadi_api::{ApiClient, SubscriptionApi};
+use nakadion::api::{ApiClient, SubscriptionApi};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

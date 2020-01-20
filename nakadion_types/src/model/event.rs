@@ -8,11 +8,15 @@ use uuid::Uuid;
 use crate::GenericError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EventId(pub Uuid);
+pub struct EventId(Uuid);
 
 impl EventId {
     pub fn new<T: Into<Uuid>>(id: T) -> Self {
         Self(id.into())
+    }
+
+    pub fn into_inner(self) -> Uuid {
+        self.0
     }
 }
 

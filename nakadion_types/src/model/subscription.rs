@@ -95,8 +95,16 @@ pub struct EventTypeNames(pub Vec<EventTypeName>);
 pub struct ConsumerGroup(String);
 
 impl ConsumerGroup {
-    pub fn new(v: impl Into<String>) -> Self {
+    pub fn new<T: Into<String>>(v: T) -> Self {
         ConsumerGroup(v.into())
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 

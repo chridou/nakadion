@@ -1,4 +1,4 @@
-use nakadion::nakadi_api::{ApiClient, MonitoringApi, SchemaRegistryApi};
+use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 use nakadion_types::model::event_type::*;
 use nakadion_types::FlowId;
 

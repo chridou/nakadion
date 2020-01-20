@@ -21,7 +21,10 @@ use nakadion_types::model::subscription::*;
 use nakadion_types::{FlowId, NakadiBaseUrl};
 
 use super::IoError;
-use crate::auth::{AccessToken, AccessTokenProvider, ProvidesAccessToken, TokenError};
+
+use crate::auth::{AccessTokenProvider, ProvidesAccessToken, TokenError};
+use crate::event_stream::NakadiBytesStream;
+
 pub use crate::env_vars::*;
 
 use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, ResponseFuture};
@@ -45,8 +48,7 @@ impl ApiClient {
     pub fn new_from_env() -> Result<Self, Box<dyn Error + 'static>> {
         let nakadi_base_url = NakadiBaseUrl::from_env()?;
         let access_token_provider = AccessTokenProvider::from_env()?;
-        let http_client =
-            crate::nakadi_api::dispatch_http_request::ReqwestDispatchHttpRequest::default();
+        let http_client = crate::api::dispatch_http_request::ReqwestDispatchHttpRequest::default();
 
         Ok(Self::with_dispatcher(
             nakadi_base_url,
@@ -522,7 +524,7 @@ impl SubscriptionStreamApi for ApiClient {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<(StreamId, BytesStream)> {
+    ) -> ApiFuture<NakadiBytesStream> {
         let url = self.urls().subscriptions_request_stream(id);
         let parameters = serde_json::to_vec(parameters).unwrap();
 
@@ -559,7 +561,7 @@ impl SubscriptionStreamApi for ApiClient {
                                 ),
                             )
                         })?;
-                        Ok((stream_id, response.into_body()))
+                        Ok(NakadiBytesStream::new(stream_id, response.into_body()))
                     }
                     None => {
                         return Err(NakadiApiError::new(
