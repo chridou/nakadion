@@ -20,7 +20,7 @@ use crate::GenericError;
 /// ‘acme-team.price-change’.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct EventTypeName(String);
 
 impl EventTypeName {
@@ -42,6 +42,14 @@ impl EventTypeName {
         from_env!(
             prefix => prefix.as_ref() , postfix => env_vars::EVENT_TYPE_ENV_VAR
         )
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0.as_ref()
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
     }
 }
 
@@ -163,6 +171,14 @@ pub struct PartitionKey(String);
 impl PartitionKey {
     pub fn new(v: impl Into<String>) -> Self {
         PartitionKey(v.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0.as_ref()
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
     }
 }
 

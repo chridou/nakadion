@@ -40,6 +40,10 @@ impl NakadiBaseUrl {
         &self.0
     }
 
+    pub fn as_str(&self) -> &str {
+        &self.0.as_ref()
+    }
+
     pub fn into_inner(self) -> Url {
         self.0
     }
@@ -55,16 +59,30 @@ impl FromStr for NakadiBaseUrl {
     }
 }
 
+impl AsRef<str> for NakadiBaseUrl {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 /// The flow id of the request, which is written into the logs and passed to called services. Helpful
 /// for operational troubleshooting and log analysis.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get*x-flow-id)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct FlowId(String);
 
 impl FlowId {
     pub fn new<T: Into<String>>(s: T) -> Self {
         FlowId(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0.as_ref()
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
     }
 }
 
@@ -95,8 +113,16 @@ impl AsRef<str> for FlowId {
     }
 }
 
+impl FromStr for FlowId {
+    type Err = GenericError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(FlowId::new(s))
+    }
+}
+
 #[derive(Debug)]
-pub struct GenericError(pub String);
+pub struct GenericError(String);
 
 impl GenericError {
     pub fn new<T: Into<String>>(msg: T) -> Self {
@@ -143,7 +169,7 @@ where
     } else {
         let parsed = s
             .parse::<T>()
-            .map_err(|err| SerdeError::custom(err.to_string()))?;
+            .map_err(|err| SerdeError::custom(format!("deserialization error: {}", err)))?;
         Ok(Some(parsed))
     }
 }

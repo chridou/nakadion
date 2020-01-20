@@ -1,6 +1,5 @@
 //! Essential types
 use std::convert::AsRef;
-use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
@@ -14,13 +13,19 @@ use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{Cursor, PartitionId};
 use crate::GenericError;
 
+use from_env_maybe;
+
 /// Id of subscription
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SubscriptionId(Uuid);
 
 impl SubscriptionId {
-    pub fn new(id: Uuid) -> Self {
-        SubscriptionId(id)
+    pub fn new<T: Into<Uuid>>(id: T) -> Self {
+        Self(id.into())
+    }
+
+    pub fn into_inner(self) -> Uuid {
+        self.0
     }
 
     pub fn from_env() -> Result<Self, GenericError> {
@@ -58,6 +63,16 @@ impl FromStr for SubscriptionId {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct StreamId(Uuid);
+
+impl StreamId {
+    pub fn new<T: Into<Uuid>>(id: T) -> Self {
+        Self(id.into())
+    }
+
+    pub fn into_inner(self) -> Uuid {
+        self.0
+    }
+}
 
 impl FromStr for StreamId {
     type Err = GenericError;
@@ -516,4 +531,79 @@ pub struct StreamParameters {
     /// new data will be sent. Partitions from this stream will be assigned to other streams.
     /// Setting commit_timeout to 0 is equal to setting it to the maximum allowed value - 60 seconds.
     pub commit_timeout_secs: Option<u32>,
+}
+
+impl StreamParameters {
+    pub fn from_env() -> Result<Self, GenericError> {
+        let mut me = Self::default();
+        me.fill_from_env()?;
+        Ok(me)
+    }
+
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+        let mut me = Self::default();
+        me.fill_from_env_prefixed(prefix)?;
+        Ok(me)
+    }
+
+    pub fn fill_from_env(&mut self) -> Result<(), GenericError> {
+        if let Some(v) = from_env_maybe!(postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)? {
+            self.max_uncommitted_events = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_LIMIT_ENV_VAR)? {
+            self.batch_limit = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::STREAM_LIMIT_ENV_VAR)? {
+            self.stream_limit = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)? {
+            self.batch_flush_timeout_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)? {
+            self.batch_timespan_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)? {
+            self.stream_timeout_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)? {
+            self.commit_timeout_secs = Some(v)
+        };
+
+        Ok(())
+    }
+
+    pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), GenericError> {
+        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)?
+        {
+            self.max_uncommitted_events = Some(v)
+        };
+        if let Some(v) =
+            from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_LIMIT_ENV_VAR)?
+        {
+            self.batch_limit = Some(v)
+        };
+        if let Some(v) =
+            from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_LIMIT_ENV_VAR)?
+        {
+            self.stream_limit = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)?
+        {
+            self.batch_flush_timeout_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)?
+        {
+            self.batch_timespan_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)?
+        {
+            self.stream_timeout_secs = Some(v)
+        };
+        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)?
+        {
+            self.commit_timeout_secs = Some(v)
+        };
+
+        Ok(())
+    }
 }
