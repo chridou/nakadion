@@ -1,4 +1,4 @@
-//! Essential types
+//! Types for subscribing to an `EventType`
 use std::convert::AsRef;
 use std::fmt;
 use std::str::FromStr;

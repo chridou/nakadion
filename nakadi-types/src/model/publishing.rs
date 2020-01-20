@@ -1,3 +1,8 @@
+/// Types for publishing events
+///
+/// Even though this is part of the event type resources this
+/// deserves special attention since publishing events involves
+/// special login for recovery in case of a failed publishing attempt.
 use std::fmt;
 
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,4 @@
+//! Types for defining and monitoring event types
 use std::error::Error;
 use std::fmt;
 use std::str::FromStr;

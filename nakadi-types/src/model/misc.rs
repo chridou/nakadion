@@ -1,3 +1,4 @@
+//! Types that are shared throughout the model
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
