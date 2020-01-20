@@ -73,7 +73,7 @@ impl fmt::Display for StreamId {
 /// workflows. It is usually submitted when interacting
 /// with the Nakadi REST API but also contained
 /// in received event metadata.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FlowId(pub String);
 
 impl FlowId {
