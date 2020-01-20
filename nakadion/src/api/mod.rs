@@ -29,7 +29,7 @@ mod client;
 pub mod dispatch_http_request;
 
 pub type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
-pub type BytesStream<'a> = BoxStream<'a, Result<Bytes, IoError>>;
+pub type BytesStream = BoxStream<'static, Result<Bytes, IoError>>;
 
 #[derive(Debug)]
 pub struct IoError(pub String);

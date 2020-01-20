@@ -27,7 +27,7 @@ use crate::event_stream::NakadiBytesStream;
 
 pub use crate::env_vars::*;
 
-use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, ResponseFuture};
+use super::dispatch_http_request::{DispatchHttpRequest, ResponseFuture};
 use super::*;
 use urls::Urls;
 
@@ -586,8 +586,8 @@ fn construct_authorization_bearer_value<T: AsRef<str>>(
     Ok(value)
 }
 
-async fn deserialize_stream<'a, T: DeserializeOwned>(
-    mut stream: BytesStream<'a>,
+async fn deserialize_stream<T: DeserializeOwned>(
+    mut stream: BytesStream,
 ) -> Result<T, NakadiApiError> {
     let mut bytes = Vec::new();
     while let Some(next) = stream.try_next().await? {
@@ -599,7 +599,7 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
     Ok(deserialized)
 }
 
-async fn evaluate_error_for_problem<'a>(response: Response<BytesStream<'a>>) -> NakadiApiError {
+async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> NakadiApiError {
     let (parts, body) = response.into_parts();
 
     let flow_id = match parts.headers.get("x-flow-id") {

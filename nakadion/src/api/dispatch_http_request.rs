@@ -3,14 +3,14 @@ use std::fmt;
 
 use super::IoError;
 use bytes::Bytes;
-use futures::{future::BoxFuture, stream::BoxStream};
+use futures::future::BoxFuture;
 use http::{Request, Response};
 
 pub use reqwest_dispatch_http_request::ReqwestDispatchHttpRequest;
 
-pub type BytesStream<'a> = BoxStream<'a, Result<Bytes, IoError>>;
+use super::BytesStream;
 
-pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream<'a>>, RemoteCallError>>;
+pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream>, RemoteCallError>>;
 
 pub trait DispatchHttpRequest {
     fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture;

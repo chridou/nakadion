@@ -12,7 +12,7 @@ keywords = ["event", "broker", "distributed", "message", "nakadi"]
 edition = "2018"
 
 [dependencies]
-nakadion_types = { path = "../nakadion_types"}
+nakadion_types = { path = "../nakadion_types", version="^0.20"}
 futures = "0.3"
 tokio = {version = "0.2", features = ["fs"] }
 bytes = "0.5"
