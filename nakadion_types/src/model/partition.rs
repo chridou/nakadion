@@ -116,7 +116,7 @@ pub struct CursorDistanceResult {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::nakadi_models::partition::CursorOffset;
+    use crate::model::partition::CursorOffset;
 
     use serde_json::{self, json};
 

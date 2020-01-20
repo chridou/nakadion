@@ -2,8 +2,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::nakadi_models::event::EventId};
-use crate::nakadi_models::support_types::FlowId};
+use crate::model::event::EventId;
+use crate::FlowId;
 
 /// An aggregation of status items corresponding to each individual Event’s publishing attempt.
 ///

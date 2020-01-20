@@ -4,13 +4,15 @@ use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::env_vars::*;
-use crate::helpers::MessageError;
-
-use must_env;
+use crate::env_vars;
+use crate::model::event_type::EventTypeName;
+use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::partition::{Cursor, PartitionId};
+use crate::GenericError;
 
 /// Id of subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,12 +23,20 @@ impl SubscriptionId {
         SubscriptionId(id)
     }
 
-    pub fn from_env() -> Result<Self, Box<dyn Error + 'static>> {
-        Self::from_env_named(NAKADION_SUBSCRIPTION_ID_ENV_VAR)
+    pub fn from_env() -> Result<Self, GenericError> {
+        from_env!(
+            postfix => env_vars::SUBSCRIPTION_ID_ENV_VAR
+        )
     }
 
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error + 'static>> {
-        must_env_parsed!(name.as_ref())
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
+        from_env!(name.as_ref())
+    }
+
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+        from_env!(
+            prefix => prefix.as_ref() , postfix => env_vars::SUBSCRIPTION_ID_ENV_VAR
+        )
     }
 }
 
@@ -37,12 +47,31 @@ impl fmt::Display for SubscriptionId {
 }
 
 impl FromStr for SubscriptionId {
-    type Err = Box<dyn Error + 'static>;
+    type Err = GenericError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SubscriptionId(s.parse().map_err(|err| {
-            MessageError::new(format!("could not parse subscription id: {}", err))
+            GenericError::new(format!("could not parse subscription id: {}", err))
         })?))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct StreamId(Uuid);
+
+impl FromStr for StreamId {
+    type Err = GenericError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(StreamId(s.parse().map_err(|err| {
+            GenericError::new(format!("could not parse stream id: {}", err))
+        })?))
+    }
+}
+
+impl fmt::Display for StreamId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -336,7 +365,7 @@ pub struct SubscriptionEventTypeStats {
 pub struct SubscriptionEventTypePartitionStats {
     partition: PartitionId,
     unconsumed_events: u64,
-    #[serde(deserialize_with = "crate::helpers::deserialize_empty_string_is_none")]
+    #[serde(deserialize_with = "crate::deserialize_empty_string_is_none")]
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_id: Option<StreamId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -373,8 +402,8 @@ pub enum SubscriptionPartitionAssignmentType {
 
 #[cfg(test)]
 mod test {
-    use super::super::CursorOffset;
     use super::*;
+    use crate::model::partition::CursorOffset;
 
     use serde_json::{self, json};
 

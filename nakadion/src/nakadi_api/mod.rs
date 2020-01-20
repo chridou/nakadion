@@ -13,8 +13,11 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
-use crate::event_stream::EventStream;
-use crate::model::*;
+use nakadion_types::model::event_type::*;
+use nakadion_types::model::partition::*;
+use nakadion_types::model::publishing::*;
+use nakadion_types::model::subscription::*;
+use nakadion_types::FlowId;
 
 use dispatch_http_request::RemoteCallError;
 

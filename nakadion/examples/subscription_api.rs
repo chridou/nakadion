@@ -1,4 +1,6 @@
-use nakadion::model::*;
+use nakadion_types::model::subscription::*;
+use nakadion_types::FlowId;
+
 use nakadion::nakadi_api::{ApiClient, SubscriptionApi};
 
 #[tokio::main]

@@ -4,7 +4,7 @@ use std::time::Instant;
 use bytes::Bytes;
 use futures::stream::Stream;
 
-use crate::model::StreamId;
+use nakadion_types::model::subscription::StreamId;
 
 pub type BatchBytes = Vec<u8>;
 pub type BatchResult = Result<RawBatch, IoError>;
@@ -19,7 +19,7 @@ pub struct RawBatch {
 
 pub type ByteStream = Box<dyn Stream<Item = Result<Bytes, ()>> + Send + Sync + 'static>;
 
-pub struct EventStream {
+pub struct NakadiStream {
     pub stream_id: StreamId,
     pub stream: ByteStream,
 }

@@ -1,5 +1,6 @@
-use nakadion::model::*;
 use nakadion::nakadi_api::{ApiClient, MonitoringApi, SchemaRegistryApi};
+use nakadion_types::model::event_type::*;
+use nakadion_types::FlowId;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

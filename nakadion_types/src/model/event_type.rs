@@ -1,3 +1,17 @@
+use std::error::Error;
+use std::fmt;
+use std::str::FromStr;
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::env_vars;
+
+use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::partition::{CursorOffset, PartitionId};
+use crate::GenericError;
+
 /// Name of an EventType. The name is constrained by a regular expression.
 ///
 /// Note: the name can encode the owner/responsible for this EventType and ideally should
@@ -14,12 +28,20 @@ impl EventTypeName {
         EventTypeName(v.into())
     }
 
-    pub fn from_env() -> Result<Self, Box<dyn Error + 'static>> {
-        Self::from_env_named(NAKADION_EVENT_TYPE_ENV_VAR)
+    pub fn from_env() -> Result<Self, GenericError> {
+        from_env!(
+            postfix => env_vars::EVENT_TYPE_ENV_VAR
+        )
     }
 
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error + 'static>> {
-        Ok(Self::new(must_env!(name.as_ref())?))
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
+        from_env!(name.as_ref())
+    }
+
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+        from_env!(
+            prefix => prefix.as_ref() , postfix => env_vars::EVENT_TYPE_ENV_VAR
+        )
     }
 }
 
@@ -32,6 +54,16 @@ impl fmt::Display for EventTypeName {
 impl AsRef<str> for EventTypeName {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl FromStr for EventTypeName {
+    type Err = Box<dyn Error + 'static>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(EventTypeName(s.parse().map_err(|err| {
+            GenericError::new(format!("could not parse event type name: {}", err))
+        })?))
     }
 }
 

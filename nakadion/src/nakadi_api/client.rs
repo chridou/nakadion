@@ -14,11 +14,15 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
+use nakadion_types::model::event_type::*;
+use nakadion_types::model::partition::*;
+use nakadion_types::model::publishing::*;
+use nakadion_types::model::subscription::*;
+use nakadion_types::{FlowId, NakadiBaseUrl};
+
 use super::IoError;
 use crate::auth::{AccessToken, AccessTokenProvider, ProvidesAccessToken, TokenError};
 pub use crate::env_vars::*;
-use crate::model::*;
-use must_env_parsed;
 
 use super::dispatch_http_request::{BytesStream, DispatchHttpRequest, ResponseFuture};
 use super::*;
@@ -39,13 +43,13 @@ struct Inner {
 
 impl ApiClient {
     pub fn new_from_env() -> Result<Self, Box<dyn Error + 'static>> {
-        let nakadi_host: NakadiHost = must_env_parsed!(NAKADION_NAKADI_HOST_ENV_VAR)?;
+        let nakadi_base_url = NakadiBaseUrl::from_env()?;
         let access_token_provider = AccessTokenProvider::from_env()?;
         let http_client =
             crate::nakadi_api::dispatch_http_request::ReqwestDispatchHttpRequest::default();
 
         Ok(Self::with_dispatcher(
-            nakadi_host,
+            nakadi_base_url,
             http_client,
             access_token_provider,
         ))
@@ -54,7 +58,7 @@ impl ApiClient {
 
 impl ApiClient {
     pub fn with_dispatcher<D, P>(
-        nakadi_host: NakadiHost,
+        nakadi_base_url: NakadiBaseUrl,
         http_client: D,
         access_token_provider: P,
     ) -> Self
@@ -66,7 +70,7 @@ impl ApiClient {
             inner: Arc::new(Inner {
                 http_client: Box::new(http_client),
                 access_token_provider: Box::new(access_token_provider),
-                urls: Urls::new(nakadi_host.into_inner()),
+                urls: Urls::new(nakadi_base_url.into_inner()),
             }),
         }
     }
@@ -677,8 +681,10 @@ impl From<IoError> for NakadiApiError {
 }
 
 mod urls {
-    use crate::model::*;
     use url::Url;
+
+    use nakadion_types::model::event_type::EventTypeName;
+    use nakadion_types::model::subscription::SubscriptionId;
 
     pub struct Urls {
         event_types: Url,
