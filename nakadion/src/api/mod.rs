@@ -316,7 +316,7 @@ pub trait SubscriptionStreamApi {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<NakadiBytesStream>;
+    ) -> ApiFuture<NakadiBytesStream<BytesStream>>;
 }
 
 #[derive(Debug)]

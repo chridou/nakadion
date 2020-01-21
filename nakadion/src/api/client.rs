@@ -524,7 +524,7 @@ impl SubscriptionStreamApi for ApiClient {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<NakadiBytesStream> {
+    ) -> ApiFuture<NakadiBytesStream<BytesStream>> {
         let url = self.urls().subscriptions_request_stream(id);
         let parameters = serde_json::to_vec(parameters).unwrap();
 
@@ -561,7 +561,10 @@ impl SubscriptionStreamApi for ApiClient {
                                 ),
                             )
                         })?;
-                        Ok(NakadiBytesStream::new(stream_id, response.into_body()))
+                        Ok(NakadiBytesStream::new_fused(
+                            stream_id,
+                            response.into_body(),
+                        ))
                     }
                     None => {
                         return Err(NakadiApiError::new(
