@@ -21,8 +21,8 @@ use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::StatusCode;
 use reqwest::blocking::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
-use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use crate::auth::{AccessToken, ProvidesAccessToken, TokenError};
+use crate::nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 /// A REST client for the Nakadi API.
 ///

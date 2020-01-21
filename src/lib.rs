@@ -262,19 +262,19 @@ pub mod auth;
 
 mod nakadi;
 
-pub use nakadi::api;
-pub use nakadi::consumer;
-pub use nakadi::handler::*;
-pub use nakadi::metrics;
-pub use nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
-pub use nakadi::streaming_client;
-pub use nakadi::{
+pub use crate::nakadi::api;
+pub use crate::nakadi::consumer;
+pub use crate::nakadi::handler::*;
+pub use crate::nakadi::metrics;
+pub use crate::nakadi::model::{EventType, FlowId, PartitionId, StreamId, SubscriptionId};
+pub use crate::nakadi::streaming_client;
+pub use crate::nakadi::{
     CommitStrategy, Nakadion, NakadionBuilder, NakadionConfig, SubscriptionDiscovery,
 };
 
-pub use nakadi::publisher;
+pub use crate::nakadi::publisher;
 
-pub use nakadi::events;
+pub use crate::nakadi::events;
 
 pub(crate) mod cancellation_token;
 //pub(crate) mod custom_headers;

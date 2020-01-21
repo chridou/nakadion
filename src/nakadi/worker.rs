@@ -3,15 +3,15 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use cancellation_token::*;
+use crate::cancellation_token::*;
 use failure::*;
 use serde_json;
 
-use nakadi::batch::Batch;
-use nakadi::committer::Committer;
-use nakadi::handler::{BatchHandler, ProcessingStatus};
-use nakadi::metrics::MetricsCollector;
-use nakadi::model::PartitionId;
+use crate::nakadi::batch::Batch;
+use crate::nakadi::committer::Committer;
+use crate::nakadi::handler::{BatchHandler, ProcessingStatus};
+use crate::nakadi::metrics::MetricsCollector;
+use crate::nakadi::model::PartitionId;
 
 /// A worker is responsible for executing a handler on a given
 /// partition. A worker guarantees that its `BatchHandler`

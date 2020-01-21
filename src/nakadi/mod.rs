@@ -20,12 +20,12 @@ pub mod publisher;
 pub mod streaming_client;
 pub mod worker;
 
-use auth::ProvidesAccessToken;
+use crate::auth::ProvidesAccessToken;
 use metrics::{DevNullMetricsCollector, MetricsCollector};
-use nakadi::api::{ApiClient, NakadiApiClient};
-use nakadi::handler::HandlerFactory;
-use nakadi::model::SubscriptionId;
-use nakadi::streaming_client::StreamingClient;
+use crate::nakadi::api::{ApiClient, NakadiApiClient};
+use crate::nakadi::handler::HandlerFactory;
+use crate::nakadi::model::SubscriptionId;
+use crate::nakadi::streaming_client::StreamingClient;
 
 #[cfg(feature = "metrix")]
 use metrix::processor::AggregatesProcessors;

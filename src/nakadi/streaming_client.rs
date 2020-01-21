@@ -10,9 +10,9 @@ use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
 use reqwest::blocking::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
-use auth::{AccessToken, ProvidesAccessToken, TokenError};
-use nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
+use crate::auth::{AccessToken, ProvidesAccessToken, TokenError};
+use crate::nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};
+use crate::nakadi::model::{FlowId, StreamId, SubscriptionId};
 
 const LINE_SPLIT_BYTE: u8 = b'\n';
 

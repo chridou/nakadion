@@ -10,8 +10,8 @@ use reqwest::blocking::{Client as HttpClient, Response};
 use serde::Serialize;
 use serde_json;
 
-use auth::{AccessToken, ProvidesAccessToken};
-use nakadi::model::FlowId;
+use crate::auth::{AccessToken, ProvidesAccessToken};
+use crate::nakadi::model::FlowId;
 
 /// Publishes events to `Nakadi`
 ///

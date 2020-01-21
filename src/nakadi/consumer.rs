@@ -5,17 +5,17 @@ use std::time::{Duration, Instant};
 
 use failure::*;
 
-use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
+use crate::cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
 
-use nakadi::api::ApiClient;
-use nakadi::batch::{Batch, BatchLine};
-use nakadi::committer::Committer;
-use nakadi::dispatcher::Dispatcher;
-use nakadi::handler::HandlerFactory;
-use nakadi::metrics::MetricsCollector;
-use nakadi::model::*;
-use nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
-use nakadi::CommitStrategy;
+use crate::nakadi::api::ApiClient;
+use crate::nakadi::batch::{Batch, BatchLine};
+use crate::nakadi::committer::Committer;
+use crate::nakadi::dispatcher::Dispatcher;
+use crate::nakadi::handler::HandlerFactory;
+use crate::nakadi::metrics::MetricsCollector;
+use crate::nakadi::model::*;
+use crate::nakadi::streaming_client::{ConnectError, LineResult, RawLine, StreamingClient};
+use crate::nakadi::CommitStrategy;
 
 /// Sequence of backoffs after failed commit attempts
 const CONNECT_RETRY_BACKOFF_MS: &[u64] = &[

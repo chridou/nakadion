@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use nakadi::metrics::*;
+use crate::nakadi::metrics::*;
 
 pub struct CancellationTokenSource {
     cancellation_requested: Arc<AtomicBool>,
