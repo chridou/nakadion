@@ -14,7 +14,7 @@ keywords = ["event", "broker", "distributed", "message", "nakadi"]
 log = "0.4"
 uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.1" }
-reqwest = "0.9"
+reqwest = { version = "0.10.1", features = ["json", "blocking"] }
 failure = "0.1"
 backoff = "0.1"
 serde = {version = "1.0", features = ["serde_derive"]}

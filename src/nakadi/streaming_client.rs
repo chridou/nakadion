@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use failure::*;
 use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
-use reqwest::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
+use reqwest::blocking::{Client as HttpClient, ClientBuilder as HttpClientBuilder, Response};
 
 use auth::{AccessToken, ProvidesAccessToken, TokenError};
 use nakadi::metrics::{DevNullMetricsCollector, MetricsCollector};

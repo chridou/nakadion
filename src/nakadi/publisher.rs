@@ -6,7 +6,7 @@ use std::time::Duration;
 use backoff::{Error as BackoffError, ExponentialBackoff, Operation};
 use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::StatusCode;
-use reqwest::{Client as HttpClient, Response};
+use reqwest::blocking::{Client as HttpClient, Response};
 use serde::Serialize;
 use serde_json;
 
