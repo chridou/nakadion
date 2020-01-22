@@ -9,6 +9,7 @@ use futures::{
     ready,
     stream::{Fuse, Stream, StreamExt, TryStream, TryStreamExt},
 };
+use log::warn;
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
 use nakadi_types::model::subscription::StreamId;
@@ -114,14 +115,13 @@ where
             }
             None => {
                 let unframed_bytes = self.state.buffered.len();
-                if unframed_bytes == 0 {
-                    Poll::Ready(None)
-                } else {
-                    Poll::Ready(Some(Err(IoError(format!(
-                        "unexpected end of stream, {} unframed bytes left",
-                        unframed_bytes
-                    )))))
+                if unframed_bytes > 0 {
+                    warn!(
+                        "unexpected end of stream '{}', {} unframed bytes left",
+                        self.stream_id, unframed_bytes
+                    )
                 }
+                Poll::Ready(None)
             }
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
         }
