@@ -29,9 +29,26 @@ pub struct RawBatch {
 
 #[derive(Clone)]
 pub struct NakadiFrame {
-    bytes: Bytes,
+    bytes: Vec<u8>,
+    received_at: Instant,
     stream_id: StreamId,
     frame_id: usize,
+}
+
+impl NakadiFrame {
+    pub fn new<T: AsRef<[u8]>>(
+        slice: T,
+        received_at: Instant,
+        stream_id: StreamId,
+        frame_id: usize,
+    ) -> Self {
+        Self {
+            bytes: Vec::from(slice.as_ref()),
+            received_at,
+            stream_id,
+            frame_id,
+        }
+    }
 }
 
 impl fmt::Debug for NakadiFrame {
@@ -57,6 +74,7 @@ struct State {
     frame_id: usize,
     frames: VecDeque<NakadiFrame>,
     buffered: Bytes,
+    first_byte_received_at: Instant,
 }
 
 impl<St> NakadiBytesStream<St>
@@ -74,6 +92,7 @@ where
                 frame_id: 0,
                 frames: VecDeque::new(),
                 buffered: Bytes::default(),
+                first_byte_received_at: Instant::now(),
             },
         }
     }
@@ -86,6 +105,7 @@ where
                 frame_id: 0,
                 frames: VecDeque::new(),
                 buffered: Bytes::default(),
+                first_byte_received_at: Instant::now(),
             },
         }
     }
@@ -108,22 +128,32 @@ where
 
         // Here there are no frames left.
 
-        match ready!(self.as_mut().bytes_stream().poll_next(cx)) {
-            Some(Ok(bytes)) => {
-                unimplemented!()
-                // Poll::Ready(Some(Ok(frame)))
-            }
-            None => {
-                let unframed_bytes = self.state.buffered.len();
-                if unframed_bytes > 0 {
-                    warn!(
-                        "unexpected end of stream '{}', {} unframed bytes left",
-                        self.stream_id, unframed_bytes
-                    )
+        loop {
+            match ready!(self.as_mut().bytes_stream().poll_next(cx)) {
+                Some(Ok(bytes)) => {
+                    if bytes.is_empty() {
+                        continue;
+                    }
+                    if self.state.buffered.is_empty() {
+                        self.as_mut().state().first_byte_received_at = Instant::now();
+                    }
+
+                    for idx in bytes.iter() {}
+                    unimplemented!()
+                    // Poll::Ready(Some(Ok(frame)))
                 }
-                Poll::Ready(None)
+                None => {
+                    let unframed_bytes = self.state.buffered.len();
+                    if unframed_bytes > 0 {
+                        warn!(
+                            "unexpected end of stream '{}', {} unframed bytes left",
+                            self.stream_id, unframed_bytes
+                        )
+                    }
+                    return Poll::Ready(None);
+                }
+                Some(Err(err)) => return Poll::Ready(Some(Err(err))),
             }
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
         }
     }
 }
