@@ -105,11 +105,23 @@ where
             return Poll::Ready(Some(Ok(frame)));
         }
 
+        // Here there are no frames left.
+
         match ready!(self.as_mut().bytes_stream().poll_next(cx)) {
-            None => Poll::Ready(None),
             Some(Ok(bytes)) => {
                 unimplemented!()
                 // Poll::Ready(Some(Ok(frame)))
+            }
+            None => {
+                let unframed_bytes = self.state.buffered.len();
+                if unframed_bytes == 0 {
+                    Poll::Ready(None)
+                } else {
+                    Poll::Ready(Some(Err(IoError(format!(
+                        "unexpected end of stream, {} unframed bytes left",
+                        unframed_bytes
+                    )))))
+                }
             }
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
         }
