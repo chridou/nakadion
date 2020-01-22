@@ -49,6 +49,18 @@ impl NakadiFrame {
             frame_id,
         }
     }
+    pub fn fresh(received_at: Instant, stream_id: StreamId, frame_id: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(4096),
+            received_at,
+            stream_id,
+            frame_id,
+        }
+    }
+
+    pub fn extend_from_slice<T: AsRef<[u8]>>(&mut self, slice: T) {
+        self.bytes.extend_from_slice(slice.as_ref())
+    }
 }
 
 impl fmt::Debug for NakadiFrame {
@@ -73,7 +85,8 @@ where
 struct State {
     frame_id: usize,
     frames: VecDeque<NakadiFrame>,
-    buffered: Bytes,
+    unfinished_frame: NakadiFrame,
+    rest: Bytes,
     first_byte_received_at: Instant,
 }
 
@@ -85,26 +98,30 @@ where
     unsafe_unpinned!(state: State);
 
     pub fn new(stream_id: StreamId, fused_bytes_stream: Fuse<St>) -> Self {
+        let now = Instant::now();
         Self {
             stream_id,
             bytes_stream: fused_bytes_stream,
             state: State {
                 frame_id: 0,
                 frames: VecDeque::new(),
-                buffered: Bytes::default(),
-                first_byte_received_at: Instant::now(),
+                unfinished_frame: NakadiFrame::fresh(now, stream_id, 0),
+                rest: Bytes::default(),
+                first_byte_received_at: now,
             },
         }
     }
 
     pub fn new_fused(stream_id: StreamId, bytes_stream: St) -> Self {
+        let now = Instant::now();
         Self {
             stream_id,
             bytes_stream: bytes_stream.fuse(),
             state: State {
                 frame_id: 0,
                 frames: VecDeque::new(),
-                buffered: Bytes::default(),
+                unfinished_frame: NakadiFrame::fresh(now, stream_id, 0),
+                rest: Bytes::default(),
                 first_byte_received_at: Instant::now(),
             },
         }
@@ -130,20 +147,20 @@ where
 
         loop {
             match ready!(self.as_mut().bytes_stream().poll_next(cx)) {
-                Some(Ok(bytes)) => {
+                Some(Ok(mut bytes)) => {
                     if bytes.is_empty() {
                         continue;
                     }
-                    if self.state.buffered.is_empty() {
+                    if self.state.rest.is_empty() {
                         self.as_mut().state().first_byte_received_at = Instant::now();
                     }
 
-                    for idx in bytes.iter() {}
+                    for idx in 0..bytes.len() {}
                     unimplemented!()
                     // Poll::Ready(Some(Ok(frame)))
                 }
                 None => {
-                    let unframed_bytes = self.state.buffered.len();
+                    let unframed_bytes = self.state.rest.len();
                     if unframed_bytes > 0 {
                         warn!(
                             "unexpected end of stream '{}', {} unframed bytes left",
