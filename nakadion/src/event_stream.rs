@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::fmt;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
@@ -7,7 +9,7 @@ use futures::{
     ready,
     stream::{Fuse, Stream, StreamExt, TryStream, TryStreamExt},
 };
-use pin_utils::unsafe_pinned;
+use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
 use nakadi_types::model::subscription::StreamId;
 
@@ -24,10 +26,21 @@ pub struct RawBatch {
     pub received_at: Instant,
 }
 
+#[derive(Clone)]
 pub struct NakadiFrame {
     bytes: Bytes,
     stream_id: StreamId,
     frame_id: usize,
+}
+
+impl fmt::Debug for NakadiFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NakadiFrame")
+            .field("stream_id", &self.stream_id.into_inner())
+            .field("frame_id", &self.frame_id)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
 }
 
 pub struct NakadiBytesStream<St>
@@ -36,7 +49,13 @@ where
 {
     stream_id: StreamId,
     bytes_stream: Fuse<St>,
+    state: State,
+}
+
+struct State {
     frame_id: usize,
+    frames: VecDeque<NakadiFrame>,
+    buffered: Bytes,
 }
 
 impl<St> NakadiBytesStream<St>
@@ -44,12 +63,17 @@ where
     St: Stream<Item = Result<Bytes, IoError>>,
 {
     unsafe_pinned!(bytes_stream: Fuse<St>);
+    unsafe_unpinned!(state: State);
 
     pub fn new(stream_id: StreamId, fused_bytes_stream: Fuse<St>) -> Self {
         Self {
             stream_id,
             bytes_stream: fused_bytes_stream,
-            frame_id: 0,
+            state: State {
+                frame_id: 0,
+                frames: VecDeque::new(),
+                buffered: Bytes::default(),
+            },
         }
     }
 
@@ -57,26 +81,17 @@ where
         Self {
             stream_id,
             bytes_stream: bytes_stream.fuse(),
-            frame_id: 0,
+            state: State {
+                frame_id: 0,
+                frames: VecDeque::new(),
+                buffered: Bytes::default(),
+            },
         }
     }
 
     pub fn stream_id(&self) -> StreamId {
         self.stream_id
     }
-
-    /// Acquires a pinned mutable reference to the underlying stream that this
-    /// combinator is pulling from.
-    fn get_pin_mut(self: Pin<&mut Self>) -> Pin<&mut Fuse<St>> {
-        self.bytes_stream()
-    }
-
-    /*  pub fn framed(self) -> FramedBytesStream<BytesStream> {
-        FramedBytesStream {
-            stream_id: self.stream_id(),
-            stream: self.bytes_stream.fused(),
-        }
-    }*/
 }
 
 impl<St> Stream for NakadiBytesStream<St>
@@ -85,20 +100,16 @@ where
 {
     type Item = Result<NakadiFrame, IoError>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let next_frame_id = self.frame_id;
-        let stream_id = self.stream_id;
-        self.frame_id = next_frame_id + 1;
-        let stream = self.get_pin_mut();
-        match ready!(stream.poll_next(cx)) {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        if let Some(frame) = self.as_mut().state().frames.pop_front() {
+            return Poll::Ready(Some(Ok(frame)));
+        }
+
+        match ready!(self.as_mut().bytes_stream().poll_next(cx)) {
             None => Poll::Ready(None),
             Some(Ok(bytes)) => {
-                let frame = NakadiFrame {
-                    bytes,
-                    stream_id,
-                    frame_id: next_frame_id,
-                };
-                Poll::Ready(Some(Ok(frame)))
+                unimplemented!()
+                // Poll::Ready(Some(Ok(frame)))
             }
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
         }
