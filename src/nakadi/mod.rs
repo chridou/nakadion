@@ -21,11 +21,11 @@ pub mod streaming_client;
 pub mod worker;
 
 use crate::auth::ProvidesAccessToken;
-use metrics::{DevNullMetricsCollector, MetricsCollector};
 use crate::nakadi::api::{ApiClient, NakadiApiClient};
 use crate::nakadi::handler::HandlerFactory;
 use crate::nakadi::model::SubscriptionId;
 use crate::nakadi::streaming_client::StreamingClient;
+use metrics::{DevNullMetricsCollector, MetricsCollector};
 
 #[cfg(feature = "metrix")]
 use metrix::processor::AggregatesProcessors;
@@ -612,7 +612,7 @@ impl NakadionBuilder {
         P: ProvidesAccessToken + Send + Sync + 'static,
         T: AggregatesProcessors,
     {
-        let metrix_collector = ::nakadi::metrics::MetrixCollector::new(put_metrics_here);
+        let metrix_collector = metrics::MetrixCollector::new(put_metrics_here);
         let config = self.build_config()?;
 
         Nakadion::start(
