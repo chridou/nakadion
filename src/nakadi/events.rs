@@ -3,7 +3,7 @@ use chrono::offset::Utc;
 use chrono::DateTime;
 use uuid::Uuid;
 
-use nakadi::model::{FlowId, PartitionId};
+use crate::nakadi::model::{FlowId, PartitionId};
 
 /// Metadata sent with an outgoing event
 ///

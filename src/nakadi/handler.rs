@@ -2,7 +2,7 @@
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use nakadi::model::PartitionId;
+use crate::nakadi::model::PartitionId;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SubscriptionCursor {

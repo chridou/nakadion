@@ -5,15 +5,15 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
+use crate::cancellation_token::{AutoCancellationToken, CancellationToken, CancellationTokenSource};
 use failure::{Error, Fail};
 
-use nakadi::batch::Batch;
-use nakadi::committer::Committer;
-use nakadi::handler::HandlerFactory;
-use nakadi::metrics::MetricsCollector;
-use nakadi::model::{PartitionId, StreamId};
-use nakadi::worker::Worker;
+use crate::nakadi::batch::Batch;
+use crate::nakadi::committer::Committer;
+use crate::nakadi::handler::HandlerFactory;
+use crate::nakadi::metrics::MetricsCollector;
+use crate::nakadi::model::{PartitionId, StreamId};
+use crate::nakadi::worker::Worker;
 
 /// The dispatcher takes batch lines and sends them to the workers.
 ///

@@ -5,14 +5,14 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use cancellation_token::*;
+use crate::cancellation_token::*;
 use failure::{Error, Fail};
 
-use nakadi::api::{ApiClient, CommitError, CommitStatus};
-use nakadi::batch::Batch;
-use nakadi::metrics::MetricsCollector;
-use nakadi::model::{FlowId, StreamId, SubscriptionId};
-use nakadi::CommitStrategy;
+use crate::nakadi::api::{ApiClient, CommitError, CommitStatus};
+use crate::nakadi::batch::Batch;
+use crate::nakadi::metrics::MetricsCollector;
+use crate::nakadi::model::{FlowId, StreamId, SubscriptionId};
+use crate::nakadi::CommitStrategy;
 
 const CURSOR_COMMIT_OFFSET: u64 = 55;
 
