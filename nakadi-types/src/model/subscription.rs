@@ -24,6 +24,10 @@ impl SubscriptionId {
         Self(id.into())
     }
 
+    pub fn random() -> Self {
+        Self(Uuid::new_v4())
+    }
+
     pub fn into_inner(self) -> Uuid {
         self.0
     }
@@ -67,6 +71,10 @@ pub struct StreamId(Uuid);
 impl StreamId {
     pub fn new<T: Into<Uuid>>(id: T) -> Self {
         Self(id.into())
+    }
+
+    pub fn random() -> Self {
+        Self(Uuid::new_v4())
     }
 
     pub fn into_inner(self) -> Uuid {

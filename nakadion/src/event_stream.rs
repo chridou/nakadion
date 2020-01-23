@@ -41,6 +41,10 @@ impl NakadiFrame {
             frame_id,
         }
     }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.bytes.as_ref()
+    }
 }
 
 impl fmt::Debug for NakadiFrame {
@@ -60,6 +64,12 @@ where
     stream_id: StreamId,
     bytes_stream: St,
     state: State,
+}
+
+impl AsRef<[u8]> for NakadiFrame {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
 }
 
 struct State {
@@ -142,19 +152,21 @@ where
 
                                 state.unfinished_frame.extend_from_slice(&to_append);
 
-                                let finished_frame = std::mem::replace(
-                                    &mut state.unfinished_frame,
-                                    Vec::with_capacity(4096),
-                                );
+                                if !state.unfinished_frame.is_empty() {
+                                    let finished_frame = std::mem::replace(
+                                        &mut state.unfinished_frame,
+                                        Vec::with_capacity(4096),
+                                    );
 
-                                state.frames.push_back(NakadiFrame {
-                                    bytes: finished_frame.into(),
-                                    received_at: state.first_byte_received_at,
-                                    stream_id,
-                                    frame_id: state.frame_id,
-                                });
+                                    state.frames.push_back(NakadiFrame {
+                                        bytes: finished_frame.into(),
+                                        received_at: state.first_byte_received_at,
+                                        stream_id,
+                                        frame_id: state.frame_id,
+                                    });
 
-                                state.frame_id += 1;
+                                    state.frame_id += 1;
+                                }
                             } else {
                                 state.unfinished_frame.extend_from_slice(&bytes);
                                 break;
@@ -164,7 +176,6 @@ where
                         if let Some(frame) = state.frames.pop_front() {
                             return Poll::Ready(Some(Ok(frame)));
                         }
-                        return Poll::Pending;
                     }
                     Poll::Ready(None) => {
                         let unframed_bytes = self.state.unfinished_frame.len();
@@ -206,4 +217,133 @@ where
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use bytes::Bytes;
+    use futures::stream::{self, BoxStream, Stream, StreamExt, TryStreamExt};
+
+    use super::*;
+
+    fn stream_from_bytes<I, It>(
+        items: I,
+    ) -> NakadiBytesStream<BoxStream<'static, Result<Bytes, IoError>>>
+    where
+        I: IntoIterator<Item = It> + 'static + Send,
+        It: AsRef<[u8]>,
+    {
+        let iter: Vec<_> = items
+            .into_iter()
+            .map(|x| Bytes::copy_from_slice(x.as_ref()))
+            .map(Ok)
+            .collect();
+        let stream = stream::iter(iter).boxed();
+        NakadiBytesStream::new(StreamId::random(), stream)
+    }
+
+    async fn poll_all<St>(mut stream: NakadiBytesStream<St>) -> Result<Vec<NakadiFrame>, IoError>
+    where
+        St: Stream<Item = Result<Bytes, IoError>> + Unpin,
+    {
+        let mut collected = Vec::new();
+
+        while let Some(r) = stream.try_next().await? {
+            collected.push(r);
+        }
+
+        Ok(collected)
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn no_frames_empty_stream() {
+        let empty: Vec<&[u8]> = vec![];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert!(frames.is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn no_frames_stream_of_one_empty_bytes() {
+        let empty = vec![b""];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert!(frames.is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn no_frames_stream_of_one_line_feed_bytes() {
+        let empty = vec![b"\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 0);
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn no_frames_stream_of_multiple_line_feed_bytes_1() {
+        let empty = vec![b"\n\n\n\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 0);
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn no_frames_stream_of_multiple_line_feed_bytes_2() {
+        let empty = vec![b"\n", b"\n", b"\n", b"\n", b"\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 0);
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn create_one_frame_1() {
+        let empty = vec![b"0\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn create_one_frame_2() {
+        let empty = vec![b"\n0\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn create_one_frame_3() {
+        let empty = vec![b"0", b"\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn create_one_frame_4() {
+        let empty = vec![b"\n", b"0", b"\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn create_one_frame_5() {
+        let empty = vec![b"\n0", b"\n\n"];
+        let stream = stream_from_bytes(empty);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+}
