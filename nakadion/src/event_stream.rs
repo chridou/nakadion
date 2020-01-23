@@ -239,6 +239,21 @@ mod test {
         NakadiBytesStream::new(StreamId::random(), stream)
     }
 
+    fn stream_from_results<I, It>(
+        items: I,
+    ) -> NakadiBytesStream<BoxStream<'static, Result<Bytes, IoError>>>
+    where
+        I: IntoIterator<Item = Result<It, IoError>> + 'static + Send,
+        It: AsRef<[u8]>,
+    {
+        let iter: Vec<_> = items
+            .into_iter()
+            .map(|x| x.map(|x| Bytes::copy_from_slice(x.as_ref())))
+            .collect();
+        let stream = stream::iter(iter).boxed();
+        NakadiBytesStream::new(StreamId::random(), stream)
+    }
+
     async fn poll_all<St>(mut stream: NakadiBytesStream<St>) -> Result<Vec<NakadiFrame>, IoError>
     where
         St: Stream<Item = Result<Bytes, IoError>> + Unpin,
@@ -252,19 +267,43 @@ mod test {
         Ok(collected)
     }
 
+    async fn poll_for_err<St>(
+        mut stream: NakadiBytesStream<St>,
+    ) -> Result<Vec<NakadiFrame>, Vec<NakadiFrame>>
+    where
+        St: Stream<Item = Result<Bytes, IoError>> + Unpin,
+    {
+        let mut collected = Vec::new();
+
+        let mut is_err = false;
+        while let Some(r) = stream.next().await {
+            if let Ok(frame) = r {
+                collected.push(frame);
+            } else {
+                is_err = true;
+            }
+        }
+
+        if is_err {
+            Err(collected)
+        } else {
+            Ok(collected)
+        }
+    }
+
     #[tokio::test(basic_scheduler)]
     async fn no_frames_empty_stream() {
-        let empty: Vec<&[u8]> = vec![];
-        let stream = stream_from_bytes(empty);
+        let input: Vec<&[u8]> = vec![];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert!(frames.is_empty());
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn no_frames_stream_of_one_empty_bytes() {
-        let empty = vec![b""];
-        let stream = stream_from_bytes(empty);
+    async fn no_frames_stream_of_one_input_bytes() {
+        let input = vec![b""];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert!(frames.is_empty());
@@ -272,8 +311,8 @@ mod test {
 
     #[tokio::test(basic_scheduler)]
     async fn no_frames_stream_of_one_line_feed_bytes() {
-        let empty = vec![b"\n"];
-        let stream = stream_from_bytes(empty);
+        let input = vec![b"\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 0);
@@ -281,8 +320,8 @@ mod test {
 
     #[tokio::test(basic_scheduler)]
     async fn no_frames_stream_of_multiple_line_feed_bytes_1() {
-        let empty = vec![b"\n\n\n\n"];
-        let stream = stream_from_bytes(empty);
+        let input = vec![b"\n\n\n\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 0);
@@ -290,17 +329,17 @@ mod test {
 
     #[tokio::test(basic_scheduler)]
     async fn no_frames_stream_of_multiple_line_feed_bytes_2() {
-        let empty = vec![b"\n", b"\n", b"\n", b"\n", b"\n"];
-        let stream = stream_from_bytes(empty);
+        let input = vec![b"\n", b"\n", b"\n", b"\n", b"\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 0);
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn create_one_frame_1() {
-        let empty = vec![b"0\n"];
-        let stream = stream_from_bytes(empty);
+    async fn one_frame_with_one_byte_1() {
+        let input = vec![b"0\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 1);
@@ -308,9 +347,9 @@ mod test {
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn create_one_frame_2() {
-        let empty = vec![b"\n0\n"];
-        let stream = stream_from_bytes(empty);
+    async fn one_frame_with_one_byte_2() {
+        let input = vec![b"\n0\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 1);
@@ -318,9 +357,9 @@ mod test {
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn create_one_frame_3() {
-        let empty = vec![b"0", b"\n"];
-        let stream = stream_from_bytes(empty);
+    async fn one_frame_with_one_byte_3() {
+        let input = vec![b"0", b"\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 1);
@@ -328,9 +367,9 @@ mod test {
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn create_one_frame_4() {
-        let empty = vec![b"\n", b"0", b"\n"];
-        let stream = stream_from_bytes(empty);
+    async fn one_frame_with_one_byte_4() {
+        let input = vec![b"\n", b"0", b"\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 1);
@@ -338,12 +377,276 @@ mod test {
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn create_one_frame_5() {
-        let empty = vec![b"\n0", b"\n\n"];
-        let stream = stream_from_bytes(empty);
+    async fn one_frame_with_one_byte_5() {
+        let input = vec![b"\n0", b"\n\n"];
+        let stream = stream_from_bytes(input);
         let frames = poll_all(stream).await.unwrap();
 
         assert_eq!(frames.len(), 1);
         assert_eq!(&frames[0].as_bytes(), b"0");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_1() {
+        let input = vec![b"012345\n"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_2() {
+        let input = vec![b"0", b"1", b"2", b"3", b"4", b"5", b"\n"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_3() {
+        let input = vec![&b"0"[..], &b"1"[..], &b"234"[..], &b"5"[..], &b"\n"[..]];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_4() {
+        let input = vec![&b"012"[..], &b"34"[..], &b"5"[..], &b"\n"[..]];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_5() {
+        let input = vec![
+            &b""[..],
+            &b"012"[..],
+            &b""[..],
+            &b"34"[..],
+            &b"5"[..],
+            &b""[..],
+            &b"\n"[..],
+            &b""[..],
+        ];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn one_frame_with_multiple_bytes_6() {
+        let input = vec![b"\n012345\n"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn two_frames_with_multiple_bytes_1() {
+        let input = vec![b"012345\nabc\n"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn two_frames_with_multiple_bytes_2() {
+        let input = vec![&b"012345"[..], &b"\n"[..], &b"abc\n"[..]];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn two_frames_with_multiple_bytes_3() {
+        let input = vec![
+            &b"012345"[..],
+            &b""[..],
+            &b"\n"[..],
+            &b""[..],
+            &b"abc\n"[..],
+        ];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn two_frames_with_multiple_bytes_4() {
+        let input = vec![&b"012345"[..], &b"\n"[..], &b"abc"[..], &b"\n"[..]];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn two_frames_with_multiple_bytes_5() {
+        let input = vec![
+            &b""[..],
+            &b"\n"[..],
+            &b"012345"[..],
+            &b""[..],
+            &b""[..],
+            &b"\nabc\n"[..],
+        ];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn frame_not_finished_1() {
+        let input = vec![b"012345"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 0);
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn frame_not_finished_2() {
+        let input = vec![b"012345\nabc"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn frame_not_finished_3() {
+        let input = vec![b"012345\nabc\nxyz"];
+        let stream = stream_from_bytes(input);
+        let frames = poll_all(stream).await.unwrap();
+
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"012345");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_1() {
+        let input = vec![Err::<&[u8], _>(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_2() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b"123\n"), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        let frames = result.unwrap_err();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"123");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_3() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b"123"), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_4() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b"123\nabc\n"), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        let frames = result.unwrap_err();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(&frames[0].as_bytes(), b"123");
+        assert_eq!(&frames[1].as_bytes(), b"abc");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_5() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b"123\nabc"), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        let frames = result.unwrap_err();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(&frames[0].as_bytes(), b"123");
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_6() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b""), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_7() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Err(IoError::new("x")), Ok(b"")];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_8() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Err(IoError::new("x")), Ok(b"123\nab\nc")];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
+    }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_9() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Err(IoError::new("x")), Ok(b"123\nabc")];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_empty());
     }
 }
