@@ -13,7 +13,7 @@ use tokio::fs;
 use from_env;
 
 use crate::env_vars::*;
-use crate::GenericError;
+pub(crate) use nakadi_types::GenericError;
 
 pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;
 

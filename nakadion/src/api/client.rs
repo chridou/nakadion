@@ -561,10 +561,7 @@ impl SubscriptionStreamApi for ApiClient {
                                 ),
                             )
                         })?;
-                        Ok(NakadiBytesStream::new_fused(
-                            stream_id,
-                            response.into_body(),
-                        ))
+                        Ok(NakadiBytesStream::new(stream_id, response.into_body()))
                     }
                     None => {
                         return Err(NakadiApiError::new(
