@@ -13,17 +13,6 @@ use nakadi_types::model::subscription::StreamId;
 
 use crate::api::IoError;
 
-pub type BatchBytes = Vec<u8>;
-pub type BatchResult = Result<RawBatch, IoError>;
-
-/// A line as received from Nakadi plus a timestamp.
-pub struct RawBatch {
-    /// The bytes received as a line from Nakadi
-    pub bytes: BatchBytes,
-    /// The timestamp for when this line was received
-    pub received_at: Instant,
-}
-
 #[derive(Clone)]
 pub struct NakadiFrame {
     bytes: Bytes,

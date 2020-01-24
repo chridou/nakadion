@@ -1,33 +1,37 @@
 use std::str;
 
-use serde_json;
+use bytes::Bytes;
 
-use crate::internals::line_parser::{parse_line, LineItems, ParseLineError};
-use crate::model::SubscriptionCursor;
+mod line_parser;
+
+use nakadi_types::model::subscription::SubscriptionCursor;
+
+use line_parser::{parse_line, LineItems, ParseLineError};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BatchLine {
-    bytes: Vec<u8>,
-    items: LineItems,
+    pub bytes: Bytes,
+    pub items: LineItems,
 }
 
 impl BatchLine {
-    pub fn new(bytes: Vec<u8>) -> Result<BatchLine, ParseLineError> {
-        let items = parse_line(&bytes)?;
+    pub fn new<T: Into<Bytes>>(bytes: T) -> Result<BatchLine, ParseLineError> {
+        let bytes = bytes.into();
+
+        let items = parse_line(bytes.as_ref())?;
+
+        Ok(BatchLine { bytes, items })
+    }
+
+    pub fn from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
+        let items = parse_line(slice.as_ref())?;
 
         Ok(BatchLine {
-            bytes,
+            bytes: Bytes::copy_from_slice(slice.as_ref()),
             items,
         })
     }
 
-    #[allow(unused)]
-    pub fn from_slice(bytes: &[u8]) -> Result<BatchLine, ParseLineError> {
-        let bytes = bytes.to_vec();
-        BatchLine::new(bytes)
-    }
-
-    #[allow(unused)]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -65,10 +69,6 @@ impl BatchLine {
 
     pub fn is_keep_alive_line(&self) -> bool {
         self.items.events.is_none()
-    }
-
-    pub fn cursor(&self) -> Option<SubscriptionCursor> {
-        serde_json::from_slice(self.cursor_bytes()).ok()
     }
 }
 
