@@ -47,24 +47,24 @@ impl LineItems {
         pos_to_bytes(self.cursor.line_position, bytes)
     }
 
-    pub fn cursor_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.cursor.line_position, bytes.as_ref())
+    pub fn cursor_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.cursor.line_position, bytes)
     }
 
     pub fn events_bytes(&self, bytes: &Bytes) -> Option<Bytes> {
         self.events.map(|pos| pos_to_bytes(pos, bytes))
     }
 
-    pub fn events_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> Option<&'a str> {
-        self.events.map(|pos| pos_to_str(pos, bytes.as_ref()))
+    pub fn events_str<'a>(&self, bytes: &'a [u8]) -> Option<&'a str> {
+        self.events.map(|pos| pos_to_str(pos, bytes))
     }
 
     pub fn info_bytes(&self, bytes: &Bytes) -> Option<Bytes> {
         self.info.map(|pos| pos_to_bytes(pos, bytes))
     }
 
-    pub fn info_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> Option<&'a str> {
-        self.info.map(|pos| pos_to_str(pos, bytes.as_ref()))
+    pub fn info_str<'a>(&self, bytes: &'a [u8]) -> Option<&'a str> {
+        self.info.map(|pos| pos_to_str(pos, bytes))
     }
 
     pub fn cursor(&self) -> &Cursor {
@@ -133,40 +133,40 @@ impl Cursor {
         pos_to_bytes(self.line_position, bytes)
     }
 
-    pub fn self_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.line_position, bytes.as_ref())
+    pub fn self_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.line_position, bytes)
     }
 
     pub fn partition_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.partition, bytes)
     }
 
-    pub fn partition_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.partition, bytes.as_ref())
+    pub fn partition_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.partition, bytes)
     }
 
     pub fn event_type_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.event_type, bytes)
     }
 
-    pub fn event_type_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.event_type, bytes.as_ref())
+    pub fn event_type_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.event_type, bytes)
     }
 
     pub fn offset_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.offset, bytes)
     }
 
-    pub fn offset_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.offset, bytes.as_ref())
+    pub fn offset_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.offset, bytes)
     }
 
     pub fn cursor_token_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.cursor_token, bytes)
     }
 
-    pub fn cursor_token_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
-        pos_to_str(self.cursor_token, bytes.as_ref())
+    pub fn cursor_token_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
+        pos_to_str(self.cursor_token, bytes)
     }
 }
 
@@ -176,7 +176,7 @@ fn pos_to_str<'a>(pos: (usize, usize), bytes: &'a [u8]) -> &'a str {
     unsafe { std::str::from_utf8_unchecked(slice) }
 }
 
-fn pos_to_bytes<'a>(pos: (usize, usize), bytes: &Bytes) -> Bytes {
+fn pos_to_bytes(pos: (usize, usize), bytes: &Bytes) -> Bytes {
     let (a, b) = pos;
     assert!(a < b, "invalid line parse indexes");
     bytes.slice(a..b)
@@ -652,12 +652,15 @@ fn parse_cursor() {
     let cursor_sample = cursor_sample.as_str();
     parse_cursor_fields(cursor_sample, &mut cursor, 0, cursor_sample.len()).unwrap();
 
-    assert_eq!(cursor.self_str(cursor_sample), cursor_sample);
-    assert_eq!(cursor.partition_str(cursor_sample), "6");
-    assert_eq!(cursor.offset_str(cursor_sample), "543");
-    assert_eq!(cursor.event_type_str(cursor_sample), "order.ORDER_RECEIVED");
+    assert_eq!(cursor.self_str(cursor_sample.as_ref()), cursor_sample);
+    assert_eq!(cursor.partition_str(cursor_sample.as_ref()), "6");
+    assert_eq!(cursor.offset_str(cursor_sample.as_ref()), "543");
     assert_eq!(
-        cursor.cursor_token_str(cursor_sample),
+        cursor.event_type_str(cursor_sample.as_ref()),
+        "order.ORDER_RECEIVED"
+    );
+    assert_eq!(
+        cursor.cursor_token_str(cursor_sample.as_ref()),
         "b75c3102-98a4-4385-a5fd-b96f1d7872f2"
     );
 }
