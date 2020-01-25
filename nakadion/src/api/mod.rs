@@ -322,7 +322,13 @@ pub trait SubscriptionStreamApi {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<NakadiBytesStream<BytesStream>>;
+    ) -> ApiFuture<SubscriptionStream>;
+}
+
+/// A stream of event type partitions from Nakadi
+pub struct SubscriptionStream {
+    pub stream_id: StreamId,
+    pub stream: BytesStream,
 }
 
 #[derive(Debug)]

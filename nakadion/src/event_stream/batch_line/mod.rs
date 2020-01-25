@@ -4,14 +4,12 @@ use bytes::Bytes;
 
 mod line_parser;
 
-use nakadi_types::model::subscription::SubscriptionCursor;
-
 use line_parser::{parse_line, LineItems, ParseLineError};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BatchLine {
-    pub bytes: Bytes,
-    pub items: LineItems,
+    bytes: Bytes,
+    items: LineItems,
 }
 
 impl BatchLine {
@@ -20,11 +18,19 @@ impl BatchLine {
 
         let items = parse_line(bytes.as_ref())?;
 
+        if !items.is_valid() {
+            return Err(ParseLineError::new("line is invalid"));
+        }
+
         Ok(BatchLine { bytes, items })
     }
 
     pub fn from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
         let items = parse_line(slice.as_ref())?;
+
+        if !items.is_valid() {
+            return Err(ParseLineError::new("line is invalid"));
+        }
 
         Ok(BatchLine {
             bytes: Bytes::copy_from_slice(slice.as_ref()),
@@ -32,43 +38,60 @@ impl BatchLine {
         })
     }
 
-    pub fn bytes(&self) -> &[u8] {
-        &self.bytes
+    pub fn bytes(&self) -> Bytes {
+        self.bytes.clone()
     }
 
-    pub fn cursor_bytes(&self) -> &[u8] {
-        let (a, b) = self.items.cursor.line_position;
-        &self.bytes[a..=b]
+    pub fn cursor_str(&self) -> &str {
+        self.items.cursor_str(self.bytes.as_ref())
     }
 
-    pub fn partition_bytes(&self) -> &[u8] {
-        let (a, b) = self.items.cursor.partition;
-        &self.bytes[a..=b]
+    pub fn cursor_bytes(&self) -> Bytes {
+        self.items.cursor_bytes(&self.bytes)
     }
 
-    pub fn partition_str(&self) -> Result<&str, str::Utf8Error> {
-        ::std::str::from_utf8(self.partition_bytes())
+    pub fn partition_bytes(&self) -> Bytes {
+        self.items.cursor().partition_bytes(&self.bytes)
     }
 
-    pub fn event_type_bytes(&self) -> &[u8] {
-        let (a, b) = self.items.cursor.event_type;
-        &self.bytes[a..=b]
+    pub fn partition_str(&self) -> &str {
+        self.items.cursor().partition_str(self.bytes.as_ref())
     }
 
-    pub fn event_type_str(&self) -> Result<&str, str::Utf8Error> {
-        ::std::str::from_utf8(self.event_type_bytes())
+    pub fn event_type_bytes(&self) -> Bytes {
+        self.items.cursor().event_type_bytes(&self.bytes)
     }
 
-    pub fn events_bytes(&self) -> Option<&[u8]> {
-        self.items.events.map(|e| &self.bytes[e.0..=e.1])
+    pub fn event_type_str(&self) -> &str {
+        self.items.cursor().event_type_str(self.bytes.as_ref())
     }
 
-    pub fn info_bytes(&self) -> Option<&[u8]> {
-        self.items.info.map(|e| &self.bytes[e.0..=e.1])
+    pub fn events_bytes(&self) -> Option<Bytes> {
+        self.items.events_bytes(&self.bytes)
+    }
+
+    pub fn events_str(&self) -> Option<&str> {
+        self.items.events_str(self.bytes.as_ref())
+    }
+
+    pub fn info_bytes(&self) -> Option<Bytes> {
+        self.items.info_bytes(&self.bytes)
+    }
+
+    pub fn info_str(&self) -> Option<&str> {
+        self.items.info_str(self.bytes.as_ref())
     }
 
     pub fn is_keep_alive_line(&self) -> bool {
-        self.items.events.is_none()
+        !self.items.has_events()
+    }
+
+    pub fn has_events(&self) -> bool {
+        self.items.has_events()
+    }
+
+    pub fn has_info(&self) -> bool {
+        self.items.has_info()
     }
 }
 
@@ -94,16 +117,16 @@ fn parse_subscription_batch_line_with_info() {
         + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
         + r#""data_type":"blah"}]"#;
 
-    let info_sample = br#"{"debug":"Stream started"}"#;
+    let info_sample = r#"{"debug":"Stream started"}"#;
 
     let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
-    assert_eq!(line.events_bytes(), Some(events_sample.as_bytes()));
-    assert_eq!(line.info_bytes(), Some(&info_sample[..]));
+    assert_eq!(line.partition_str(), "6", "partition");
+    assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
+    assert_eq!(line.events_str(), Some(events_sample.as_ref()));
+    assert_eq!(line.info_str(), Some(&info_sample[..]));
     assert_eq!(line.is_keep_alive_line(), false);
 }
 
@@ -133,9 +156,9 @@ fn parse_subscription_batch_line_without_info() {
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6", "partition");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
-    assert_eq!(line.events_bytes(), Some(events_sample.as_bytes()));
+    assert_eq!(line.partition_str(), "6", "partition");
+    assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
+    assert_eq!(line.events_str(), Some(events_sample.as_ref()));
     assert_eq!(line.info_bytes(), None);
     assert_eq!(line.is_keep_alive_line(), false);
 }
@@ -150,15 +173,15 @@ fn parse_subscription_batch_line_keep_alive_with_info() {
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let info_sample = br#"{"debug":"Stream started"}"#;
+    let info_sample = r#"{"debug":"Stream started"}"#;
 
     let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
-    assert_eq!(line.info_bytes(), Some(&info_sample[..]));
+    assert_eq!(line.partition_str(), "6");
+    assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
+    assert_eq!(line.info_str(), Some(info_sample));
     assert_eq!(line.is_keep_alive_line(), true);
 }
 
@@ -176,8 +199,8 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
-    assert_eq!(line.partition_str().unwrap(), "6");
-    assert_eq!(line.event_type_str().unwrap(), "order.ORDER_RECEIVED");
+    assert_eq!(line.partition_str(), "6");
+    assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
     assert_eq!(line.info_bytes(), None);
     assert_eq!(line.is_keep_alive_line(), true);
 }

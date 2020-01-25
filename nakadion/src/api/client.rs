@@ -20,8 +20,6 @@ use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
 use nakadi_types::{FlowId, NakadiBaseUrl};
 
-use super::IoError;
-
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken, TokenError};
 use crate::event_stream::NakadiBytesStream;
 
@@ -524,7 +522,7 @@ impl SubscriptionStreamApi for ApiClient {
         id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
-    ) -> ApiFuture<NakadiBytesStream<BytesStream>> {
+    ) -> ApiFuture<SubscriptionStream> {
         let url = self.urls().subscriptions_request_stream(id);
         let parameters = serde_json::to_vec(parameters).unwrap();
 
@@ -561,7 +559,10 @@ impl SubscriptionStreamApi for ApiClient {
                                 ),
                             )
                         })?;
-                        Ok(NakadiBytesStream::new(stream_id, response.into_body()))
+                        Ok(SubscriptionStream {
+                            stream_id,
+                            stream: response.into_body(),
+                        })
                     }
                     None => {
                         return Err(NakadiApiError::new(

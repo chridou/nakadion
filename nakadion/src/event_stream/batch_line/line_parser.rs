@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 const OBJ_OPEN: u8 = b'{';
 const OBJ_CLOSE: u8 = b'}';
 const ARRAY_OPEN: u8 = b'[';
@@ -11,12 +13,71 @@ const INFO_LABEL: &[u8] = b"info";
 
 const CURSOR_PARTITION_LABEL: &[u8] = b"partition";
 const CURSOR_EVENT_TYPE_LABEL: &[u8] = b"event_type";
+const CURSOR_OFFSET_LABEL: &[u8] = b"offset";
+const CURSOR_TOKEN_LABEL: &[u8] = b"cursor_token";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LineItems {
-    pub cursor: Cursor,
-    pub events: Option<(usize, usize)>,
-    pub info: Option<(usize, usize)>,
+    cursor: Cursor,
+    events: Option<(usize, usize)>,
+    info: Option<(usize, usize)>,
+}
+
+impl LineItems {
+    pub fn is_valid(&self) -> bool {
+        if !self.cursor.is_valid() {
+            return false;
+        }
+
+        if let Some((a, b)) = self.events {
+            if a >= b {
+                return false;
+            }
+        }
+
+        if let Some((a, b)) = self.info {
+            if a >= b {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    pub fn cursor_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.cursor.line_position, bytes)
+    }
+
+    pub fn cursor_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.cursor.line_position, bytes.as_ref())
+    }
+
+    pub fn events_bytes(&self, bytes: &Bytes) -> Option<Bytes> {
+        self.events.map(|pos| pos_to_bytes(pos, bytes))
+    }
+
+    pub fn events_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> Option<&'a str> {
+        self.events.map(|pos| pos_to_str(pos, bytes.as_ref()))
+    }
+
+    pub fn info_bytes(&self, bytes: &Bytes) -> Option<Bytes> {
+        self.info.map(|pos| pos_to_bytes(pos, bytes))
+    }
+
+    pub fn info_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> Option<&'a str> {
+        self.info.map(|pos| pos_to_str(pos, bytes.as_ref()))
+    }
+
+    pub fn cursor(&self) -> &Cursor {
+        &self.cursor
+    }
+
+    pub fn has_events(&self) -> bool {
+        self.events.is_some()
+    }
+
+    pub fn has_info(&self) -> bool {
+        self.info.is_some()
+    }
 }
 
 impl Default for LineItems {
@@ -31,9 +92,94 @@ impl Default for LineItems {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Cursor {
-    pub line_position: (usize, usize),
-    pub partition: (usize, usize),
-    pub event_type: (usize, usize),
+    line_position: (usize, usize),
+    partition: (usize, usize),
+    event_type: (usize, usize),
+    offset: (usize, usize),
+    cursor_token: (usize, usize),
+}
+
+impl Cursor {
+    pub fn is_valid(&self) -> bool {
+        let (a, b) = self.line_position;
+        if a >= b {
+            return false;
+        }
+
+        let (a, b) = self.partition;
+        if a >= b {
+            return false;
+        }
+
+        let (a, b) = self.event_type;
+        if a >= b {
+            return false;
+        }
+
+        let (a, b) = self.offset;
+        if a >= b {
+            return false;
+        }
+
+        let (a, b) = self.cursor_token;
+        if a >= b {
+            return false;
+        }
+
+        return true;
+    }
+
+    pub fn self_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.line_position, bytes)
+    }
+
+    pub fn self_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.line_position, bytes.as_ref())
+    }
+
+    pub fn partition_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.partition, bytes)
+    }
+
+    pub fn partition_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.partition, bytes.as_ref())
+    }
+
+    pub fn event_type_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.event_type, bytes)
+    }
+
+    pub fn event_type_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.event_type, bytes.as_ref())
+    }
+
+    pub fn offset_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.offset, bytes)
+    }
+
+    pub fn offset_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.offset, bytes.as_ref())
+    }
+
+    pub fn cursor_token_bytes(&self, bytes: &Bytes) -> Bytes {
+        pos_to_bytes(self.cursor_token, bytes)
+    }
+
+    pub fn cursor_token_str<'a, T: AsRef<[u8]> + 'a>(&self, bytes: T) -> &'a str {
+        pos_to_str(self.cursor_token, bytes.as_ref())
+    }
+}
+
+fn pos_to_str<'a>(pos: (usize, usize), bytes: &'a [u8]) -> &'a str {
+    let (a, b) = pos;
+    let slice = &bytes[a..b];
+    unsafe { std::str::from_utf8_unchecked(slice) }
+}
+
+fn pos_to_bytes<'a>(pos: (usize, usize), bytes: &Bytes) -> Bytes {
+    let (a, b) = pos;
+    assert!(a < b, "invalid line parse indexes");
+    bytes.slice(a..b)
 }
 
 impl Default for Cursor {
@@ -42,12 +188,20 @@ impl Default for Cursor {
             line_position: (0, 0),
             partition: (0, 0),
             event_type: (0, 0),
+            offset: (0, 0),
+            cursor_token: (0, 0),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct ParseLineError(String);
+
+impl ParseLineError {
+    pub fn new<T: Into<String>>(t: T) -> Self {
+        Self(t.into())
+    }
+}
 
 impl<T> From<T> for ParseLineError
 where
@@ -58,8 +212,9 @@ where
     }
 }
 
-pub fn parse_line(json_bytes: &[u8]) -> Result<LineItems, ParseLineError> {
+pub fn parse_line<T: AsRef<[u8]>>(json_bytes: T) -> Result<LineItems, ParseLineError> {
     let mut line_items = LineItems::default();
+    let json_bytes = json_bytes.as_ref();
 
     let mut next_byte = 0;
     while next_byte < json_bytes.len() {
@@ -264,15 +419,15 @@ fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Pa
     Ok((idx_begin, idx_end))
 }
 
-fn parse_cursor_fields(
-    json_bytes: &[u8],
+fn parse_cursor_fields<T: AsRef<[u8]>>(
+    json_bytes: T,
     cursor: &mut Cursor,
     start: usize,
     end: usize,
 ) -> Result<(), ParseLineError> {
     let mut next_byte = start;
     while next_byte <= end {
-        if let Some(end) = parse_next_cursor_item(json_bytes, next_byte, cursor)? {
+        if let Some(end) = parse_next_cursor_item(json_bytes.as_ref(), next_byte, cursor)? {
             next_byte = end + 1
         } else {
             break;
@@ -319,6 +474,30 @@ fn parse_next_cursor_item(
                     }
                 } else {
                     return Err("No String for event_type".into());
+                }
+            }
+            CURSOR_OFFSET_LABEL => {
+                if let Some((a, b)) = next_string(json_bytes, end + 1)? {
+                    if b - a < 2 {
+                        return Err("Empty String for offset".into());
+                    } else {
+                        cursor.offset = (a + 1, b - 1);
+                        b
+                    }
+                } else {
+                    return Err("No String for offset".into());
+                }
+            }
+            CURSOR_TOKEN_LABEL => {
+                if let Some((a, b)) = next_string(json_bytes, end + 1)? {
+                    if b - a < 2 {
+                        return Err("Empty String for cursor token".into());
+                    } else {
+                        cursor.cursor_token = (a + 1, b - 1);
+                        b
+                    }
+                } else {
+                    return Err("No String for cursor token".into());
                 }
             }
             _ => end,
@@ -470,11 +649,15 @@ fn parse_cursor() {
 
     let mut cursor: Cursor = Default::default();
 
-    parse_cursor_fields(
-        cursor_sample.as_bytes(),
-        &mut cursor,
-        0,
-        cursor_sample.len(),
-    )
-    .unwrap();
+    let cursor_sample = cursor_sample.as_str();
+    parse_cursor_fields(cursor_sample, &mut cursor, 0, cursor_sample.len()).unwrap();
+
+    assert_eq!(cursor.self_str(cursor_sample), cursor_sample);
+    assert_eq!(cursor.partition_str(cursor_sample), "6");
+    assert_eq!(cursor.offset_str(cursor_sample), "543");
+    assert_eq!(cursor.event_type_str(cursor_sample), "order.ORDER_RECEIVED");
+    assert_eq!(
+        cursor.cursor_token_str(cursor_sample),
+        "b75c3102-98a4-4385-a5fd-b96f1d7872f2"
+    );
 }
