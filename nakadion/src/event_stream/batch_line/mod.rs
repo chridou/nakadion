@@ -18,8 +18,8 @@ impl BatchLine {
 
         let items = parse_line(bytes.as_ref())?;
 
-        if !items.is_valid() {
-            return Err(ParseLineError::new("line is invalid"));
+        if let Err(err) = items.validate() {
+            return Err(ParseLineError::new(format!("line is invalid: {}", err)));
         }
 
         Ok(BatchLine { bytes, items })
@@ -28,8 +28,8 @@ impl BatchLine {
     pub fn from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
         let items = parse_line(slice.as_ref())?;
 
-        if !items.is_valid() {
-            return Err(ParseLineError::new("line is invalid"));
+        if let Err(err) = items.validate() {
+            return Err(ParseLineError::new(format!("line is invalid: {}", err)));
         }
 
         Ok(BatchLine {

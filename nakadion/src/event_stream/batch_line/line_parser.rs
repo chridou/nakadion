@@ -24,23 +24,21 @@ pub struct LineItems {
 }
 
 impl LineItems {
-    pub fn is_valid(&self) -> bool {
-        if !self.cursor.is_valid() {
-            return false;
-        }
+    pub fn validate(&self) -> Result<(), String> {
+        self.cursor.validate()?;
 
         if let Some((a, b)) = self.events {
             if a >= b {
-                return false;
+                return Err(format!("events: ({},{})", a, b));
             }
         }
 
         if let Some((a, b)) = self.info {
             if a >= b {
-                return false;
+                return Err(format!("events: ({},{})", a, b));
             }
         }
-        return true;
+        Ok(())
     }
 
     pub fn cursor_bytes(&self, bytes: &Bytes) -> Bytes {
@@ -100,33 +98,33 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn is_valid(&self) -> bool {
+    pub fn validate(&self) -> Result<(), String> {
         let (a, b) = self.line_position;
         if a >= b {
-            return false;
+            return Err(format!("line_position: ({},{})", a, b));
         }
 
         let (a, b) = self.partition;
         if a >= b {
-            return false;
+            return Err(format!("partition: ({},{})", a, b));
         }
 
         let (a, b) = self.event_type;
         if a >= b {
-            return false;
+            return Err(format!("event_type: ({},{})", a, b));
         }
 
         let (a, b) = self.offset;
         if a >= b {
-            return false;
+            return Err(format!("offset: ({},{})", a, b));
         }
 
         let (a, b) = self.cursor_token;
         if a >= b {
-            return false;
+            return Err(format!("cursor_token: ({},{})", a, b));
         }
 
-        return true;
+        Ok(())
     }
 
     pub fn self_bytes(&self, bytes: &Bytes) -> Bytes {
