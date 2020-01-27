@@ -15,10 +15,10 @@ use crate::api::IoError;
 
 #[derive(Clone)]
 pub struct NakadiFrame {
-    bytes: Bytes,
-    received_at: Instant,
-    stream_id: StreamId,
-    frame_id: usize,
+    pub bytes: Bytes,
+    pub received_at: Instant,
+    pub stream_id: StreamId,
+    pub frame_id: usize,
 }
 
 impl NakadiFrame {
@@ -46,19 +46,19 @@ impl fmt::Debug for NakadiFrame {
     }
 }
 
-pub struct NakadiBytesStream<St>
+impl AsRef<[u8]> for NakadiFrame {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+pub struct FramedStream<St>
 where
     St: Stream<Item = Result<Bytes, IoError>>,
 {
     stream_id: StreamId,
     bytes_stream: St,
     state: State,
-}
-
-impl AsRef<[u8]> for NakadiFrame {
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
 }
 
 struct State {
@@ -70,7 +70,7 @@ struct State {
     done_err: Option<IoError>,
 }
 
-impl<St> NakadiBytesStream<St>
+impl<St> FramedStream<St>
 where
     St: Stream<Item = Result<Bytes, IoError>>,
 {
@@ -98,7 +98,7 @@ where
     }
 }
 
-impl<St> Stream for NakadiBytesStream<St>
+impl<St> Stream for FramedStream<St>
 where
     St: Stream<Item = Result<Bytes, IoError>>,
 {
@@ -214,7 +214,7 @@ mod test {
 
     fn stream_from_bytes<I, It>(
         items: I,
-    ) -> NakadiBytesStream<BoxStream<'static, Result<Bytes, IoError>>>
+    ) -> FramedStream<BoxStream<'static, Result<Bytes, IoError>>>
     where
         I: IntoIterator<Item = It> + 'static + Send,
         It: AsRef<[u8]>,
@@ -225,12 +225,12 @@ mod test {
             .map(Ok)
             .collect();
         let stream = stream::iter(iter).boxed();
-        NakadiBytesStream::new(StreamId::random(), stream)
+        FramedStream::new(StreamId::random(), stream)
     }
 
     fn stream_from_results<I, It>(
         items: I,
-    ) -> NakadiBytesStream<BoxStream<'static, Result<Bytes, IoError>>>
+    ) -> FramedStream<BoxStream<'static, Result<Bytes, IoError>>>
     where
         I: IntoIterator<Item = Result<It, IoError>> + 'static + Send,
         It: AsRef<[u8]>,
@@ -240,10 +240,10 @@ mod test {
             .map(|x| x.map(|x| Bytes::copy_from_slice(x.as_ref())))
             .collect();
         let stream = stream::iter(iter).boxed();
-        NakadiBytesStream::new(StreamId::random(), stream)
+        FramedStream::new(StreamId::random(), stream)
     }
 
-    async fn poll_all<St>(mut stream: NakadiBytesStream<St>) -> Result<Vec<NakadiFrame>, IoError>
+    async fn poll_all<St>(mut stream: FramedStream<St>) -> Result<Vec<NakadiFrame>, IoError>
     where
         St: Stream<Item = Result<Bytes, IoError>> + Unpin,
     {
@@ -257,7 +257,7 @@ mod test {
     }
 
     async fn poll_for_err<St>(
-        mut stream: NakadiBytesStream<St>,
+        mut stream: FramedStream<St>,
     ) -> Result<Vec<NakadiFrame>, Vec<NakadiFrame>>
     where
         St: Stream<Item = Result<Bytes, IoError>> + Unpin,

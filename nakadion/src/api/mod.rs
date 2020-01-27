@@ -19,8 +19,6 @@ use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
 use nakadi_types::FlowId;
 
-use crate::event_stream::NakadiBytesStream;
-
 use dispatch_http_request::RemoteCallError;
 
 pub use self::client::ApiClient;

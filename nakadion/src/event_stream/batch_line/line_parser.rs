@@ -1,4 +1,6 @@
 use bytes::Bytes;
+use std::error::Error;
+use std::fmt;
 
 const OBJ_OPEN: u8 = b'{';
 const OBJ_CLOSE: u8 = b'}';
@@ -207,6 +209,20 @@ where
 {
     fn from(v: T) -> Self {
         ParseLineError(v.into())
+    }
+}
+
+impl Error for ParseLineError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for ParseLineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+
+        Ok(())
     }
 }
 

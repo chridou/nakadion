@@ -21,7 +21,6 @@ use nakadi_types::model::subscription::*;
 use nakadi_types::{FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken, TokenError};
-use crate::event_stream::NakadiBytesStream;
 
 pub use crate::env_vars::*;
 

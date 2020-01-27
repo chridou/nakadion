@@ -1,15 +1,92 @@
+use std::error::Error;
+use std::fmt;
+use std::pin::Pin;
 use std::str;
+use std::task::{Context, Poll};
+use std::time::Instant;
 
 use bytes::Bytes;
+use futures::{ready, stream::Stream};
+use pin_utils::{unsafe_pinned, unsafe_unpinned};
+
+use nakadi_types::model::subscription::StreamId;
 
 mod line_parser;
 
+use crate::api::IoError;
+use crate::event_stream::NakadiFrame;
+
 use line_parser::{parse_line, LineItems, ParseLineError};
 
-#[derive(Debug, PartialEq, Eq)]
+pub struct BatchLineStream<St>
+where
+    St: Stream<Item = Result<NakadiFrame, IoError>>,
+{
+    frame_stream: St,
+    is_source_done: bool,
+}
+
+impl<St> BatchLineStream<St>
+where
+    St: Stream<Item = Result<NakadiFrame, IoError>>,
+{
+    unsafe_pinned!(frame_stream: St);
+    unsafe_unpinned!(is_source_done: bool);
+
+    pub fn new(frame_stream: St) -> Self {
+        Self {
+            frame_stream,
+            is_source_done: false,
+        }
+    }
+}
+
+impl<St> Stream for BatchLineStream<St>
+where
+    St: Stream<Item = Result<NakadiFrame, IoError>>,
+{
+    type Item = Result<BatchLine, BatchLineError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        if self.is_source_done {
+            Poll::Ready(None)
+        } else {
+            let next_frame = ready!(self.as_mut().frame_stream().poll_next(cx));
+
+            match next_frame {
+                Some(Ok(frame)) => match BatchLine::try_from_frame(frame) {
+                    Ok(line) => Poll::Ready(Some(Ok(line))),
+                    Err(err) => {
+                        *self.as_mut().is_source_done() = true;
+                        Poll::Ready(Some(Err(err.into())))
+                    }
+                },
+                Some(Err(err)) => {
+                    *self.as_mut().is_source_done() = true;
+                    Poll::Ready(Some(Err(err.into())))
+                }
+                None => Poll::Ready(None),
+            }
+        }
+    }
+}
+
+impl<St> From<St> for BatchLineStream<St>
+where
+    St: Stream<Item = Result<NakadiFrame, IoError>>,
+{
+    fn from(stream: St) -> Self {
+        Self::new(stream)
+    }
+}
+
+#[derive(Debug)]
 pub struct BatchLine {
     bytes: Bytes,
     items: LineItems,
+    stream_id: StreamId,
+    frame_id: usize,
+    received_at: Instant,
 }
 
 impl BatchLine {
@@ -19,23 +96,65 @@ impl BatchLine {
         let items = parse_line(bytes.as_ref())?;
 
         if let Err(err) = items.validate() {
-            return Err(ParseLineError::new(format!("line is invalid: {}", err)));
+            return Err(ParseLineError::new(format!("frame is invalid: {}", err)));
         }
 
-        Ok(BatchLine { bytes, items })
+        Ok(BatchLine {
+            bytes,
+            items,
+            frame_id: 0,
+            stream_id: StreamId::random(),
+            received_at: Instant::now(),
+        })
     }
 
-    pub fn from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
+    pub fn try_from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
         let items = parse_line(slice.as_ref())?;
 
         if let Err(err) = items.validate() {
-            return Err(ParseLineError::new(format!("line is invalid: {}", err)));
+            return Err(ParseLineError::new(format!("frame  is invalid: {}", err)));
         }
 
         Ok(BatchLine {
             bytes: Bytes::copy_from_slice(slice.as_ref()),
             items,
+            frame_id: 0,
+            stream_id: StreamId::random(),
+            received_at: Instant::now(),
         })
+    }
+
+    pub fn try_from_frame(frame: NakadiFrame) -> Result<BatchLine, ParseLineError> {
+        let items = parse_line(frame.as_ref())?;
+
+        if let Err(err) = items.validate() {
+            return Err(ParseLineError::new(format!("frame is invalid: {}", err)));
+        }
+
+        Ok(BatchLine {
+            bytes: frame.bytes,
+            items,
+            frame_id: frame.frame_id,
+            received_at: frame.received_at,
+            stream_id: frame.stream_id,
+        })
+    }
+
+    pub fn with_frame_id(mut self, frame_id: usize) -> Self {
+        self.frame_id = frame_id;
+        self
+    }
+
+    pub fn frame_id(&self) -> usize {
+        self.frame_id
+    }
+
+    pub fn stream_id(&self) -> StreamId {
+        self.stream_id
+    }
+
+    pub fn received_at(&self) -> Instant {
+        self.received_at
     }
 
     pub fn bytes(&self) -> Bytes {
@@ -95,6 +214,61 @@ impl BatchLine {
     }
 }
 
+#[derive(Debug)]
+pub struct BatchLineError {
+    pub message: String,
+    pub kind: BatchLineErrorKind,
+}
+
+impl BatchLineError {
+    pub fn new<T: Into<String>>(message: T, kind: BatchLineErrorKind) -> Self {
+        Self {
+            message: message.into(),
+            kind,
+        }
+    }
+}
+
+impl Error for BatchLineError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for BatchLineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            BatchLineErrorKind::Io => {
+                write!(f, "io error - ")?;
+            }
+            BatchLineErrorKind::Parser => {
+                write!(f, "parser error - ")?;
+            }
+        }
+        write!(f, "{}", self.message)?;
+
+        Ok(())
+    }
+}
+
+impl From<IoError> for BatchLineError {
+    fn from(err: IoError) -> Self {
+        Self::new(err.to_string(), BatchLineErrorKind::Io)
+    }
+}
+
+impl From<ParseLineError> for BatchLineError {
+    fn from(err: ParseLineError) -> Self {
+        Self::new(err.to_string(), BatchLineErrorKind::Parser)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchLineErrorKind {
+    Io,
+    Parser,
+}
+
 #[test]
 fn parse_subscription_batch_line_with_info() {
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
@@ -119,7 +293,7 @@ fn parse_subscription_batch_line_with_info() {
 
     let info_sample = r#"{"debug":"Stream started"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::try_from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
@@ -152,7 +326,7 @@ fn parse_subscription_batch_line_without_info() {
         + r#""data_op":"C","data":{"order_number":"abc","id":"111"},"#
         + r#""data_type":"blah"}]"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::try_from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
@@ -175,7 +349,7 @@ fn parse_subscription_batch_line_keep_alive_with_info() {
 
     let info_sample = r#"{"debug":"Stream started"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::try_from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes());
     assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
@@ -195,7 +369,7 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
 
-    let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
+    let line = BatchLine::try_from_slice(line_sample.as_bytes()).unwrap();
 
     assert_eq!(line.bytes(), line_sample.as_bytes(), "line bytes");
     assert_eq!(
