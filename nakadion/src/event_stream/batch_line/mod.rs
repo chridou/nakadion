@@ -197,8 +197,12 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
 
     let line = BatchLine::from_slice(line_sample.as_bytes()).unwrap();
 
-    assert_eq!(line.bytes(), line_sample.as_bytes());
-    assert_eq!(line.cursor_bytes(), cursor_sample.as_bytes());
+    assert_eq!(line.bytes(), line_sample.as_bytes(), "line bytes");
+    assert_eq!(
+        line.cursor_bytes(),
+        cursor_sample.as_bytes(),
+        "cursor bytes"
+    );
     assert_eq!(line.partition_str(), "6");
     assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
     assert_eq!(line.info_bytes(), None);

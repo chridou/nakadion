@@ -244,18 +244,18 @@ fn parse_next_item(
         let last = match label {
             CURSOR_LABEL => {
                 let (a, b) = find_next_obj(json_bytes, end)?;
-                line_items.cursor.line_position = (a, b);
+                line_items.cursor.line_position = (a, b + 1);
                 parse_cursor_fields(json_bytes, &mut line_items.cursor, a, b)?;
                 b
             }
             EVENTS_LABEL => {
                 let (a, b) = find_next_array(json_bytes, end)?;
-                line_items.events = Some((a, b));
+                line_items.events = Some((a, b + 1));
                 b
             }
             INFO_LABEL => {
                 let (a, b) = find_next_obj(json_bytes, end)?;
-                line_items.info = Some((a, b));
+                line_items.info = Some((a, b + 1));
                 b
             }
             _ => end,
@@ -455,7 +455,7 @@ fn parse_next_cursor_item(
                     if b - a < 2 {
                         return Err("Empty String for partition".into());
                     } else {
-                        cursor.partition = (a + 1, b - 1);
+                        cursor.partition = (a + 1, b);
                         b
                     }
                 } else {
@@ -467,7 +467,7 @@ fn parse_next_cursor_item(
                     if b - a < 2 {
                         return Err("Empty String for event_type".into());
                     } else {
-                        cursor.event_type = (a + 1, b - 1);
+                        cursor.event_type = (a + 1, b);
                         b
                     }
                 } else {
@@ -479,7 +479,7 @@ fn parse_next_cursor_item(
                     if b - a < 2 {
                         return Err("Empty String for offset".into());
                     } else {
-                        cursor.offset = (a + 1, b - 1);
+                        cursor.offset = (a + 1, b);
                         b
                     }
                 } else {
@@ -491,7 +491,7 @@ fn parse_next_cursor_item(
                     if b - a < 2 {
                         return Err("Empty String for cursor token".into());
                     } else {
-                        cursor.cursor_token = (a + 1, b - 1);
+                        cursor.cursor_token = (a + 1, b);
                         b
                     }
                 } else {
@@ -650,7 +650,6 @@ fn parse_cursor() {
     let cursor_sample = cursor_sample.as_str();
     parse_cursor_fields(cursor_sample, &mut cursor, 0, cursor_sample.len()).unwrap();
 
-    assert_eq!(cursor.self_str(cursor_sample.as_ref()), cursor_sample);
     assert_eq!(cursor.partition_str(cursor_sample.as_ref()), "6");
     assert_eq!(cursor.offset_str(cursor_sample.as_ref()), "543");
     assert_eq!(
