@@ -30,7 +30,7 @@ jobs:
         with:
           path: target
           key: target-directory-${{ matrix.rust }}-${{ matrix.features }}-${{ hashFiles('Cargo.toml') }}
-      - run: cargo build --manifest-path=./nakadi-types
-      - run: cargo test --manifest-path=./nakadi-types
-      - run: cargo build  ${{ matrix.features }} --manifest-path=./nakadion
-      - run: cargo test  ${{ matrix.features }} --manifest-path=./nakadion
+      - run: cargo build --manifest-path=./nakadi-types/Cargo.toml
+      - run: cargo test --manifest-path=./nakadi-types/Cargo.toml
+      - run: cargo build  ${{ matrix.features }} --manifest-path=./nakadion/Cargo.toml
+      - run: cargo test  ${{ matrix.features }} --manifest-path=./nakadion/Cargo.toml
