@@ -5,7 +5,6 @@ on: [push, pull_request]
 jobs:
   build_nakadion:
     name: Build Nakadion
-    needs: build_nakadi_types
     strategy:
       matrix:
         features: ["--no-default-features", "--all-features", "--features metrix", ""]
