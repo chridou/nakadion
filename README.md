@@ -1,5 +1,7 @@
 # Nakadion
 
+![CI](https://github.com/chridou/nakadion/workflows/CI/badge.svg)
+
 A client for the [Nakadi](http://nakadi.io) Event Broker.
 
 ## Summary
