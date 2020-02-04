@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: target-directory-${{ matrix.rust }}-${{ hashFiles('./nakadi-types/Cargo.toml') }}
+          key: target-directory-${{ matrix.rust }}-${{ matrix.features }}-${{ hashFiles('Cargo.toml') }}
           - run: cargo build --manifest-path=./nakadi-types
           - run: cargo test --manifest-path=./nakadi-types
       - name: Build Nakadion
