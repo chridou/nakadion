@@ -317,7 +317,7 @@ pub trait SubscriptionStreamApi {
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
     fn request_stream(
         &self,
-        id: SubscriptionId,
+        subscription_id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
     ) -> ApiFuture<SubscriptionStream>;
@@ -327,6 +327,16 @@ pub trait SubscriptionStreamApi {
 pub struct SubscriptionStream {
     pub stream_id: StreamId,
     pub stream: BytesStream,
+}
+
+pub trait NakadionEssentials:
+    SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
+{
+}
+
+impl<T> NakadionEssentials for T where
+    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
+{
 }
 
 #[derive(Debug)]

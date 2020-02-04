@@ -518,11 +518,11 @@ impl SubscriptionCommitApi for ApiClient {
 impl SubscriptionStreamApi for ApiClient {
     fn request_stream(
         &self,
-        id: SubscriptionId,
+        subscription_id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: FlowId,
     ) -> ApiFuture<SubscriptionStream> {
-        let url = self.urls().subscriptions_request_stream(id);
+        let url = self.urls().subscriptions_request_stream(subscription_id);
         let parameters = serde_json::to_vec(parameters).unwrap();
 
         async move {
