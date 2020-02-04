@@ -9,24 +9,20 @@ use futures::stream::Stream;
 use log::warn;
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
-use nakadi_types::model::subscription::StreamId;
-
 use crate::api::IoError;
 
 #[derive(Clone)]
 pub struct NakadiFrame {
     pub bytes: Bytes,
     pub received_at: Instant,
-    pub stream_id: StreamId,
     pub frame_id: usize,
 }
 
 impl NakadiFrame {
-    pub fn new(bytes: Vec<u8>, received_at: Instant, stream_id: StreamId, frame_id: usize) -> Self {
+    pub fn new(bytes: Vec<u8>, received_at: Instant, frame_id: usize) -> Self {
         Self {
             bytes: bytes.into(),
             received_at,
-            stream_id,
             frame_id,
         }
     }
@@ -39,7 +35,6 @@ impl NakadiFrame {
 impl fmt::Debug for NakadiFrame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NakadiFrame")
-            .field("stream_id", &self.stream_id.into_inner())
             .field("frame_id", &self.frame_id)
             .field("bytes", &self.bytes.len())
             .finish()
@@ -56,7 +51,6 @@ pub struct FramedStream<St>
 where
     St: Stream<Item = Result<Bytes, IoError>>,
 {
-    stream_id: StreamId,
     bytes_stream: St,
     state: State,
 }
@@ -77,10 +71,9 @@ where
     unsafe_pinned!(bytes_stream: St);
     unsafe_unpinned!(state: State);
 
-    pub fn new(stream_id: StreamId, bytes_stream: St) -> Self {
+    pub fn new(bytes_stream: St) -> Self {
         let now = Instant::now();
         Self {
-            stream_id,
             bytes_stream,
             state: State {
                 frame_id: 0,
@@ -91,10 +84,6 @@ where
                 done_err: None,
             },
         }
-    }
-
-    pub fn stream_id(&self) -> StreamId {
-        self.stream_id
     }
 }
 
@@ -124,7 +113,6 @@ where
                             continue;
                         }
 
-                        let stream_id = self.stream_id;
                         let state = self.as_mut().state();
                         if state.unfinished_frame.is_empty() {
                             state.first_byte_received_at = Instant::now();
@@ -150,7 +138,6 @@ where
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
                                         received_at: state.first_byte_received_at,
-                                        stream_id,
                                         frame_id: state.frame_id,
                                     });
 
@@ -170,8 +157,8 @@ where
                         let unframed_bytes = self.state.unfinished_frame.len();
                         if unframed_bytes > 0 {
                             warn!(
-                                "unexpected end of stream '{}', {} unframed bytes left",
-                                self.stream_id, unframed_bytes
+                                "unexpected end of stream, {} unframed bytes left",
+                                unframed_bytes
                             )
                         }
 
@@ -225,7 +212,7 @@ mod test {
             .map(Ok)
             .collect();
         let stream = stream::iter(iter).boxed();
-        FramedStream::new(StreamId::random(), stream)
+        FramedStream::new(stream)
     }
 
     fn stream_from_results<I, It>(
@@ -240,7 +227,7 @@ mod test {
             .map(|x| x.map(|x| Bytes::copy_from_slice(x.as_ref())))
             .collect();
         let stream = stream::iter(iter).boxed();
-        FramedStream::new(StreamId::random(), stream)
+        FramedStream::new(stream)
     }
 
     async fn poll_all<St>(mut stream: FramedStream<St>) -> Result<Vec<NakadiFrame>, IoError>

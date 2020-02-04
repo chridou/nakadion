@@ -329,6 +329,12 @@ pub struct SubscriptionStream {
     pub stream: BytesStream,
 }
 
+impl SubscriptionStream {
+    pub fn parts(self) -> (StreamId, BytesStream) {
+        (self.stream_id, self.stream)
+    }
+}
+
 pub trait NakadionEssentials:
     SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
 {

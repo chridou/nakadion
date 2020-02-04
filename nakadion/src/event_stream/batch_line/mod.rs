@@ -9,8 +9,6 @@ use bytes::Bytes;
 use futures::{ready, stream::Stream};
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
-use nakadi_types::model::subscription::StreamId;
-
 mod line_parser;
 
 use crate::api::IoError;
@@ -84,7 +82,6 @@ where
 pub struct BatchLine {
     bytes: Bytes,
     items: LineItems,
-    stream_id: StreamId,
     frame_id: usize,
     received_at: Instant,
 }
@@ -103,7 +100,6 @@ impl BatchLine {
             bytes,
             items,
             frame_id: 0,
-            stream_id: StreamId::random(),
             received_at: Instant::now(),
         })
     }
@@ -119,7 +115,6 @@ impl BatchLine {
             bytes: Bytes::copy_from_slice(slice.as_ref()),
             items,
             frame_id: 0,
-            stream_id: StreamId::random(),
             received_at: Instant::now(),
         })
     }
@@ -136,7 +131,6 @@ impl BatchLine {
             items,
             frame_id: frame.frame_id,
             received_at: frame.received_at,
-            stream_id: frame.stream_id,
         })
     }
 
@@ -147,10 +141,6 @@ impl BatchLine {
 
     pub fn frame_id(&self) -> usize {
         self.frame_id
-    }
-
-    pub fn stream_id(&self) -> StreamId {
-        self.stream_id
     }
 
     pub fn received_at(&self) -> Instant {
