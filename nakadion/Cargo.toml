@@ -15,7 +15,8 @@ edition = "2018"
 nakadi-types = { path = "../nakadi-types", version="^0.20"}
 futures = "0.3"
 pin-utils = "0.1.0-alpha.4"
-tokio = {version = "0.2", features = ["fs"] }
+tokio = {version = "0.2", features = ["fs", "sync"] }
+crossbeam = "0.7"
 bytes = "0.5"
 log = "0.4"
 uuid = {version = "0.8", features=["serde", "v4"] }
@@ -27,7 +28,7 @@ backoff = "0.1"
 serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-metrix = { version = "0.11", optional = true }
+metrix = { version = "0.13", optional = true }
 
 [dev-dependencies]
 env_logger = "0.7"

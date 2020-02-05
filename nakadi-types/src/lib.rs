@@ -125,8 +125,12 @@ impl FromStr for FlowId {
 pub struct GenericError(String);
 
 impl GenericError {
-    pub fn new<T: Into<String>>(msg: T) -> Self {
-        Self(msg.into())
+    pub fn new<T: fmt::Display>(msg: T) -> Self {
+        Self(msg.to_string())
+    }
+
+    pub fn from_error<E: Error>(err: E) -> Self {
+        Self::new(err.to_string())
     }
 
     pub fn boxed(self) -> Box<dyn Error> {
@@ -143,17 +147,14 @@ impl fmt::Display for GenericError {
 }
 
 impl Error for GenericError {
-    fn cause(&self) -> Option<&dyn Error> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
 }
 
-impl<T> From<T> for GenericError
-where
-    T: Into<String>,
-{
-    fn from(msg: T) -> Self {
-        Self::new(msg)
+impl From<serde_json::Error> for GenericError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::new(err.to_string())
     }
 }
 

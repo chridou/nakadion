@@ -3,8 +3,10 @@ use std::sync::{Arc, Weak};
 
 use crate::nakadi_types::model::subscription::StreamId;
 
+pub mod committer;
 pub mod consumer;
 pub mod controller;
+pub mod worker;
 
 #[derive(Clone)]
 pub struct ConsumerState {
@@ -59,7 +61,13 @@ impl StreamState {
         }
     }
 
-    pub fn request_cancellation(&self) {
+    pub fn request_stream_cancellation(&self) {
         self.is_cancelled.store(true, Ordering::SeqCst)
+    }
+
+    pub fn request_global_cancellation(&self) {
+        if let Some(is_globally_cancelled) = self.is_globally_cancelled.upgrade() {
+            is_globally_cancelled.store(true, Ordering::SeqCst)
+        }
     }
 }

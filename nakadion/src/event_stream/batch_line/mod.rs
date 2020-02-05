@@ -8,6 +8,10 @@ use std::time::Instant;
 use bytes::Bytes;
 use futures::{ready, stream::Stream};
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
+use serde::de::DeserializeOwned;
+use serde_json;
+
+use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
 
 mod line_parser;
 
@@ -202,6 +206,10 @@ impl BatchLine {
     pub fn has_info(&self) -> bool {
         self.items.has_info()
     }
+
+    pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, GenericError> {
+        Ok(serde_json::from_slice(self.cursor_bytes().as_ref())?)
+    }
 }
 
 #[derive(Debug)]
@@ -371,4 +379,15 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
     assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
     assert_eq!(line.info_bytes(), None);
     assert_eq!(line.is_keep_alive_line(), true);
+}
+
+#[test]
+fn deserialize_subscription_cursor() {
+    let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
+        + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
+        + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;
+
+    let line = BatchLine::try_from_slice(line_sample.as_bytes()).unwrap();
+
+    let _ = line.cursor_deserialized::<SubscriptionCursor>().unwrap();
 }
