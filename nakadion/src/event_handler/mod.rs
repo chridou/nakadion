@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use bytes::Bytes;
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::BoxFuture;
 
 use crate::nakadi_types::{
     model::{event_type::EventTypeName, partition::PartitionId, subscription::SubscriptionCursor},
@@ -49,5 +49,8 @@ pub struct HandlerAssignment<'a> {
 pub trait BatchHandlerFactory: Send + Sync {
     type Handler: BatchHandler;
 
-    fn handler(&self, req: HandlerAssignment) -> BoxFuture<Result<Self::Handler, GenericError>>;
+    fn handler(
+        &self,
+        assignment: HandlerAssignment,
+    ) -> BoxFuture<Result<Self::Handler, GenericError>>;
 }

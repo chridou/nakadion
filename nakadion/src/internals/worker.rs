@@ -1,8 +1,6 @@
-use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
 use crossbeam::queue::SegQueue;
 use tokio::{self, sync::mpsc::UnboundedSender};
 
@@ -26,20 +24,21 @@ impl WorkerAssignment {
     }
 }
 
-pub struct Worker {
+pub struct Worker<H> {
     queue: Arc<SegQueue<BatchLine>>,
+    handler: Option<H>,
 }
 
-impl Worker {
-    pub fn new<H>(
+impl Worker<H>
+where
+    H: BatchHandler,
+{
+    pub fn new(
         handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         assignment: WorkerAssignment,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
-    ) -> Self
-    where
-        H: BatchHandler,
-    {
+    ) -> Self {
         let queue = Arc::new(SegQueue::new());
         processor::Processor::start(
             Arc::clone(&queue),
@@ -59,14 +58,12 @@ impl Worker {
 }
 
 mod processor {
-
-    use std::error::Error;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
     use bytes::Bytes;
     use crossbeam::queue::SegQueue;
-    use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
+    use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle, time::delay_for};
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
 
@@ -116,7 +113,7 @@ mod processor {
 
                     match processor.process_queue().await {
                         Ok(true) => {}
-                        Ok(false) => {}
+                        Ok(false) => delay_for(Duration::from_millis(100)).await,
                         Err(err) => {
                             processor.stream_state.request_global_cancellation();
                             break;
