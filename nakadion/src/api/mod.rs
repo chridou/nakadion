@@ -416,6 +416,20 @@ impl NakadiApiError {
             Err(self)
         }
     }
+
+    pub fn status(&self) -> Option<StatusCode> {
+        self.problem().and_then(|p| p.status)
+    }
+
+    pub fn is_client_error(&self) -> bool {
+        match self.kind {
+            NakadiApiErrorKind::NotFound
+            | NakadiApiErrorKind::BadRequest
+            | NakadiApiErrorKind::UnprocessableEntity
+            | NakadiApiErrorKind::AccessDenied => true,
+            _ => self.status().map(|s| s.is_client_error()).unwrap_or(false),
+        }
+    }
 }
 
 impl Error for NakadiApiError {
@@ -442,6 +456,7 @@ impl From<NakadiApiErrorKind> for NakadiApiError {
 pub enum NakadiApiErrorKind {
     NotFound,
     BadRequest,
+    UnprocessableEntity,
     AccessDenied,
     ServerError,
     Io,
@@ -456,6 +471,9 @@ impl fmt::Display for NakadiApiErrorKind {
             }
             NakadiApiErrorKind::BadRequest => {
                 write!(f, "bad request")?;
+            }
+            NakadiApiErrorKind::UnprocessableEntity => {
+                write!(f, "unprocessable entity")?;
             }
             NakadiApiErrorKind::AccessDenied => {
                 write!(f, "access denied")?;

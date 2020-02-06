@@ -9,6 +9,7 @@ pub(crate) use nakadi_types::GenericError;
 // mod internals;
 
 pub mod auth;
+pub mod consumer;
 pub mod event_handler;
 pub mod event_stream;
 

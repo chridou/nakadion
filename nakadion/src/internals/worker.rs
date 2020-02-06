@@ -2,14 +2,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crossbeam::queue::SegQueue;
-use tokio::{self, sync::mpsc::UnboundedSender};
+use futures::FutureExt;
+use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-use crate::nakadi_types::model::{event_type::EventTypeName, partition::PartitionId};
+use crate::nakadi_types::{
+    model::{event_type::EventTypeName, partition::PartitionId},
+    GenericError,
+};
 
+use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::event_stream::BatchLine;
 use crate::internals::{committer::CommitData, StreamState};
 
+use processor::HandlerSlot;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WorkerAssignment {
     pub event_type: Option<EventTypeName>,
     pub partition: Option<PartitionId>,
@@ -24,36 +32,70 @@ impl WorkerAssignment {
     }
 }
 
-pub struct Worker<H> {
-    queue: Arc<SegQueue<BatchLine>>,
-    handler: Option<H>,
+pub struct Worker;
+impl Worker {
+    pub fn new<H: BatchHandler>(
+        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+        assignment: WorkerAssignment,
+    ) -> SleepingWorker<H> {
+        SleepingWorker {
+            handler_slot: HandlerSlot::new(handler_factory, assignment, Duration::from_secs(60)),
+        }
+    }
 }
 
-impl Worker<H>
+pub struct SleepingWorker<H> {
+    handler_slot: HandlerSlot<H>,
+}
+
+impl<H> SleepingWorker<H>
 where
     H: BatchHandler,
 {
-    pub fn new(
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-        assignment: WorkerAssignment,
+    pub fn start(
+        self,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
-    ) -> Self {
+    ) -> ActiveWorker<H> {
+        let SleepingWorker { handler_slot } = self;
         let queue = Arc::new(SegQueue::new());
-        processor::Processor::start(
+
+        let join_handle = processor::Processor::start(
             Arc::clone(&queue),
-            handler_factory,
-            Duration::from_millis(100),
-            assignment,
+            handler_slot,
             stream_state,
             committer,
+            Duration::from_millis(100),
         );
 
-        Self { queue }
+        ActiveWorker { queue, join_handle }
     }
 
+    pub fn assignment(&self) -> &WorkerAssignment {
+        &self.handler_slot.assignment
+    }
+
+    pub fn tick(&mut self) {
+        self.handler_slot.tick();
+    }
+}
+
+pub struct ActiveWorker<H> {
+    queue: Arc<SegQueue<BatchLine>>,
+    join_handle: JoinHandle<Result<HandlerSlot<H>, ConsumerError>>,
+}
+
+impl<H: BatchHandler> ActiveWorker<H> {
     pub fn process(&self, batch: BatchLine) {
         self.queue.push(batch);
+    }
+
+    pub async fn join(self) -> Result<SleepingWorker<H>, ConsumerError> {
+        let ActiveWorker { join_handle, .. } = self;
+
+        let handler_slot = join_handle.await??;
+
+        Ok(SleepingWorker { handler_slot })
     }
 }
 
@@ -67,6 +109,7 @@ mod processor {
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
 
+    use crate::consumer::{ConsumerError, ConsumerErrorKind};
     use crate::event_handler::{BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction};
     use crate::event_stream::BatchLine;
     use crate::internals::{committer::CommitData, StreamState};
@@ -75,11 +118,8 @@ mod processor {
 
     pub struct Processor<H> {
         queue: Arc<SegQueue<BatchLine>>,
-        handler: Option<H>,
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-        last_event_processed: Instant,
+        handler_slot: HandlerSlot<H>,
         stream_state: StreamState,
-        assignment: WorkerAssignment,
         committer: UnboundedSender<CommitData>,
     }
 
@@ -89,19 +129,15 @@ mod processor {
     {
         pub fn start(
             queue: Arc<SegQueue<BatchLine>>,
-            handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-            poll_interval: Duration,
-            assignment: WorkerAssignment,
+            handler_slot: HandlerSlot<H>,
             stream_state: StreamState,
             committer: UnboundedSender<CommitData>,
-        ) -> JoinHandle<Option<H>> {
+            tick_interval: Duration,
+        ) -> JoinHandle<Result<HandlerSlot<H>, ConsumerError>> {
             let mut processor = Processor {
-                handler: None,
-                handler_factory,
+                handler_slot,
                 queue,
-                last_event_processed: Instant::now(),
                 stream_state,
-                assignment,
                 committer,
             };
 
@@ -113,14 +149,17 @@ mod processor {
 
                     match processor.process_queue().await {
                         Ok(true) => {}
-                        Ok(false) => delay_for(Duration::from_millis(100)).await,
+                        Ok(false) => {
+                            processor.handler_slot.tick();
+                            delay_for(Duration::from_millis(100)).await
+                        }
                         Err(err) => {
                             processor.stream_state.request_global_cancellation();
-                            break;
+                            return Err(err);
                         }
                     }
                 }
-                processor.handler
+                Ok(processor.handler_slot)
             };
 
             tokio::spawn(processor_loop)
@@ -134,7 +173,7 @@ mod processor {
         /// error that aborts the whole consumption
         ///
         /// Returns true if events have been processed
-        pub async fn process_queue(&mut self) -> Result<bool, GenericError> {
+        pub async fn process_queue(&mut self) -> Result<bool, ConsumerError> {
             let mut processed_at_least_one_event = false;
             while let Some(batch) = self.next_batch() {
                 if self.stream_state.cancellation_requested() {
@@ -158,7 +197,7 @@ mod processor {
                     batch_id,
                 };
 
-                match self.process_batch(events, meta).await? {
+                match self.handler_slot.process_batch(events, meta).await? {
                     BatchPostAction::Commit { n_events } => {
                         let commit_data = CommitData {
                             cursor,
@@ -166,7 +205,10 @@ mod processor {
                             batch_id,
                             events_hint: n_events,
                         };
-                        self.try_commit(commit_data)?
+                        if let Err(err) = self.try_commit(commit_data) {
+                            self.stream_state.request_stream_cancellation();
+                            break;
+                        }
                     }
                     BatchPostAction::DoNotCommit { n_events } => {}
                     BatchPostAction::AbortStream => {
@@ -179,42 +221,81 @@ mod processor {
                     }
                 }
                 processed_at_least_one_event = true;
-                self.last_event_processed = Instant::now();
             }
             Ok(processed_at_least_one_event)
-        }
-
-        async fn process_batch<'a>(
-            &mut self,
-            events: Bytes,
-            meta: BatchMeta<'a>,
-        ) -> Result<BatchPostAction, GenericError> {
-            let handler = self.get_handler().await?;
-            Ok(handler.handle(events, meta).await)
         }
 
         fn try_commit(&mut self, commit_data: CommitData) -> Result<(), GenericError> {
             if let Err(err) = self.committer.send(commit_data) {
                 return Err(GenericError::new(format!(
-                    "failed to enqueue commit data: {}",
+                    "failed to enqueue commit data '{}'",
                     err
                 )));
             }
 
             Ok(())
         }
+    }
 
-        async fn get_handler(&mut self) -> Result<&mut H, GenericError> {
+    pub struct HandlerSlot<H> {
+        pub handler: Option<H>,
+        pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+        pub last_event_processed: Instant,
+        pub assignment: WorkerAssignment,
+        pub inactivity_after: Duration,
+    }
+
+    impl<H: BatchHandler> HandlerSlot<H> {
+        pub fn new(
+            handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+            assignment: WorkerAssignment,
+            inactivity_after: Duration,
+        ) -> Self {
+            Self {
+                handler: None,
+                handler_factory,
+                last_event_processed: Instant::now(),
+                assignment,
+                inactivity_after,
+            }
+        }
+
+        async fn process_batch<'a>(
+            &mut self,
+            events: Bytes,
+            meta: BatchMeta<'a>,
+        ) -> Result<BatchPostAction, ConsumerError> {
+            self.last_event_processed = Instant::now();
+            let handler = self.get_handler().await?;
+            Ok(handler.handle(events, meta).await)
+        }
+
+        async fn get_handler(&mut self) -> Result<&mut H, ConsumerError> {
             if self.handler.is_none() {
                 let new_handler = self
                     .handler_factory
                     .handler(self.assignment.handler_assignment())
-                    .await?;
+                    .await
+                    .map_err(|err| {
+                        ConsumerError::from(err).with_kind(ConsumerErrorKind::HandlerFactory)
+                    })?;
 
                 self.handler = Some(new_handler);
             }
 
             Ok(self.handler.as_mut().unwrap())
+        }
+
+        pub fn tick(&mut self) {
+            if let Some(handler) = self.handler.take() {
+                if self.last_event_processed.elapsed() > self.inactivity_after
+                    && handler
+                        .on_inactivity_detected(self.last_event_processed)
+                        .should_stay_alive()
+                {
+                    self.handler = Some(handler)
+                }
+            }
         }
     }
 }

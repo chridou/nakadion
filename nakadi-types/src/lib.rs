@@ -136,6 +136,10 @@ impl GenericError {
     pub fn boxed(self) -> Box<dyn Error> {
         Box::new(self)
     }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
 }
 
 impl fmt::Display for GenericError {

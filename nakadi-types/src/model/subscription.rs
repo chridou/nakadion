@@ -614,4 +614,9 @@ impl StreamParameters {
 
         Ok(())
     }
+
+    /// Returns the configured value or the default
+    pub fn effective_commit_timeout_secs(&self) -> u32 {
+        self.commit_timeout_secs.unwrap_or(60)
+    }
 }

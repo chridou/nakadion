@@ -613,6 +613,7 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
 
     let kind = match parts.status {
         StatusCode::NOT_FOUND => NakadiApiErrorKind::NotFound,
+        StatusCode::UNPROCESSABLE_ENTITY => NakadiApiErrorKind::UnprocessableEntity,
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => NakadiApiErrorKind::AccessDenied,
         status => {
             if status.is_server_error() {
