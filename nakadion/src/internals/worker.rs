@@ -243,6 +243,7 @@ mod processor {
         pub last_event_processed: Instant,
         pub assignment: WorkerAssignment,
         pub inactivity_after: Duration,
+        pub notified_on_inactivity: bool,
     }
 
     impl<H: BatchHandler> HandlerSlot<H> {
@@ -257,6 +258,7 @@ mod processor {
                 last_event_processed: Instant::now(),
                 assignment,
                 inactivity_after,
+                notified_on_inactivity: false,
             }
         }
 
@@ -266,6 +268,7 @@ mod processor {
             meta: BatchMeta<'a>,
         ) -> Result<BatchPostAction, ConsumerError> {
             self.last_event_processed = Instant::now();
+            self.notified_on_inactivity = false;
             let handler = self.get_handler().await?;
             Ok(handler.handle(events, meta).await)
         }
@@ -279,7 +282,6 @@ mod processor {
                     .map_err(|err| {
                         ConsumerError::from(err).with_kind(ConsumerErrorKind::HandlerFactory)
                     })?;
-
                 self.handler = Some(new_handler);
             }
 
@@ -287,12 +289,12 @@ mod processor {
         }
 
         pub fn tick(&mut self) {
-            if let Some(handler) = self.handler.take() {
+            if let Some(mut handler) = self.handler.take() {
                 if self.last_event_processed.elapsed() > self.inactivity_after
-                    && handler
-                        .on_inactivity_detected(self.last_event_processed)
-                        .should_stay_alive()
+                    && !self.notified_on_inactivity
+                    && handler.on_inactivity_detected().should_stay_alive()
                 {
+                    self.notified_on_inactivity = true;
                     self.handler = Some(handler)
                 }
             }

@@ -46,7 +46,7 @@ impl InactivityAnswer {
 
 pub trait BatchHandler: Send + Sync + 'static {
     fn handle(&mut self, events: Bytes, meta: BatchMeta) -> BoxFuture<BatchPostAction>;
-    fn on_inactivity_detected(&self, _inactive_since: Instant) -> InactivityAnswer {
+    fn on_inactivity_detected(&mut self) -> InactivityAnswer {
         InactivityAnswer::KeepMeAlive
     }
 }
