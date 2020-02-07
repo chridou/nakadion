@@ -23,29 +23,6 @@ mod error;
 pub type ApiFuture<'a, T> = BoxFuture<'a, Result<T, NakadiApiError>>;
 pub type BytesStream = BoxStream<'static, Result<Bytes, IoError>>;
 
-#[derive(Debug)]
-pub struct IoError(pub String);
-
-impl IoError {
-    pub fn new<T: Into<String>>(s: T) -> Self {
-        Self(s.into())
-    }
-}
-
-impl fmt::Display for IoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-
-        Ok(())
-    }
-}
-
-impl Error for IoError {
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
 pub trait MonitoringApi {
     /// Deletes an EventType identified by its name.
     ///
