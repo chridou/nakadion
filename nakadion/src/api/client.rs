@@ -1,14 +1,12 @@
-use std::convert::TryInto;
 use std::error::Error;
-use std::fmt;
 use std::future::Future;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures::{future, FutureExt, Stream, TryFutureExt, TryStreamExt};
+use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use http::{
     header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
-    Error as HttpError, Method, Request, Response, StatusCode, Uri,
+    Method, Request, Response, StatusCode,
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -611,25 +609,14 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
         None => None,
     };
 
-    let kind = match parts.status {
-        StatusCode::NOT_FOUND => NakadiApiErrorKind::NotFound,
-        StatusCode::UNPROCESSABLE_ENTITY => NakadiApiErrorKind::UnprocessableEntity,
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => NakadiApiErrorKind::AccessDenied,
-        status => {
-            if status.is_server_error() {
-                NakadiApiErrorKind::ServerError
-            } else if status.is_client_error() {
-                NakadiApiErrorKind::BadRequest
-            } else {
-                NakadiApiErrorKind::Other
-            }
-        }
-    };
-
     let err = match deserialize_stream::<HttpApiProblem>(body).await {
-        Ok(problem) => NakadiApiError::new(kind, problem.to_string()).with_problem(problem),
-        Err(err) => NakadiApiError::new(kind, "failed to deserialize problem JSON from response")
-            .caused_by(err),
+        Ok(problem) => NakadiApiError::from_problem(problem),
+        Err(err) => {
+            NakadiApiError::from_problem(HttpApiProblem::from(parts.status).set_detail(format!(
+                "There was an error parsing the response to a problem: {}",
+                err,
+            )))
+        }
     };
 
     err.with_maybe_flow_id(flow_id)

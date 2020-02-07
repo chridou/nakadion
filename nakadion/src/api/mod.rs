@@ -349,7 +349,6 @@ impl<T> NakadionEssentials for T where
 pub struct NakadiApiError {
     message: String,
     cause: Option<Box<dyn Error + Send + 'static>>,
-    problem: Option<HttpApiProblem>,
     kind: NakadiApiErrorKind,
     flow_id: Option<FlowId>,
 }
@@ -359,20 +358,25 @@ impl NakadiApiError {
         Self {
             message: message.into(),
             cause: None,
-            problem: None,
             kind,
             flow_id: None,
         }
     }
 
-    pub fn with_problem(self, problem: HttpApiProblem) -> NakadiApiError {
-        NakadiApiError {
-            message: self.message,
-            cause: self.cause,
-            problem: Some(problem),
-            kind: self.kind,
-            flow_id: None,
+    pub fn from_problem<T: Into<HttpApiProblem>>(prob: T) -> Self {
+        let prob = prob.into();
+        if let Some(status) = prob.status {
+            Self::new(
+                status.into(),
+                format!("An HTTP error with status {} occurred", status),
+            )
+        } else {
+            Self::new(
+                NakadiApiErrorKind::Other,
+                "An HTTP error with unknown status occurred",
+            )
         }
+        .caused_by(prob)
     }
 
     pub fn caused_by<E>(mut self, err: E) -> Self
@@ -406,12 +410,22 @@ impl NakadiApiError {
     }
 
     pub fn problem(&self) -> Option<&HttpApiProblem> {
-        self.problem.as_ref()
+        if let Some(cause) = self.cause.as_ref() {
+            cause.downcast_ref::<HttpApiProblem>()
+        } else {
+            None
+        }
     }
 
-    pub fn try_into_problem(self) -> Result<HttpApiProblem, Self> {
-        if self.problem.is_some() {
-            Ok(self.problem.unwrap())
+    pub fn try_into_problem(mut self) -> Result<HttpApiProblem, Self> {
+        if let Some(cause) = self.cause.take() {
+            match cause.downcast::<HttpApiProblem>() {
+                Ok(prob) => Ok(*prob),
+                Err(the_box) => {
+                    self.cause = Some(the_box);
+                    Err(self)
+                }
+            }
         } else {
             Err(self)
         }
@@ -423,11 +437,15 @@ impl NakadiApiError {
 
     pub fn is_client_error(&self) -> bool {
         match self.kind {
-            NakadiApiErrorKind::NotFound
-            | NakadiApiErrorKind::BadRequest
-            | NakadiApiErrorKind::UnprocessableEntity
-            | NakadiApiErrorKind::AccessDenied => true,
-            _ => self.status().map(|s| s.is_client_error()).unwrap_or(false),
+            NakadiApiErrorKind::ClientError => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_server_error(&self) -> bool {
+        match self.kind {
+            NakadiApiErrorKind::ServerError => true,
+            _ => false,
         }
     }
 }
@@ -454,10 +472,7 @@ impl From<NakadiApiErrorKind> for NakadiApiError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NakadiApiErrorKind {
-    NotFound,
-    BadRequest,
-    UnprocessableEntity,
-    AccessDenied,
+    ClientError,
     ServerError,
     Io,
     Other,
@@ -466,17 +481,8 @@ pub enum NakadiApiErrorKind {
 impl fmt::Display for NakadiApiErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NakadiApiErrorKind::NotFound => {
-                write!(f, "not found")?;
-            }
-            NakadiApiErrorKind::BadRequest => {
-                write!(f, "bad request")?;
-            }
-            NakadiApiErrorKind::UnprocessableEntity => {
-                write!(f, "unprocessable entity")?;
-            }
-            NakadiApiErrorKind::AccessDenied => {
-                write!(f, "access denied")?;
+            NakadiApiErrorKind::ClientError => {
+                write!(f, "client error")?;
             }
             NakadiApiErrorKind::ServerError => {
                 write!(f, "server error")?;
@@ -490,5 +496,17 @@ impl fmt::Display for NakadiApiErrorKind {
         }
 
         Ok(())
+    }
+}
+
+impl From<StatusCode> for NakadiApiErrorKind {
+    fn from(status: StatusCode) -> Self {
+        if status.is_client_error() {
+            NakadiApiErrorKind::ClientError
+        } else if status.is_server_error() {
+            NakadiApiErrorKind::ServerError
+        } else {
+            NakadiApiErrorKind::Other
+        }
     }
 }
