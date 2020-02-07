@@ -1,16 +1,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossbeam::queue::SegQueue;
-use futures::FutureExt;
-use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
+use futures::{FutureExt, Stream};
+use tokio::{
+    self,
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+    task::JoinHandle,
+};
 
 use crate::nakadi_types::{
     model::{event_type::EventTypeName, partition::PartitionId},
     GenericError,
 };
 
-use crate::consumer::{ConsumerError, ConsumerErrorKind};
+use crate::consumer::ConsumerError;
 use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::event_stream::BatchLine;
 use crate::internals::{committer::CommitData, StreamState};
@@ -24,6 +27,30 @@ pub struct WorkerAssignment {
 }
 
 impl WorkerAssignment {
+    pub fn single() -> WorkerAssignment {
+        Self {
+            event_type: None,
+            partition: None,
+        }
+    }
+
+    pub fn event_type(event_type: EventTypeName) -> WorkerAssignment {
+        Self {
+            event_type: Some(event_type),
+            partition: None,
+        }
+    }
+
+    pub fn event_type_partition(
+        event_type: EventTypeName,
+        partition: PartitionId,
+    ) -> WorkerAssignment {
+        Self {
+            event_type: Some(event_type),
+            partition: Some(partition),
+        }
+    }
+
     pub fn handler_assignment(&self) -> HandlerAssignment {
         HandlerAssignment {
             event_type: self.event_type.as_ref(),
@@ -52,23 +79,26 @@ impl<H> SleepingWorker<H>
 where
     H: BatchHandler,
 {
-    pub fn start(
+    pub fn start<S>(
         self,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
-    ) -> ActiveWorker<H> {
+        batches: S,
+    ) -> ActiveWorker<H>
+    where
+        S: Stream<Item = BatchLine> + Send,
+    {
         let SleepingWorker { handler_slot } = self;
-        let queue = Arc::new(SegQueue::new());
 
         let join_handle = processor::Processor::start(
-            Arc::clone(&queue),
+            batches,
             handler_slot,
             stream_state,
             committer,
             Duration::from_millis(100),
         );
 
-        ActiveWorker { queue, join_handle }
+        ActiveWorker { join_handle }
     }
 
     pub fn assignment(&self) -> &WorkerAssignment {
@@ -81,15 +111,10 @@ where
 }
 
 pub struct ActiveWorker<H> {
-    queue: Arc<SegQueue<BatchLine>>,
     join_handle: JoinHandle<Result<HandlerSlot<H>, ConsumerError>>,
 }
 
 impl<H: BatchHandler> ActiveWorker<H> {
-    pub fn process(&self, batch: BatchLine) {
-        self.queue.push(batch);
-    }
-
     pub async fn join(self) -> Result<SleepingWorker<H>, ConsumerError> {
         let ActiveWorker { join_handle, .. } = self;
 
@@ -104,8 +129,13 @@ mod processor {
     use std::time::{Duration, Instant};
 
     use bytes::Bytes;
-    use crossbeam::queue::SegQueue;
-    use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle, time::delay_for};
+    use futures::{Stream, StreamExt};
+    use tokio::{
+        self,
+        sync::mpsc::{UnboundedReceiver, UnboundedSender},
+        task::JoinHandle,
+        time::delay_for,
+    };
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
 
@@ -117,7 +147,7 @@ mod processor {
     use super::WorkerAssignment;
 
     pub struct Processor<H> {
-        queue: Arc<SegQueue<BatchLine>>,
+        batches: UnboundedReceiver<BatchLine>,
         handler_slot: HandlerSlot<H>,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
@@ -128,7 +158,7 @@ mod processor {
         H: BatchHandler,
     {
         pub fn start(
-            queue: Arc<SegQueue<BatchLine>>,
+            batches: UnboundedReceiver<BatchLine>,
             handler_slot: HandlerSlot<H>,
             stream_state: StreamState,
             committer: UnboundedSender<CommitData>,
@@ -136,7 +166,7 @@ mod processor {
         ) -> JoinHandle<Result<HandlerSlot<H>, ConsumerError>> {
             let mut processor = Processor {
                 handler_slot,
-                queue,
+                batches,
                 stream_state,
                 committer,
             };
@@ -165,17 +195,13 @@ mod processor {
             tokio::spawn(processor_loop)
         }
 
-        pub fn next_batch(&self) -> Option<BatchLine> {
-            self.queue.pop().ok()
-        }
-
         /// If this function returns with an error, treat is as a critical
         /// error that aborts the whole consumption
         ///
         /// Returns true if events have been processed
         pub async fn process_queue(&mut self) -> Result<bool, ConsumerError> {
             let mut processed_at_least_one_event = false;
-            while let Some(batch) = self.next_batch() {
+            while let Some(batch) = self.batches.next().await {
                 if self.stream_state.cancellation_requested() {
                     break;
                 }

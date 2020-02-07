@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
@@ -249,13 +250,6 @@ pub trait SubscriptionCommitApi {
     ) -> ApiFuture<CursorCommitResults>;
 }
 
-/*
-
-pub struct ConnectFuture {
-    inner: Box<dyn Future<Output = Result<EventStream, ConnectError>> + Send + 'static>,
-}
-*/
-
 pub trait SubscriptionStreamApi {
     /// Starts a new stream for reading events from this subscription.
     ///
@@ -309,9 +303,19 @@ impl SubscriptionStream {
 pub trait NakadionEssentials:
     SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
 {
+    fn into_commit_api(self: Arc<Self>) -> Arc<dyn SubscriptionCommitApi + Send + Sync + 'static>;
+    fn into_stream_api(self: Arc<Self>) -> Arc<dyn SubscriptionStreamApi + Send + Sync + 'static>;
 }
 
-impl<T> NakadionEssentials for T where
-    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
+impl<T> NakadionEssentials for T
+where
+    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static,
 {
+    fn into_commit_api(self: Arc<Self>) -> Arc<dyn SubscriptionCommitApi + Send + Sync + 'static> {
+        self
+    }
+
+    fn into_stream_api(self: Arc<Self>) -> Arc<dyn SubscriptionStreamApi + Send + Sync + 'static> {
+        self
+    }
 }

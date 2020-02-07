@@ -1,9 +1,4 @@
-use std::sync::Arc;
-
-use crate::nakadi_types::{
-    model::subscription::{StreamParameters, SubscriptionId},
-    FlowId,
-};
+use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
 
 use std::future::Future;
 
