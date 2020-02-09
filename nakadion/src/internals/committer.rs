@@ -17,7 +17,7 @@ use crate::nakadi_types::{
     FlowId, GenericError,
 };
 
-use crate::api::{NakadiApiErrorKind, SubscriptionCommitApi};
+use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::consumer::ConsumerError;
 use crate::internals::StreamState;
 
@@ -62,8 +62,8 @@ struct PendingCursor {
 
 type PendingCursors = HashMap<(PartitionId, EventTypeName), PendingCursor>;
 
-async fn run_committer<C>(
-    mut rx: UnboundedReceiver<CommitData>,
+async fn run_committer<C, S>(
+    mut s: UnboundedReceiver<CommitData>,
     stream_state: StreamState,
     api_client: C,
     commit_after: Duration,

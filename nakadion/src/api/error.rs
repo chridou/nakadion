@@ -8,36 +8,42 @@ use nakadi_types::FlowId;
 
 #[derive(Debug)]
 pub struct NakadiApiError {
-    message: String,
+    context: Option<String>,
     cause: Option<Box<dyn Error + Send + 'static>>,
     kind: NakadiApiErrorKind,
     flow_id: Option<FlowId>,
 }
 
 impl NakadiApiError {
-    pub fn new<T: Into<String>>(kind: NakadiApiErrorKind, message: T) -> Self {
-        Self {
-            message: message.into(),
-            cause: None,
-            kind,
-            flow_id: None,
-        }
+    pub fn http<T: Into<StatusCode>>(status: T) -> Self {
+        Self::create(status.into())
     }
 
-    pub fn from_problem<T: Into<HttpApiProblem>>(prob: T) -> Self {
+    pub fn io() -> Self {
+        Self::create(NakadiApiErrorKind::Io)
+    }
+
+    pub fn other() -> Self {
+        Self::create(NakadiApiErrorKind::Other(None))
+    }
+
+    pub fn http_problem<T: Into<HttpApiProblem>>(prob: T) -> Self {
         let prob = prob.into();
         if let Some(status) = prob.status {
-            Self::new(
-                status.into(),
-                format!("An HTTP error with status {} occurred", status),
-            )
+            Self::http(status)
         } else {
-            Self::new(
-                NakadiApiErrorKind::Other,
-                "An HTTP error with unknown status occurred",
-            )
+            Self::create(NakadiApiErrorKind::Other(None))
         }
         .caused_by(prob)
+    }
+
+    pub fn create<T: Into<NakadiApiErrorKind>>(kind: T) -> Self {
+        Self {
+            context: None,
+            cause: None,
+            kind: kind.into(),
+            flow_id: None,
+        }
     }
 
     pub fn caused_by<E>(mut self, err: E) -> Self
@@ -45,6 +51,11 @@ impl NakadiApiError {
         E: Error + Send + 'static,
     {
         self.cause = Some(Box::new(err));
+        self
+    }
+
+    pub fn with_context<T: Into<String>>(mut self, context: T) -> Self {
+        self.context = Some(context.into());
         self
     }
 
@@ -56,14 +67,6 @@ impl NakadiApiError {
     pub fn with_maybe_flow_id(mut self, flow_id: Option<FlowId>) -> Self {
         self.flow_id = flow_id;
         self
-    }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    pub fn kind(&self) -> NakadiApiErrorKind {
-        self.kind
     }
 
     pub fn flow_id(&self) -> Option<&FlowId> {
@@ -93,19 +96,41 @@ impl NakadiApiError {
     }
 
     pub fn status(&self) -> Option<StatusCode> {
-        self.problem().and_then(|p| p.status)
+        self.kind.status()
     }
 
     pub fn is_client_error(&self) -> bool {
         match self.kind {
-            NakadiApiErrorKind::ClientError => true,
+            NakadiApiErrorKind::ClientError(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_auth_error(&self) -> bool {
+        match self.kind {
+            NakadiApiErrorKind::ClientError(StatusCode::FORBIDDEN)
+            | NakadiApiErrorKind::ClientError(StatusCode::UNAUTHORIZED) => true,
             _ => false,
         }
     }
 
     pub fn is_server_error(&self) -> bool {
         match self.kind {
-            NakadiApiErrorKind::ServerError => true,
+            NakadiApiErrorKind::ServerError(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_other_error(&self) -> bool {
+        match self.kind {
+            NakadiApiErrorKind::Other(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_io_error(&self) -> bool {
+        match self.kind {
+            NakadiApiErrorKind::Io => true,
             _ => false,
         }
     }
@@ -119,39 +144,79 @@ impl Error for NakadiApiError {
 
 impl fmt::Display for NakadiApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)?;
+        if let Some(context) = self.context.as_ref() {
+            write!(f, "{}", context)?;
+            if let Some(source) = self.source() {
+                add_causes(source, f)?;
+            } else {
+                write!(f, " - {}", self.kind)?;
+            }
+        } else {
+            write!(f, "{}", self.kind)?;
+            if let Some(source) = self.source() {
+                add_causes(source, f)?;
+            }
+        }
 
         Ok(())
     }
 }
 
+fn add_causes(err: &dyn Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, " - Caused by: {}", err)?;
+    if let Some(source) = err.source() {
+        add_causes(source, f)?
+    }
+    Ok(())
+}
+
 impl From<NakadiApiErrorKind> for NakadiApiError {
     fn from(kind: NakadiApiErrorKind) -> Self {
-        Self::new(kind, kind.to_string())
+        Self::create(kind)
+    }
+}
+
+impl From<IoError> for NakadiApiError {
+    fn from(err: IoError) -> Self {
+        Self::other().with_context(err.0)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NakadiApiErrorKind {
-    ClientError,
-    ServerError,
+enum NakadiApiErrorKind {
+    ClientError(StatusCode),
+    ServerError(StatusCode),
     Io,
-    Other,
+    Other(Option<StatusCode>),
+}
+
+impl NakadiApiErrorKind {
+    pub fn status(&self) -> Option<StatusCode> {
+        match *self {
+            NakadiApiErrorKind::ClientError(status) => Some(status),
+            NakadiApiErrorKind::ServerError(status) => Some(status),
+            NakadiApiErrorKind::Io => None,
+            NakadiApiErrorKind::Other(status) => status,
+        }
+    }
 }
 
 impl fmt::Display for NakadiApiErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NakadiApiErrorKind::ClientError => {
-                write!(f, "client error")?;
+            NakadiApiErrorKind::ClientError(status) => {
+                write!(f, "{}", status)?;
             }
-            NakadiApiErrorKind::ServerError => {
-                write!(f, "server error")?;
+            NakadiApiErrorKind::ServerError(status) => {
+                write!(f, "{}", status)?;
             }
             NakadiApiErrorKind::Io => {
                 write!(f, "io error")?;
             }
-            NakadiApiErrorKind::Other => {
+            NakadiApiErrorKind::Other(Some(status)) => {
+                write!(f, "{}", status)?;
+            }
+            NakadiApiErrorKind::Other(None) => {
                 write!(f, "other error")?;
             }
         }
@@ -163,11 +228,11 @@ impl fmt::Display for NakadiApiErrorKind {
 impl From<StatusCode> for NakadiApiErrorKind {
     fn from(status: StatusCode) -> Self {
         if status.is_client_error() {
-            NakadiApiErrorKind::ClientError
+            NakadiApiErrorKind::ClientError(status)
         } else if status.is_server_error() {
-            NakadiApiErrorKind::ServerError
+            NakadiApiErrorKind::ServerError(status)
         } else {
-            NakadiApiErrorKind::Other
+            NakadiApiErrorKind::Other(Some(status))
         }
     }
 }

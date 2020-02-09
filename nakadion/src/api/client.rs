@@ -12,10 +12,7 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
-use nakadi_types::model::event_type::*;
-use nakadi_types::model::partition::*;
-use nakadi_types::model::publishing::*;
-use nakadi_types::model::subscription::*;
+use nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
 use nakadi_types::{FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken, TokenError};
@@ -537,24 +534,18 @@ impl SubscriptionStreamApi for ApiClient {
                     Some(header_value) => {
                         let header_bytes = header_value.as_bytes();
                         let header_str = std::str::from_utf8(header_bytes).map_err(|err| {
-                            NakadiApiError::new(
-                                NakadiApiErrorKind::Other,
-                                &format!(
-                                    "the bytes of header 'x-nakadi-streamid' \
-                                     were not a valid string: {}",
-                                    err
-                                ),
-                            )
+                            NakadiApiError::other().with_context(format!(
+                                "the bytes of header 'x-nakadi-streamid' \
+                                 were not a valid string: {}",
+                                err
+                            ))
                         })?;
                         let stream_id = header_str.parse().map_err(|err| {
-                            NakadiApiError::new(
-                                NakadiApiErrorKind::Other,
-                                &format!(
-                                    "the value '{}' of header 'x-nakadi-streamid' \
-                                     was not a valid stream id (UUID): {}",
-                                    header_str, err
-                                ),
-                            )
+                            NakadiApiError::other().with_context(format!(
+                                "the value '{}' of header 'x-nakadi-streamid' \
+                                 was not a valid stream id (UUID): {}",
+                                header_str, err
+                            ))
                         })?;
                         Ok(SubscriptionStream {
                             stream_id,
@@ -562,8 +553,7 @@ impl SubscriptionStreamApi for ApiClient {
                         })
                     }
                     None => {
-                        return Err(NakadiApiError::new(
-                            NakadiApiErrorKind::Other,
+                        return Err(NakadiApiError::other().with_context(
                             "response did not contain the 'x-nakadi-streamid' header",
                         ))
                     }
@@ -610,13 +600,12 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
     };
 
     let err = match deserialize_stream::<HttpApiProblem>(body).await {
-        Ok(problem) => NakadiApiError::from_problem(problem),
-        Err(err) => {
-            NakadiApiError::from_problem(HttpApiProblem::from(parts.status).set_detail(format!(
-                "There was an error parsing the response to a problem: {}",
-                err,
-            )))
-        }
+        Ok(problem) => NakadiApiError::http_problem(problem),
+        Err(err) => NakadiApiError::http(parts.status)
+            .with_context(format!(
+                "There was an error parsing the response to a problem"
+            ))
+            .caused_by(err),
     };
 
     err.with_maybe_flow_id(flow_id)
@@ -624,49 +613,57 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
 
 impl From<http::header::InvalidHeaderValue> for NakadiApiError {
     fn from(err: http::header::InvalidHeaderValue) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid header value").caused_by(err)
+        NakadiApiError::other()
+            .with_context("invalid header value")
+            .caused_by(err)
     }
 }
 
 impl From<http::uri::InvalidUri> for NakadiApiError {
     fn from(err: http::uri::InvalidUri) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "invalid URI").caused_by(err)
+        NakadiApiError::other()
+            .with_context("invalid URI")
+            .caused_by(err)
     }
 }
 
 impl From<TokenError> for NakadiApiError {
     fn from(err: TokenError) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "failed to get access token").caused_by(err)
+        NakadiApiError::other()
+            .with_context("failed to get access token")
+            .caused_by(err)
     }
 }
 
 impl From<serde_json::error::Error> for NakadiApiError {
     fn from(err: serde_json::error::Error) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Other, "serialization failure").caused_by(err)
+        NakadiApiError::other()
+            .with_context("serialization failure")
+            .caused_by(err)
     }
 }
 
 impl From<RemoteCallError> for NakadiApiError {
     fn from(err: RemoteCallError) -> Self {
-        let kind = if err.is_io() {
-            NakadiApiErrorKind::Io
+        let nakadi_err = if err.is_io() {
+            NakadiApiError::io()
         } else {
-            NakadiApiErrorKind::Other
+            NakadiApiError::other()
         };
 
-        let message = if let Some(msg) = err.message() {
+        let context = if let Some(msg) = err.message() {
             msg
         } else {
             "remote call error"
         };
 
-        NakadiApiError::new(kind, message).caused_by(err)
+        nakadi_err.with_context(context).caused_by(err)
     }
 }
 
 impl From<IoError> for NakadiApiError {
     fn from(err: IoError) -> Self {
-        NakadiApiError::new(NakadiApiErrorKind::Io, err.0)
+        NakadiApiError::io().with_context(err.0)
     }
 }
 
