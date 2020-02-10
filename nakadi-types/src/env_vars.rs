@@ -15,6 +15,7 @@ pub const COMMIT_TIMEOUT_SECS_ENV_VAR: &str = "COMMIT_TIMEOUT_SECS";
 pub const STREAM_LIMIT_ENV_VAR: &str = "STREAM_LIMIT";
 // pub const STREAM_KEEP_ALIVE_LIMIT_ENV_VAR: &str = "STREAM_KEEP_ALIVE_LIMIT";
 
+/*
 macro_rules! from_env {
     (prefix => $PREFIX:expr, postfix => $POSTFIX:expr) => {{
         let mut var_name: String = String::from($PREFIX);
@@ -46,7 +47,7 @@ macro_rules! from_env {
             ))),
         }
     };
-}
+}*/
 
 macro_rules! from_env_maybe {
     (prefix => $PREFIX:expr, postfix => $POSTFIX:expr) => {{
@@ -74,6 +75,64 @@ macro_rules! from_env_maybe {
                 "env var '{}' is not unicode",
                 $ENV_VAR_NAME
             ))),
+        }
+    };
+}
+
+macro_rules! env_funs {
+    ($var:ident) => {
+        pub fn try_from_env() -> Result<Option<Self>, $crate::GenericError> {
+            Self::try_from_env_prefixed($crate::env_vars::NAKADION_PREFIX)
+        }
+
+        pub fn try_from_env_prefixed<T: Into<String>>(
+            prefix: T,
+        ) -> Result<Option<Self>, $crate::GenericError> {
+            let mut var_name: String = prefix.into();
+            var_name.push('_');
+            var_name.push_str(&$crate::env_vars::$var);
+            Self::try_from_env_named(var_name)
+        }
+
+        pub fn try_from_env_named<T: AsRef<str>>(
+            var_name: T,
+        ) -> Result<Option<Self>, $crate::GenericError> {
+            match std::env::var(var_name.as_ref()) {
+                Ok(value) => value.parse().map(Some).map_err(|err| {
+                    $crate::GenericError::new(format!(
+                        "could not parse env var '{}': {}",
+                        var_name.as_ref(),
+                        err
+                    ))
+                }),
+                Err(std::env::VarError::NotPresent) => Ok(None),
+                Err(std::env::VarError::NotUnicode(_)) => Err($crate::GenericError::new(format!(
+                    "env var '{}' is not unicode",
+                    var_name.as_ref()
+                ))),
+            }
+        }
+
+        pub fn from_env() -> Result<Self, $crate::GenericError> {
+            Self::from_env_prefixed($crate::env_vars::NAKADION_PREFIX)
+        }
+
+        pub fn from_env_prefixed<T: Into<String>>(prefix: T) -> Result<Self, $crate::GenericError> {
+            let mut var_name: String = prefix.into();
+            var_name.push('_');
+            var_name.push_str(&$crate::env_vars::$var);
+            Self::from_env_named(var_name)
+        }
+
+        pub fn from_env_named<T: AsRef<str>>(var_name: T) -> Result<Self, $crate::GenericError> {
+            Self::try_from_env_named(var_name.as_ref()).and_then(|v| {
+                v.map(Ok).unwrap_or_else(|| {
+                    Err($crate::GenericError::new(format!(
+                        "env var '{}' not found",
+                        var_name.as_ref()
+                    )))
+                })
+            })
         }
     };
 }

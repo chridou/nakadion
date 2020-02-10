@@ -20,21 +20,7 @@ impl NakadiBaseUrl {
         NakadiBaseUrl(url.into())
     }
 
-    pub fn from_env() -> Result<Self, GenericError> {
-        from_env!(
-            postfix => env_vars::NAKADI_BASE_URL_ENV_VAR
-        )
-    }
-
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
-        from_env!(name.as_ref())
-    }
-
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
-        from_env!(
-            prefix => prefix.as_ref() , postfix => env_vars::NAKADI_BASE_URL_ENV_VAR
-        )
-    }
+    env_funs!(NAKADI_BASE_URL_ENV_VAR);
 
     pub fn as_url(&self) -> &Url {
         &self.0

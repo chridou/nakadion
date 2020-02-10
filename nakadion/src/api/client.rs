@@ -35,27 +35,22 @@ pub struct Builder {
 }
 
 impl Builder {
+    pub fn from_env() -> Result<Self, GenericError> {
+        let mut me = Self::default();
+        me.nakadi_base_url = NakadiBaseUrl::try_from_env()?;
+
+        Ok(me)
+    }
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+        let mut me = Self::default();
+        me.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
+
+        Ok(me)
+    }
+
     pub fn nakadi_base_url(mut self, url: NakadiBaseUrl) -> Self {
         self.nakadi_base_url = Some(url);
         self
-    }
-
-    /// Updates the nakadi base url if not yet set
-    pub fn nakadi_base_url_from_env(self) -> Result<Self, GenericError> {
-        if self.nakadi_base_url.is_none() {
-            self.nakadi_base_url_from_env_prefixed(NAKADION_PREFIX)
-        } else {
-            Ok(self)
-        }
-    }
-
-    /// Updates the nakadi base url if not yet set
-    pub fn nakadi_base_url_from_env_prefixed<T: AsRef<str>>(
-        mut self,
-        prefix: T,
-    ) -> Result<Self, GenericError> {
-        self.nakadi_base_url = Some(NakadiBaseUrl::from_env_prefixed(prefix)?);
-        Ok(self)
     }
 }
 
@@ -101,10 +96,9 @@ impl Builder {
         T: AsRef<str>,
         D: DispatchHttpRequest + Send + Sync + 'static,
     {
-        let me = self.nakadi_base_url_from_env_prefixed(prefix.as_ref())?;
         let access_token_provider = AccessTokenProvider::from_env_prefixed(prefix.as_ref())?;
 
-        me.finish_with(dispatch_http_request, access_token_provider)
+        self.finish_with(dispatch_http_request, access_token_provider)
     }
 }
 

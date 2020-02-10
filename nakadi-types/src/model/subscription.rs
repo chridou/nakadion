@@ -28,24 +28,10 @@ impl SubscriptionId {
         Self(Uuid::new_v4())
     }
 
+    env_funs!(SUBSCRIPTION_ID_ENV_VAR);
+
     pub fn into_inner(self) -> Uuid {
         self.0
-    }
-
-    pub fn from_env() -> Result<Self, GenericError> {
-        from_env!(
-            postfix => env_vars::SUBSCRIPTION_ID_ENV_VAR
-        )
-    }
-
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
-        from_env!(name.as_ref())
-    }
-
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
-        from_env!(
-            prefix => prefix.as_ref() , postfix => env_vars::SUBSCRIPTION_ID_ENV_VAR
-        )
     }
 }
 
@@ -555,62 +541,52 @@ impl StreamParameters {
     }
 
     pub fn fill_from_env(&mut self) -> Result<(), GenericError> {
-        if let Some(v) = from_env_maybe!(postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)? {
-            self.max_uncommitted_events = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_LIMIT_ENV_VAR)? {
-            self.batch_limit = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::STREAM_LIMIT_ENV_VAR)? {
-            self.stream_limit = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)? {
-            self.batch_flush_timeout_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)? {
-            self.batch_timespan_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)? {
-            self.stream_timeout_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)? {
-            self.commit_timeout_secs = Some(v)
-        };
-
-        Ok(())
+        self.fill_from_env_prefixed(env_vars::NAKADION_PREFIX)
     }
 
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), GenericError> {
-        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)?
-        {
-            self.max_uncommitted_events = Some(v)
+        if self.max_uncommitted_events.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)?
+            {
+                self.max_uncommitted_events = Some(v)
+            }
         };
-        if let Some(v) =
-            from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_LIMIT_ENV_VAR)?
-        {
-            self.batch_limit = Some(v)
-        };
-        if let Some(v) =
-            from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_LIMIT_ENV_VAR)?
-        {
-            self.stream_limit = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)?
-        {
-            self.batch_flush_timeout_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)?
-        {
-            self.batch_timespan_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)?
-        {
-            self.stream_timeout_secs = Some(v)
-        };
-        if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)?
-        {
-            self.commit_timeout_secs = Some(v)
-        };
+        if self.batch_limit.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_LIMIT_ENV_VAR)?
+            {
+                self.batch_limit = Some(v)
+            }
+        }
+        if self.stream_limit.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_LIMIT_ENV_VAR)?
+            {
+                self.stream_limit = Some(v)
+            }
+        }
+        if self.batch_flush_timeout_secs.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)?
+            {
+                self.batch_flush_timeout_secs = Some(v)
+            }
+        }
+        if self.batch_timespan_secs.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)?
+            {
+                self.batch_timespan_secs = Some(v)
+            }
+        }
+        if self.stream_timeout_secs.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)?
+            {
+                self.stream_timeout_secs = Some(v)
+            }
+        }
+        if self.commit_timeout_secs.is_none() {
+            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)?
+            {
+                self.commit_timeout_secs = Some(v)
+            }
+        }
 
         Ok(())
     }
