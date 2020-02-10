@@ -214,8 +214,8 @@ impl BatchLine {
 
 #[derive(Debug)]
 pub struct BatchLineError {
-    pub message: String,
-    pub kind: BatchLineErrorKind,
+    message: String,
+    kind: BatchLineErrorKind,
 }
 
 impl BatchLineError {
@@ -224,6 +224,10 @@ impl BatchLineError {
             message: message.into(),
             kind,
         }
+    }
+
+    pub fn kind(&self) -> BatchLineErrorKind {
+        self.kind
     }
 }
 

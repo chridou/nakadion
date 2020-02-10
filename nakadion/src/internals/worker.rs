@@ -132,7 +132,6 @@ mod processor {
                         break;
                     }
                     Err(err) => {
-                        stream_state.request_global_cancellation();
                         return Err(err);
                     }
                 }
@@ -197,7 +196,7 @@ mod processor {
                     Ok(false)
                 }
                 BatchPostAction::ShutDown => {
-                    let err = ConsumerError::new(ConsumerErrorKind::UserAbort);
+                    let err = ConsumerError::new(ConsumerErrorKind::HandlerAbort);
                     Err(err)
                 }
             }

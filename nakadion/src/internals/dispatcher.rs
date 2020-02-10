@@ -3,16 +3,10 @@ use std::sync::Arc;
 use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
-use crate::consumer::ConsumerError;
+use crate::consumer::{ConsumerError, DispatchStrategy};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::BatchLine;
 use crate::internals::StreamState;
-
-pub enum DispatchStrategy {
-    SingleWorker,
-    EventType,
-    EventTypePartition,
-}
 
 #[derive(Debug)]
 pub enum DispatcherMessage {

@@ -91,12 +91,6 @@ impl StreamState {
         self.is_cancelled.store(true, Ordering::SeqCst)
     }
 
-    pub fn request_global_cancellation(&self) {
-        if let Some(is_globally_cancelled) = self.is_globally_cancelled.upgrade() {
-            is_globally_cancelled.store(true, Ordering::SeqCst)
-        }
-    }
-
     pub fn subscription_id(&self) -> SubscriptionId {
         self.subscription_id
     }

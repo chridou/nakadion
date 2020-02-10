@@ -1,6 +1,13 @@
 use std::error::Error;
 use std::fmt;
 
+#[derive(Debug, Clone)]
+pub enum DispatchStrategy {
+    SingleWorker,
+    EventType,
+    EventTypePartition,
+}
+
 /// Always leads to Nakadi shutting down
 #[derive(Debug)]
 pub struct ConsumerError {
@@ -100,8 +107,10 @@ impl From<tokio::task::JoinError> for ConsumerError {
 pub enum ConsumerErrorKind {
     SubscriptionNotFound,
     Internal,
+    HandlerAbort,
     UserAbort,
     HandlerFactory,
+    InvalidBatch,
     Other,
 }
 
@@ -111,7 +120,9 @@ impl fmt::Display for ConsumerErrorKind {
             ConsumerErrorKind::SubscriptionNotFound => write!(f, "subscription not found")?,
             ConsumerErrorKind::Internal => write!(f, "internal")?,
             ConsumerErrorKind::UserAbort => write!(f, "user initiated")?,
+            ConsumerErrorKind::HandlerAbort => write!(f, "handler initiated")?,
             ConsumerErrorKind::HandlerFactory => write!(f, "handler factory")?,
+            ConsumerErrorKind::InvalidBatch => write!(f, "invalid batch")?,
             ConsumerErrorKind::Other => write!(f, "other")?,
             _ => write!(f, "uncategorized")?,
         }
