@@ -20,7 +20,7 @@ bytes = "0.5"
 log = "0.4"
 uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.1", features = ["serde"] }
-reqwest = {version = "0.10", features = ["stream"] }
+reqwest = {version = "0.10", features = ["stream"], optional = true }
 http = "0.2"
 http-api-problem = "0.16"
 backoff = "0.1"
@@ -28,6 +28,9 @@ serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 metrix = { version = "0.13", optional = true }
+
+[features]
+default = ["reqwest"]
 
 [dev-dependencies]
 env_logger = "0.7"

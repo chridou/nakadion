@@ -93,15 +93,29 @@ impl AccessTokenProvider {
     /// 3. `NoAuthAccessTokenProvider`
     /// 4. Fail
     pub fn from_env() -> Result<Self, GenericError> {
-        if let Ok(provider) = FileAccessTokenProvider::from_env() {
+        Self::from_env_prefixed(NAKADION_PREFIX)
+    }
+
+    /// Creates a new `AccessTokenProvider` from the environment
+    ///
+    /// This will attempt to create the following providers in the given
+    /// order with all their restrictions as if configured from the
+    /// environment individually
+    ///
+    /// 1. `FileAccessTokenProvider`
+    /// 2. `FixedAccessTokenProvider`
+    /// 3. `NoAuthAccessTokenProvider`
+    /// 4. Fail
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+        if let Ok(provider) = FileAccessTokenProvider::from_env_prefixed(prefix.as_ref()) {
             return Ok(Self::new(provider));
         }
 
-        if let Ok(provider) = FixedAccessTokenProvider::from_env() {
+        if let Ok(provider) = FixedAccessTokenProvider::from_env_prefixed(prefix.as_ref()) {
             return Ok(Self::new(provider));
         }
 
-        if let Ok(provider) = NoAuthAccessTokenProvider::from_env() {
+        if let Ok(provider) = NoAuthAccessTokenProvider::from_env_prefixed(prefix.as_ref()) {
             return Ok(Self::new(provider));
         }
 

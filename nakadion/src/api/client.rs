@@ -12,10 +12,11 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
-use nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
-use nakadi_types::{FlowId, NakadiBaseUrl};
+use crate::env_vars::NAKADION_PREFIX;
+use crate::nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
+use crate::nakadi_types::{FlowId, GenericError, NakadiBaseUrl};
 
-use crate::auth::{AccessTokenProvider, ProvidesAccessToken, TokenError};
+use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
 
 pub use crate::env_vars::*;
 
@@ -23,37 +24,126 @@ use super::dispatch_http_request::{DispatchHttpRequest, ResponseFuture};
 use super::*;
 use urls::Urls;
 
+#[cfg(feature = "reqwest")]
+use crate::api::dispatch_http_request::ReqwestDispatchHttpRequest;
+
 const SCHEME_BEARER: &str = "Bearer";
+
+#[derive(Default)]
+pub struct Builder {
+    nakadi_base_url: Option<NakadiBaseUrl>,
+}
+
+impl Builder {
+    pub fn nakadi_base_url(mut self, url: NakadiBaseUrl) -> Self {
+        self.nakadi_base_url = Some(url);
+        self
+    }
+
+    /// Updates the nakadi base url if not yet set
+    pub fn nakadi_base_url_from_env(self) -> Result<Self, GenericError> {
+        if self.nakadi_base_url.is_none() {
+            self.nakadi_base_url_from_env_prefixed(NAKADION_PREFIX)
+        } else {
+            Ok(self)
+        }
+    }
+
+    /// Updates the nakadi base url if not yet set
+    pub fn nakadi_base_url_from_env_prefixed<T: AsRef<str>>(
+        mut self,
+        prefix: T,
+    ) -> Result<Self, GenericError> {
+        self.nakadi_base_url = Some(NakadiBaseUrl::from_env_prefixed(prefix)?);
+        Ok(self)
+    }
+}
+
+impl Builder {
+    pub fn finish_with<D, P>(
+        mut self,
+        dispatch_http_request: D,
+        access_token_provider: P,
+    ) -> Result<ApiClient, GenericError>
+    where
+        D: DispatchHttpRequest + Send + Sync + 'static,
+        P: ProvidesAccessToken + Send + Sync + 'static,
+    {
+        let nakadi_base_url = if let Some(base_url) = self.nakadi_base_url.take() {
+            base_url
+        } else {
+            return Err(GenericError::new("'nakadi_base_url' is missing"));
+        };
+
+        Ok(ApiClient::new(
+            nakadi_base_url,
+            dispatch_http_request,
+            access_token_provider,
+        ))
+    }
+
+    pub fn finish_from_env_with_dispatcher<D>(
+        self,
+        dispatch_http_request: D,
+    ) -> Result<ApiClient, GenericError>
+    where
+        D: DispatchHttpRequest + Send + Sync + 'static,
+    {
+        self.finish_from_env_prefixed_with_dispatcher(NAKADION_PREFIX, dispatch_http_request)
+    }
+
+    pub fn finish_from_env_prefixed_with_dispatcher<T, D>(
+        self,
+        prefix: T,
+        dispatch_http_request: D,
+    ) -> Result<ApiClient, GenericError>
+    where
+        T: AsRef<str>,
+        D: DispatchHttpRequest + Send + Sync + 'static,
+    {
+        let me = self.nakadi_base_url_from_env_prefixed(prefix.as_ref())?;
+        let access_token_provider = AccessTokenProvider::from_env_prefixed(prefix.as_ref())?;
+
+        me.finish_with(dispatch_http_request, access_token_provider)
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl Builder {
+    pub fn finish<P>(self, access_token_provider: P) -> Result<ApiClient, GenericError>
+    where
+        P: ProvidesAccessToken + Send + Sync + 'static,
+    {
+        let dispatch_http_request = ReqwestDispatchHttpRequest::default();
+        self.finish_with(dispatch_http_request, access_token_provider)
+    }
+
+    pub fn finish_from_env(self) -> Result<ApiClient, GenericError> {
+        self.finish_from_env_prefixed(NAKADION_PREFIX)
+    }
+
+    pub fn finish_from_env_prefixed<T>(self, prefix: T) -> Result<ApiClient, GenericError>
+    where
+        T: AsRef<str>,
+    {
+        let dispatch_http_request = ReqwestDispatchHttpRequest::default();
+        self.finish_from_env_prefixed_with_dispatcher(prefix, dispatch_http_request)
+    }
+}
 
 #[derive(Clone)]
 pub struct ApiClient {
     inner: Arc<Inner>,
 }
 
-struct Inner {
-    urls: Urls,
-    http_client: Box<dyn DispatchHttpRequest + Send + Sync + 'static>,
-    access_token_provider: Box<dyn ProvidesAccessToken + Send + Sync + 'static>,
-}
-
 impl ApiClient {
-    pub fn new_from_env() -> Result<Self, Box<dyn Error + 'static>> {
-        let nakadi_base_url = NakadiBaseUrl::from_env()?;
-        let access_token_provider = AccessTokenProvider::from_env()?;
-        let http_client = crate::api::dispatch_http_request::ReqwestDispatchHttpRequest::default();
-
-        Ok(Self::with_dispatcher(
-            nakadi_base_url,
-            http_client,
-            access_token_provider,
-        ))
+    pub fn builder() -> Builder {
+        Builder::default()
     }
-}
 
-impl ApiClient {
-    pub fn with_dispatcher<D, P>(
+    pub fn new<D, P>(
         nakadi_base_url: NakadiBaseUrl,
-        http_client: D,
+        dispatch_http_request: D,
         access_token_provider: P,
     ) -> Self
     where
@@ -62,7 +152,7 @@ impl ApiClient {
     {
         Self {
             inner: Arc::new(Inner {
-                http_client: Box::new(http_client),
+                dispatch_http_request: Box::new(dispatch_http_request),
                 access_token_provider: Box::new(access_token_provider),
                 urls: Urls::new(nakadi_base_url.into_inner()),
             }),
@@ -70,7 +160,7 @@ impl ApiClient {
     }
 
     fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture {
-        self.inner.http_client.dispatch(req)
+        self.inner.dispatch_http_request.dispatch(req)
     }
 
     fn send_receive_payload<'a, R: DeserializeOwned>(
@@ -304,7 +394,7 @@ impl PublishApi for ApiClient {
             let mut request = self.create_request(&url, serialized, flow_id).await?;
             *request.method_mut() = Method::POST;
 
-            let response = self.inner.http_client.dispatch(request).await?;
+            let response = self.inner.dispatch_http_request.dispatch(request).await?;
 
             let flow_id = match response.headers().get("x-flow-id") {
                 Some(header_value) => {
@@ -494,7 +584,7 @@ impl SubscriptionCommitApi for ApiClient {
                 HeaderValue::from_str(stream.to_string().as_ref())?,
             );
 
-            let response = self.inner.http_client.dispatch(request).await?;
+            let response = self.inner.dispatch_http_request.dispatch(request).await?;
 
             let status = response.status();
             match status {
@@ -526,7 +616,7 @@ impl SubscriptionStreamApi for ApiClient {
                 .await?;
             *request.method_mut() = Method::POST;
 
-            let response = self.inner.http_client.dispatch(request).await?;
+            let response = self.inner.dispatch_http_request.dispatch(request).await?;
 
             let status = response.status();
             if status == StatusCode::OK {
@@ -602,13 +692,17 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
     let err = match deserialize_stream::<HttpApiProblem>(body).await {
         Ok(problem) => NakadiApiError::http_problem(problem),
         Err(err) => NakadiApiError::http(parts.status)
-            .with_context(format!(
-                "There was an error parsing the response to a problem"
-            ))
+            .with_context("There was an error parsing the response into a problem")
             .caused_by(err),
     };
 
     err.with_maybe_flow_id(flow_id)
+}
+
+struct Inner {
+    urls: Urls,
+    dispatch_http_request: Box<dyn DispatchHttpRequest + Send + Sync + 'static>,
+    access_token_provider: Box<dyn ProvidesAccessToken + Send + Sync + 'static>,
 }
 
 mod urls {

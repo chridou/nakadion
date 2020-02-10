@@ -6,6 +6,7 @@ use bytes::Bytes;
 use futures::future::BoxFuture;
 use http::{Request, Response};
 
+#[cfg(feature = "reqwest")]
 pub use reqwest_dispatch_http_request::ReqwestDispatchHttpRequest;
 
 use super::BytesStream;
@@ -129,6 +130,7 @@ impl RemoteCallErrorDetail {
     }
 }
 
+#[cfg(feature = "reqwest")]
 mod reqwest_dispatch_http_request {
     use futures::{stream::TryStreamExt, FutureExt, StreamExt};
     use http::{Request, Response};

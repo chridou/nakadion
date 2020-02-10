@@ -4,7 +4,7 @@ use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ApiClient::new_from_env()?;
+    let client = ApiClient::builder().finish_from_env()?;
 
     //    let mut event_types = client.list_event_types(FlowId::default()).await?;
 
