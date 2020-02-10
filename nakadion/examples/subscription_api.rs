@@ -32,4 +32,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(not(feature = "reqwest"))]
-fn main() {}
+fn main() {
+    println!("Please enable the `reqwest` feature which is a default feature");
+}

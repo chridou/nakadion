@@ -79,7 +79,11 @@ impl Builder {
     }
 
     fn validate(&self) -> Result<(), GenericError> {
-        unimplemented!()
+        if self.subscription_id.is_none() {
+            return Err(GenericError::new("`subscription_id` is missing"));
+        }
+
+        Ok(())
     }
 }
 
