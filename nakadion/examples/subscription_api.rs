@@ -3,6 +3,7 @@ use nakadi_types::FlowId;
 
 use nakadion::api::{ApiClient, SubscriptionApi};
 
+#[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ApiClient::builder().finish_from_env()?;
@@ -29,3 +30,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(not(feature = "reqwest"))]
+fn main() {}
