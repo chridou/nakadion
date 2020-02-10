@@ -1,28 +1,112 @@
+use std::sync::Arc;
+
+use futures::{Stream, TryFutureExt};
+
+use crate::api::SubscriptionCommitApi;
+use crate::consumer::ConsumerError;
+use crate::event_handler::{BatchHandler, BatchHandlerFactory};
+use crate::event_stream::BatchLine;
+use crate::internals::StreamState;
+
 pub enum DispatchStrategy {
-    Single,
+    SingleWorker,
     EventType,
     EventTypePartition,
 }
 
-pub struct SleepingDispatcher;
+#[derive(Debug)]
+pub enum DispatcherMessage {
+    Batch(BatchLine),
+    Tick,
+}
 
-pub struct ActiveDispatcher;
+pub struct Dispatcher;
+
+impl Dispatcher {
+    pub fn new<H, C>(
+        strategy: DispatchStrategy,
+        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+        api_client: C,
+    ) -> SleepingDispatcher<H, C>
+    where
+        H: BatchHandler,
+        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    {
+        match strategy {
+            DispatchStrategy::SingleWorker => SleepingDispatcher::SingleWorker(
+                self::dispatch_single::Dispatcher::new(handler_factory, api_client),
+            ),
+            _ => panic!("not supported"),
+        }
+    }
+}
+
+pub enum SleepingDispatcher<H, C> {
+    SingleWorker(dispatch_single::Sleeping<H, C>),
+}
+
+impl<H, C> SleepingDispatcher<H, C>
+where
+    H: BatchHandler,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+{
+    pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<H, C>
+    where
+        S: Stream<Item = DispatcherMessage> + Send + 'static,
+    {
+        match self {
+            SleepingDispatcher::SingleWorker(dispatcher) => {
+                ActiveDispatcher::SingleWorker(dispatcher.start(stream_state, messages))
+            }
+            _ => panic!("not supported"),
+        }
+    }
+
+    pub fn tick(&mut self) {
+        match self {
+            SleepingDispatcher::SingleWorker(ref mut dispatcher) => dispatcher.tick(),
+            _ => panic!("not supported"),
+        }
+    }
+}
+
+pub enum ActiveDispatcher<H, C> {
+    SingleWorker(dispatch_single::Active<H, C>),
+}
+
+impl<H, C> ActiveDispatcher<H, C>
+where
+    H: BatchHandler,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+{
+    pub async fn join(self) -> Result<SleepingDispatcher<H, C>, ConsumerError> {
+        match self {
+            ActiveDispatcher::SingleWorker(dispatcher) => {
+                dispatcher
+                    .join()
+                    .map_ok(|d| SleepingDispatcher::SingleWorker(d))
+                    .await
+            }
+            _ => panic!("not supported"),
+        }
+    }
+}
 
 mod dispatch_single {
     use std::sync::Arc;
 
     use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-    use tokio::task::JoinHandle;
 
     use crate::api::SubscriptionCommitApi;
     use crate::consumer::ConsumerError;
-    use crate::event_handler::{BatchHandler, BatchHandlerFactory};
-    use crate::event_stream::BatchLine;
+    use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
     use crate::internals::{committer::*, worker::*, StreamState};
 
-    pub struct SingleWorkerDispatcher;
+    use super::DispatcherMessage;
 
-    impl SingleWorkerDispatcher {
+    pub struct Dispatcher;
+
+    impl Dispatcher {
         pub fn new<H, C>(
             handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
             api_client: C,
@@ -31,7 +115,7 @@ mod dispatch_single {
             H: BatchHandler,
             C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
         {
-            let worker = Worker::new(handler_factory, WorkerAssignment::single());
+            let worker = Worker::new(handler_factory, HandlerAssignment::Unspecified);
 
             Sleeping { worker, api_client }
         }
@@ -47,36 +131,23 @@ mod dispatch_single {
         H: BatchHandler,
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
-        pub fn start<S>(self, stream_state: StreamState, batch_lines: S) -> Active<H, C>
+        pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<H, C>
         where
-            S: Stream<Item = BatchLine>,
+            S: Stream<Item = DispatcherMessage> + Send + 'static,
         {
             let Sleeping { worker, api_client } = self;
 
             let (committer, committer_join_handle) =
                 Committer::start(api_client.clone(), stream_state.clone());
 
-            let active_worker = worker.start(stream_state.clone(), committer);
+            let worker_stream = messages.map(|dm| match dm {
+                DispatcherMessage::Batch(batch) => WorkerMessage::Batch(batch),
+                DispatcherMessage::Tick => WorkerMessage::Tick,
+            });
 
-            let join = async move {
-                /*while let Some(next) = batch_lines.next().await {
-                    if stream_state.cancellation_requested() {
-                        break;
-                    }
-                    active_worker.process(next);
-                }
+            let active_worker = worker.start(stream_state.clone(), committer, worker_stream);
 
-                let sleeping_worker = match active_worker.join().await {
-                    Ok(sleeping_worker) => sleeping_worker,
-                    Err(consumer_error) => {
-                        stream_state.request_global_cancellation();
-                        return Err(consumer_error);
-                    }
-                };
-                let _ = committer_join_handle.await;
-                Ok(sleeping_worker)*/
-            }
-            .boxed();
+            let join = active_worker.join().boxed();
 
             Active { api_client, join }
         }
@@ -101,10 +172,7 @@ mod dispatch_single {
 
             let worker = join.await?;
 
-            Ok(Sleeping {
-                worker
-                api_client,
-            })
+            Ok(Sleeping { worker, api_client })
         }
     }
 }

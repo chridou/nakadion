@@ -43,10 +43,10 @@ where
         UnboundedSender<CommitData>,
         JoinHandle<Result<(), GenericError>>,
     ) {
-        let (tx, rx) = unbounded_channel();
+        let (tx, to_commit) = unbounded_channel();
 
         let join_handle = spawn(run_committer(
-            rx,
+            to_commit,
             stream_state,
             api_client,
             Duration::from_secs(1),
@@ -62,8 +62,8 @@ struct PendingCursor {
 
 type PendingCursors = HashMap<(PartitionId, EventTypeName), PendingCursor>;
 
-async fn run_committer<C, S>(
-    mut s: UnboundedReceiver<CommitData>,
+async fn run_committer<C>(
+    mut to_commit: UnboundedReceiver<CommitData>,
     stream_state: StreamState,
     api_client: C,
     commit_after: Duration,
@@ -79,10 +79,10 @@ where
 
     loop {
         if stream_state.cancellation_requested() {
-            rx.close();
+            to_commit.close();
         }
 
-        let cursor_added = match rx.try_recv() {
+        let cursor_added = match to_commit.try_recv() {
             Ok(next) => {
                 add_cursor(&mut pending, next, commit_after, commit_timeout);
                 true

@@ -37,7 +37,7 @@ impl NakadiApiError {
         .caused_by(prob)
     }
 
-    pub fn create<T: Into<NakadiApiErrorKind>>(kind: T) -> Self {
+    fn create<T: Into<NakadiApiErrorKind>>(kind: T) -> Self {
         Self {
             context: None,
             cause: None,
@@ -178,7 +178,66 @@ impl From<NakadiApiErrorKind> for NakadiApiError {
 
 impl From<IoError> for NakadiApiError {
     fn from(err: IoError) -> Self {
-        Self::other().with_context(err.0)
+        Self::io().with_context(err.0)
+    }
+}
+
+impl From<http::header::InvalidHeaderValue> for NakadiApiError {
+    fn from(err: http::header::InvalidHeaderValue) -> Self {
+        NakadiApiError::other()
+            .with_context("invalid header value")
+            .caused_by(err)
+    }
+}
+
+impl From<http::uri::InvalidUri> for NakadiApiError {
+    fn from(err: http::uri::InvalidUri) -> Self {
+        NakadiApiError::other()
+            .with_context("invalid URI")
+            .caused_by(err)
+    }
+}
+
+impl From<crate::auth::TokenError> for NakadiApiError {
+    fn from(err: crate::auth::TokenError) -> Self {
+        NakadiApiError::other()
+            .with_context("failed to get access token")
+            .caused_by(err)
+    }
+}
+
+impl From<crate::api::dispatch_http_request::RemoteCallError> for NakadiApiError {
+    fn from(err: crate::api::dispatch_http_request::RemoteCallError) -> Self {
+        let nakadi_err = if err.is_io() {
+            NakadiApiError::io()
+        } else {
+            NakadiApiError::other()
+        };
+
+        let context = if let Some(msg) = err.message() {
+            msg
+        } else {
+            "remote call error"
+        };
+
+        nakadi_err.with_context(context).caused_by(err)
+    }
+}
+
+impl From<serde_json::Error> for NakadiApiError {
+    fn from(err: serde_json::Error) -> Self {
+        if err.is_io() {
+            Self::io().with_context("JSON de-/serialization IO error")
+        } else if err.is_eof() {
+            Self::other().with_context("unexpected EOF in JSON deserialization")
+        } else if err.is_syntax() {
+            Self::other().with_context("invalid JSON syntax on deserialization")
+        } else if err.is_data() {
+            Self::other().with_context("unexpected JSON data type on deserialization")
+        } else {
+            Self::other().with_context("JSON de-/serialization error")
+        }
+        .caused_by(err)
     }
 }
 
@@ -255,7 +314,7 @@ impl fmt::Display for IoError {
 }
 
 impl Error for IoError {
-    fn cause(&self) -> Option<&dyn Error> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
 }

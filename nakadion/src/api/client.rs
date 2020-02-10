@@ -611,62 +611,6 @@ async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> Naka
     err.with_maybe_flow_id(flow_id)
 }
 
-impl From<http::header::InvalidHeaderValue> for NakadiApiError {
-    fn from(err: http::header::InvalidHeaderValue) -> Self {
-        NakadiApiError::other()
-            .with_context("invalid header value")
-            .caused_by(err)
-    }
-}
-
-impl From<http::uri::InvalidUri> for NakadiApiError {
-    fn from(err: http::uri::InvalidUri) -> Self {
-        NakadiApiError::other()
-            .with_context("invalid URI")
-            .caused_by(err)
-    }
-}
-
-impl From<TokenError> for NakadiApiError {
-    fn from(err: TokenError) -> Self {
-        NakadiApiError::other()
-            .with_context("failed to get access token")
-            .caused_by(err)
-    }
-}
-
-impl From<serde_json::error::Error> for NakadiApiError {
-    fn from(err: serde_json::error::Error) -> Self {
-        NakadiApiError::other()
-            .with_context("serialization failure")
-            .caused_by(err)
-    }
-}
-
-impl From<RemoteCallError> for NakadiApiError {
-    fn from(err: RemoteCallError) -> Self {
-        let nakadi_err = if err.is_io() {
-            NakadiApiError::io()
-        } else {
-            NakadiApiError::other()
-        };
-
-        let context = if let Some(msg) = err.message() {
-            msg
-        } else {
-            "remote call error"
-        };
-
-        nakadi_err.with_context(context).caused_by(err)
-    }
-}
-
-impl From<IoError> for NakadiApiError {
-    fn from(err: IoError) -> Self {
-        NakadiApiError::io().with_context(err.0)
-    }
-}
-
 mod urls {
     use url::Url;
 

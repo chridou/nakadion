@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures::future::BoxFuture;
@@ -46,14 +46,20 @@ impl InactivityAnswer {
 
 pub trait BatchHandler: Send + Sync + 'static {
     fn handle(&mut self, events: Bytes, meta: BatchMeta) -> BoxFuture<BatchPostAction>;
-    fn on_inactivity_detected(&mut self) -> InactivityAnswer {
+    fn on_inactivity_detected(
+        &mut self,
+        inactive_for: Duration,
+        last_activity: Instant,
+    ) -> InactivityAnswer {
         InactivityAnswer::KeepMeAlive
     }
 }
 
-pub struct HandlerAssignment<'a> {
-    pub event_type: Option<&'a EventTypeName>,
-    pub partition: Option<&'a PartitionId>,
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum HandlerAssignment {
+    Unspecified,
+    EventType(EventTypeName),
+    EventTypePartition(EventTypeName, PartitionId),
 }
 
 pub trait BatchHandlerFactory: Send + Sync {
@@ -61,6 +67,6 @@ pub trait BatchHandlerFactory: Send + Sync {
 
     fn handler(
         &self,
-        assignment: HandlerAssignment,
+        assignment: &HandlerAssignment,
     ) -> BoxFuture<Result<Self::Handler, GenericError>>;
 }
