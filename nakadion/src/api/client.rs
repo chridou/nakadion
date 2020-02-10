@@ -88,7 +88,7 @@ impl Builder {
     }
 
     pub fn finish_from_env_prefixed_with_dispatcher<T, D>(
-        self,
+        mut self,
         prefix: T,
         dispatch_http_request: D,
     ) -> Result<ApiClient, GenericError>
@@ -96,6 +96,9 @@ impl Builder {
         T: AsRef<str>,
         D: DispatchHttpRequest + Send + Sync + 'static,
     {
+        if self.nakadi_base_url.is_none() {
+            self.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
+        }
         let access_token_provider = AccessTokenProvider::from_env_prefixed(prefix.as_ref())?;
 
         self.finish_with(dispatch_http_request, access_token_provider)
