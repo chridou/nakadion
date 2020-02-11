@@ -97,9 +97,16 @@ pub trait LoggingAdapter: Send + Sync + 'static {
     fn error(&self, context: &LoggingContext, args: Arguments);
 }
 
-pub struct PrintLogger;
+#[derive(Clone, Copy)]
+pub struct StdLogger;
 
-impl LoggingAdapter for PrintLogger {
+impl StdLogger {
+    pub fn new() -> Self {
+        StdLogger
+    }
+}
+
+impl LoggingAdapter for StdLogger {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         println!("[DEBUG] {}", args);
     }
@@ -115,6 +122,7 @@ impl LoggingAdapter for PrintLogger {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct DevNullLogger;
 
 impl LoggingAdapter for DevNullLogger {
@@ -124,54 +132,74 @@ impl LoggingAdapter for DevNullLogger {
     fn error(&self, _context: &LoggingContext, _args: Arguments) {}
 }
 
-/*
-#[cfg(all(not(feature = "log"), not(feature = "slog")))]
-mod logging_internal {
-    use super::*;
-    use std::fmt::Arguments;
-
-    struct LogsImpl;
-
-    impl Logs for LogsImpl {}
-
-    pub fn init_logger() {}
-}
-
-#[cfg(all(feature = "log", feature = "slog"))]
-mod logging_internal {
+#[cfg(feature = "slog")]
+pub mod slog_adapter {
     use std::fmt::Arguments;
 
     use super::*;
+    use slog::{debug, error, info, warn, Logger};
 
-    struct LogsImpl;
+    #[derive(Clone)]
+    pub struct SlogLogger {
+        logger: Logger,
+    }
 
-    impl Logs for LogsImpl {}
+    impl SlogLogger {
+        pub fn new(logger: Logger) -> Self {
+            SlogLogger { logger }
+        }
+    }
 
-    pub fn init_logger() {}
+    impl LoggingAdapter for SlogLogger {
+        fn debug(&self, context: &LoggingContext, args: Arguments) {
+            debug!(&self.logger, "{}", args)
+        }
+
+        fn info(&self, context: &LoggingContext, args: Arguments) {
+            info!(&self.logger, "{}", args)
+        }
+
+        fn warn(&self, context: &LoggingContext, args: Arguments) {
+            warn!(&self.logger, "{}", args)
+        }
+
+        fn error(&self, context: &LoggingContext, args: Arguments) {
+            error!(&self.logger, "{}", args)
+        }
+    }
 }
 
-#[cfg(all(feature = "log", not(feature = "slog")))]
-mod logging_internal {
+#[cfg(feature = "log")]
+pub mod log_adapter {
     use std::fmt::Arguments;
 
     use super::*;
+    use log::{debug, error, info, warn};
 
-    pub fn init_logger() {}
+    #[derive(Clone)]
+    pub struct LogLogger;
+
+    impl LogLogger {
+        pub fn new() -> Self {
+            LogLogger
+        }
+    }
+
+    impl LoggingAdapter for LogLogger {
+        fn debug(&self, context: &LoggingContext, args: Arguments) {
+            debug!("{}", args)
+        }
+
+        fn info(&self, context: &LoggingContext, args: Arguments) {
+            info!("{}", args)
+        }
+
+        fn warn(&self, context: &LoggingContext, args: Arguments) {
+            warn!("{}", args)
+        }
+
+        fn error(&self, context: &LoggingContext, args: Arguments) {
+            error!("{}", args)
+        }
+    }
 }
-
-#[cfg(all(not(feature = "log"), feature = "slog"))]
-mod logging_internal {
-    use std::fmt::Arguments;
-
-    use super::*;
-    use slog::Logger;
-
-    pub fn init_logger() {}
-
-    use crate::nakadi_types::model::{
-        event_type::EventTypeName,
-        partition::PartitionId,
-        subscription::{StreamId, SubscriptionId},
-    };
-}
-*/

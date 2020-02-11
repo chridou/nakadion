@@ -58,12 +58,12 @@ impl InactivityAnswer {
     }
 }
 
-pub trait BatchHandler: Send + Sync + 'static {
-    fn handle(&mut self, events: Bytes, meta: BatchMeta) -> BoxFuture<BatchPostAction>;
+pub trait BatchHandler: Send + 'static {
+    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BoxFuture<BatchPostAction>;
     fn on_inactivity_detected(
         &mut self,
-        inactive_for: Duration,
-        last_activity: Instant,
+        _inactive_for: Duration,
+        _last_activity: Instant,
     ) -> InactivityAnswer {
         InactivityAnswer::KeepMeAlive
     }

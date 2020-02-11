@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let consumer = Consumer::builder()
         .subscription_id(subscription_id)
-        .finish_with(client, handler::MyHandlerFactory, PrintLogger)?;
+        .finish_with(client, handler::MyHandlerFactory, StdLogger::new())?;
 
     let (handle, task) = consumer.start();
 
@@ -37,14 +37,21 @@ mod handler {
 
     use nakadion::event_handler::*;
 
-    pub struct MyHandler;
+    pub struct MyHandler {
+        count: usize,
+    }
 
     impl BatchHandler for MyHandler {
-        fn handle(&mut self, events: Bytes, meta: BatchMeta) -> BoxFuture<BatchPostAction> {
-            println!("{}", meta.batch_id);
+        fn handle<'a>(
+            &'a mut self,
+            _events: Bytes,
+            meta: BatchMeta<'a>,
+        ) -> BoxFuture<'a, BatchPostAction> {
+            self.count += 1;
 
-            let batch_id = meta.batch_id;
             async move {
+                let batch_id = meta.batch_id;
+                println!("{}: {}", self.count, batch_id);
                 if batch_id > 100 {
                     BatchPostAction::AbortStream
                 } else {
@@ -64,7 +71,7 @@ mod handler {
             &self,
             assignment: &HandlerAssignment,
         ) -> BoxFuture<Result<Self::Handler, GenericError>> {
-            async { Ok(MyHandler) }.boxed()
+            async { Ok(MyHandler { count: 0 }) }.boxed()
         }
     }
 }

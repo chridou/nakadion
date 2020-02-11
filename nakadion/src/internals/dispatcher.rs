@@ -28,7 +28,7 @@ impl Dispatcher {
     {
         match strategy {
             DispatchStrategy::SingleWorker => SleepingDispatcher::SingleWorker(
-                self::dispatch_single::Dispatcher::new(handler_factory, api_client),
+                self::dispatch_single::Dispatcher::sleeping(handler_factory, api_client),
             ),
             _ => panic!("not supported"),
         }
@@ -44,7 +44,7 @@ where
     H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<H, C>
+    pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<'static, H, C>
     where
         S: Stream<Item = DispatcherMessage> + Send + 'static,
     {
@@ -67,11 +67,11 @@ where
     }
 }
 
-pub enum ActiveDispatcher<H, C> {
-    SingleWorker(dispatch_single::Active<H, C>),
+pub enum ActiveDispatcher<'a, H, C> {
+    SingleWorker(dispatch_single::Active<'a, H, C>),
 }
 
-impl<H, C> ActiveDispatcher<H, C>
+impl<'a, H, C> ActiveDispatcher<'a, H, C>
 where
     H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
@@ -104,7 +104,7 @@ mod dispatch_single {
     pub struct Dispatcher;
 
     impl Dispatcher {
-        pub fn new<H, C>(
+        pub fn sleeping<H, C>(
             handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
             api_client: C,
         ) -> Sleeping<H, C>
@@ -128,7 +128,7 @@ mod dispatch_single {
         H: BatchHandler,
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
-        pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<H, C>
+        pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, H, C>
         where
             S: Stream<Item = DispatcherMessage> + Send + 'static,
         {
@@ -170,13 +170,13 @@ mod dispatch_single {
         }
     }
 
-    pub struct Active<H, C> {
+    pub struct Active<'a, H, C> {
         stream_state: StreamState,
         api_client: C,
-        join: BoxFuture<'static, Result<SleepingWorker<H>, ConsumerError>>,
+        join: BoxFuture<'a, Result<SleepingWorker<H>, ConsumerError>>,
     }
 
-    impl<H, C> Active<H, C>
+    impl<'a, H, C> Active<'a, H, C>
     where
         H: BatchHandler,
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,

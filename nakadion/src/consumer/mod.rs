@@ -20,8 +20,13 @@ pub use crate::nakadi_types::{
 mod error;
 mod instrumentation;
 
+#[cfg(feature = "log")]
+pub use crate::logging::log_adapter::LogLogger;
+#[cfg(feature = "slog")]
+pub use crate::logging::slog_adapter::SlogLogger;
+
 use crate::logging::Logger;
-pub use crate::logging::{DevNullLogger, LoggingAdapter, PrintLogger};
+pub use crate::logging::{DevNullLogger, LoggingAdapter, StdLogger};
 pub use error::*;
 pub use instrumentation::*;
 
