@@ -71,6 +71,10 @@ async fn run_committer<C>(
 where
     C: SubscriptionCommitApi + Send + 'static,
 {
+    stream_state
+        .logger()
+        .info(format_args!("Committer starting"));
+
     let commit_timeout =
         safe_commit_timeout(stream_state.stream_params.effective_commit_timeout_secs());
     let commit_interval = Duration::from_millis(200);
@@ -108,6 +112,9 @@ where
                     pending
                 }
                 Err(err) => {
+                    stream_state
+                        .logger()
+                        .warn(format_args!("Failed to commit cursors: {}", err));
                     stream_state.request_stream_cancellation();
                     return Err(err);
                 }
@@ -135,9 +142,18 @@ where
         .await
         {
             Ok(_) => Ok(()),
-            Err(err) => Err(err),
+            Err(err) => {
+                stream_state
+                    .logger()
+                    .error(format_args!("Failed to commit final cursors: {}", err));
+                Err(err)
+            }
         };
     }
+
+    stream_state
+        .logger()
+        .info(format_args!("Committer stopped"));
 
     Ok(())
 }

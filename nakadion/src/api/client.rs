@@ -575,7 +575,14 @@ impl SubscriptionCommitApi for ApiClient {
         cursors: &[SubscriptionCursor],
         flow_id: FlowId,
     ) -> ApiFuture<CursorCommitResults> {
-        let serialized = serde_json::to_vec(cursors).unwrap();
+        #[derive(Serialize)]
+        struct ItemsWrapper<'a> {
+            items: &'a [SubscriptionCursor],
+        };
+
+        let wrapped = ItemsWrapper { items: cursors };
+
+        let serialized = serde_json::to_vec(&wrapped).unwrap();
 
         async move {
             let url = self.urls().subscriptions_commit_cursors(id);
@@ -583,7 +590,7 @@ impl SubscriptionCommitApi for ApiClient {
             *request.method_mut() = Method::POST;
 
             request.headers_mut().append(
-                HeaderName::from_static("x-nakadi-stream-id"),
+                HeaderName::from_static("x-nakadi-streamid"),
                 HeaderValue::from_str(stream.to_string().as_ref())?,
             );
 

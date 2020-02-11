@@ -1,7 +1,6 @@
 use nakadi_types::model::subscription::*;
-use nakadi_types::FlowId;
 
-use nakadion::api::{ApiClient, SubscriptionApi};
+use nakadion::api::ApiClient;
 use nakadion::consumer::*;
 
 #[cfg(feature = "reqwest")]
@@ -13,13 +12,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let consumer = Consumer::builder()
         .subscription_id(subscription_id)
-        .finish_with(client, handler::MyHandlerFactory)?;
+        .finish_with(client, handler::MyHandlerFactory, PrintLogger)?;
 
     let (handle, task) = consumer.start();
 
     let outcome = task.await;
 
-    println!("{}", outcome.is_aborted());
+    if let Some(err) = outcome.error() {
+        println!("{}", err);
+    } else {
+        println!("{}", outcome.is_aborted());
+    }
 
     Ok(())
 }

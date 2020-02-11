@@ -6,7 +6,6 @@ use std::time::Instant;
 
 use bytes::{Buf as _, Bytes};
 use futures::stream::Stream;
-use log::warn;
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
 use crate::api::IoError;
@@ -156,10 +155,10 @@ where
                     Poll::Ready(None) => {
                         let unframed_bytes = self.state.unfinished_frame.len();
                         if unframed_bytes > 0 {
-                            warn!(
+                            /* warn!(
                                 "unexpected end of stream, {} unframed bytes left",
                                 unframed_bytes
-                            )
+                            )*/
                         }
 
                         let state = self.as_mut().state();

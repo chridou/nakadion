@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
+use crate::logging::{Logger, LoggingContext};
 use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
 
 pub mod committer;
@@ -13,14 +14,20 @@ pub struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
     stream_params: Arc<StreamParameters>,
     subscription_id: SubscriptionId,
+    logger: Logger,
 }
 
 impl ConsumerState {
-    pub fn new(subscription_id: SubscriptionId, stream_params: StreamParameters) -> Self {
+    pub fn new(
+        subscription_id: SubscriptionId,
+        stream_params: StreamParameters,
+        logger: Logger,
+    ) -> Self {
         Self {
             is_globally_cancelled: Arc::new(AtomicBool::new(false)),
             stream_params: Arc::new(stream_params),
             subscription_id,
+            logger: logger.with_subscription_id(subscription_id),
         }
     }
 
@@ -30,6 +37,7 @@ impl ConsumerState {
             self.subscription_id,
             Arc::clone(&self.stream_params),
             Arc::downgrade(&self.is_globally_cancelled),
+            self.logger.with_stream_id(stream_id),
         )
     }
 
@@ -48,6 +56,10 @@ impl ConsumerState {
     pub fn stream_params(&self) -> &StreamParameters {
         &self.stream_params
     }
+
+    pub fn logger(&self) -> &Logger {
+        &self.logger
+    }
 }
 
 #[derive(Clone)]
@@ -57,6 +69,7 @@ pub struct StreamState {
     stream_params: Arc<StreamParameters>,
     is_cancelled: Arc<AtomicBool>,
     is_globally_cancelled: Weak<AtomicBool>,
+    logger: Logger,
 }
 
 impl StreamState {
@@ -65,6 +78,7 @@ impl StreamState {
         subscription_id: SubscriptionId,
         stream_params: Arc<StreamParameters>,
         is_globally_cancelled: Weak<AtomicBool>,
+        logger: Logger,
     ) -> Self {
         Self {
             stream_id,
@@ -72,6 +86,7 @@ impl StreamState {
             is_cancelled: Arc::new(AtomicBool::new(false)),
             stream_params,
             is_globally_cancelled,
+            logger,
         }
     }
 
@@ -101,5 +116,9 @@ impl StreamState {
 
     pub fn stream_params(&self) -> &StreamParameters {
         &self.stream_params
+    }
+
+    pub fn logger(&self) -> &Logger {
+        &self.logger
     }
 }

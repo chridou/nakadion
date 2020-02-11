@@ -119,6 +119,12 @@ where
         let msg_for_dispatcher = match dispatcher_message {
             DispatcherMessage::Tick => DispatcherMessage::Tick,
             DispatcherMessage::Batch(batch) => {
+                if let Some(info_str) = batch.info_str() {
+                    stream_state
+                        .logger
+                        .info(format_args!("Received info line: {}", info_str));
+                }
+
                 if batch.is_keep_alive_line() {
                     continue;
                 } else {
@@ -134,6 +140,10 @@ where
     }
 
     let sleeping_dispatcher = active_dispatcher.join().await?;
+
+    stream_state
+        .logger()
+        .info(format_args!("Streaming stopped"));
 
     Ok((params, sleeping_dispatcher))
 }
@@ -162,6 +172,12 @@ where
 }
 
 mod connect_stream {
+    use std::time::Duration;
+
+    use http::status::StatusCode;
+
+    use tokio::time::delay_for;
+
     use crate::nakadi_types::{
         model::subscription::{StreamParameters, SubscriptionId},
         FlowId,
@@ -190,6 +206,30 @@ mod connect_stream {
             {
                 Ok(stream) => return Ok(stream),
                 Err(err) => {
+                    if let Some(status) = err.status() {
+                        match status {
+                            StatusCode::NOT_FOUND => {
+                                return Err(ConsumerError::new(
+                                    ConsumerErrorKind::SubscriptionNotFound,
+                                )
+                                .with_source(err));
+                            }
+                            StatusCode::BAD_REQUEST => {
+                                return Err(ConsumerError::new(ConsumerErrorKind::Internal)
+                                    .with_source(err));
+                            }
+                            _ => {
+                                consumer_state
+                                    .logger()
+                                    .warn(format_args!("Failed to connect to Nakadi: {}", err));
+                            }
+                        }
+                    } else {
+                        consumer_state
+                            .logger()
+                            .warn(format_args!("Failed to connect to Nakadi: {}", err));
+                    }
+                    delay_for(Duration::from_secs(3)).await;
                     continue;
                 }
             }

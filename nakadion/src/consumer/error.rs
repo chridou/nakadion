@@ -99,6 +99,7 @@ impl From<tokio::task::JoinError> for ConsumerError {
 #[non_exhaustive]
 pub enum ConsumerErrorKind {
     SubscriptionNotFound,
+    AccessDenied,
     Internal,
     HandlerAbort,
     UserAbort,

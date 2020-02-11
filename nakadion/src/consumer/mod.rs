@@ -20,6 +20,8 @@ pub use crate::nakadi_types::{
 mod error;
 mod instrumentation;
 
+use crate::logging::Logger;
+pub use crate::logging::{LoggingAdapter, PrintLogger};
 pub use error::*;
 pub use instrumentation::*;
 
@@ -51,9 +53,20 @@ impl Consumer {
     }
 
     pub fn start(self) -> (ConsumerHandle, ConsumerTask) {
+        let subscription_id = self.inner.config().subscription_id;
+
+        let logger =
+            Logger::new(self.inner.logging_adapter()).with_subscription_id(subscription_id);
+
+        logger.info(format_args!(
+            "Connecting to subscription with id {}",
+            subscription_id
+        ));
+
         let consumer_state = ConsumerState::new(
-            self.inner.config().subscription_id,
+            subscription_id,
             self.inner.config().stream_parameters.clone(),
+            logger,
         );
 
         let handle = ConsumerHandle {
@@ -120,15 +133,17 @@ impl Builder {
         self
     }
 
-    pub fn finish_with<C, HF>(
+    pub fn finish_with<C, HF, L>(
         self,
         api_client: C,
         handler_factory: HF,
+        logs: L,
     ) -> Result<Consumer, GenericError>
     where
         C: NakadionEssentials + Send + Sync + 'static + Clone,
         HF: BatchHandlerFactory,
         HF::Handler: BatchHandler,
+        L: LoggingAdapter,
     {
         let config = self.config()?;
 
@@ -136,6 +151,7 @@ impl Builder {
             config,
             api_client,
             handler_factory: Arc::new(handler_factory),
+            logging_adapter: Arc::new(logs),
         };
 
         Ok(Consumer {
@@ -206,6 +222,10 @@ impl ConsumptionOutcome {
     pub fn spilt(self) -> (Consumer, Option<ConsumerError>) {
         (self.consumer, self.aborted)
     }
+
+    pub fn error(&self) -> Option<&ConsumerError> {
+        self.aborted.as_ref()
+    }
 }
 
 pub struct ConsumerTask {
@@ -244,12 +264,15 @@ trait ConsumerInternal {
         -> BoxFuture<'static, Result<(), ConsumerError>>;
 
     fn config(&self) -> &Config;
+
+    fn logging_adapter(&self) -> Arc<dyn LoggingAdapter>;
 }
 
 struct Inner<C, H> {
     config: Config,
     api_client: C,
     handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    logging_adapter: Arc<dyn LoggingAdapter>,
 }
 
 impl<C, H> ConsumerInternal for Inner<C, H>
@@ -275,5 +298,9 @@ where
 
     fn config(&self) -> &Config {
         &self.config
+    }
+
+    fn logging_adapter(&self) -> Arc<dyn LoggingAdapter> {
+        Arc::clone(&self.logging_adapter)
     }
 }
