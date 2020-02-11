@@ -304,6 +304,8 @@ mod processor {
                     } else {
                         self.with_logger(|l| l.info(format_args!("Killed inactive handler")));
                     }
+                } else {
+                    self.handler = Some(handler);
                 }
             }
         }

@@ -93,6 +93,9 @@ where
             }
             Err(TryRecvError::Empty) => false,
             Err(TryRecvError::Closed) => {
+                stream_state
+                    .logger()
+                    .debug(format_args!("Exiting committer. Channel closed."));
                 break;
             }
         };
@@ -132,7 +135,7 @@ where
             .map(|(_, pending)| pending.cursor)
             .collect();
 
-        return match commit(
+        match commit(
             &api_client,
             stream_state.subscription_id(),
             stream_state.stream_id(),
@@ -141,12 +144,15 @@ where
         )
         .await
         {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                stream_state
+                    .logger()
+                    .debug(format_args!("Committed final cursors."));
+            }
             Err(err) => {
                 stream_state
                     .logger()
-                    .error(format_args!("Failed to commit final cursors: {}", err));
-                Err(err)
+                    .warn(format_args!("Failed to commit final cursors: {}", err));
             }
         };
     }
