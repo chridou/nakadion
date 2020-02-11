@@ -53,7 +53,7 @@ impl AsRef<str> for EventTypeName {
 }
 
 impl FromStr for EventTypeName {
-    type Err = Box<dyn Error + 'static>;
+    type Err = GenericError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(EventTypeName(s.parse().map_err(|err| {

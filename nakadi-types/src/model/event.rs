@@ -21,7 +21,7 @@ impl EventId {
 }
 
 impl FromStr for EventId {
-    type Err = Box<dyn Error + 'static>;
+    type Err = GenericError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(EventId(s.parse().map_err(|err| {

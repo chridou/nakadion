@@ -2,11 +2,12 @@
 //!
 //! This covers the partoitions of an `EventType`. Subscriptions, monitoring
 //! etc. might extend the types in here with more fields.
-use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::GenericError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
@@ -85,7 +86,7 @@ impl fmt::Display for CursorOffset {
 }
 
 impl FromStr for CursorOffset {
-    type Err = Box<dyn Error + 'static>;
+    type Err = GenericError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::new(s))
