@@ -48,6 +48,9 @@ where
     where
         S: Stream<Item = DispatcherMessage> + Send + 'static,
     {
+        stream_state
+            .logger()
+            .debug(format_args!("Dispatcher starting"));
         match self {
             SleepingDispatcher::SingleWorker(dispatcher) => {
                 ActiveDispatcher::SingleWorker(dispatcher.start(stream_state, messages))
@@ -78,7 +81,7 @@ where
             ActiveDispatcher::SingleWorker(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(|d| SleepingDispatcher::SingleWorker(d))
+                    .map_ok(SleepingDispatcher::SingleWorker)
                     .await
             }
             _ => panic!("not supported"),
@@ -143,7 +146,11 @@ mod dispatch_single {
 
             let join = active_worker.join().boxed();
 
-            Active { api_client, join }
+            Active {
+                api_client,
+                join,
+                stream_state,
+            }
         }
 
         pub fn tick(&mut self) {
@@ -152,6 +159,7 @@ mod dispatch_single {
     }
 
     pub struct Active<H, C> {
+        stream_state: StreamState,
         api_client: C,
         join: BoxFuture<'static, Result<SleepingWorker<H>, ConsumerError>>,
     }
@@ -162,9 +170,17 @@ mod dispatch_single {
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         pub async fn join(self) -> Result<Sleeping<H, C>, ConsumerError> {
-            let Active { api_client, join } = self;
+            let Active {
+                api_client,
+                join,
+                stream_state,
+            } = self;
 
             let worker = join.await?;
+
+            stream_state
+                .logger()
+                .debug(format_args!("Dispatcher going to sleep"));
 
             Ok(Sleeping { worker, api_client })
         }

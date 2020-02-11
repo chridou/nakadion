@@ -291,14 +291,19 @@ mod processor {
         pub fn tick(&mut self) {
             if let Some(mut handler) = self.handler.take() {
                 let elapsed = self.last_event_processed.elapsed();
-                if elapsed > self.inactivity_after
-                    && !self.notified_on_inactivity
-                    && handler
+                if elapsed > self.inactivity_after && !self.notified_on_inactivity {
+                    if handler
                         .on_inactivity_detected(elapsed, self.last_event_processed)
                         .should_stay_alive()
-                {
-                    self.notified_on_inactivity = true;
-                    self.handler = Some(handler);
+                    {
+                        self.notified_on_inactivity = true;
+                        self.handler = Some(handler);
+                        self.with_logger(|l| {
+                            l.info(format_args!("Keeping inactive handler alive"))
+                        });
+                    } else {
+                        self.with_logger(|l| l.info(format_args!("Killed inactive handler")));
+                    }
                 }
             }
         }
