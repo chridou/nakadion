@@ -2,7 +2,7 @@
 //!
 //! `nakadi-types` contains types for interacting with the [Nakadi](https://nakadi.io) Event Broker.
 
-use std::error::Error;
+use std::error::Error as StdError as StdError;
 use std::fmt;
 use std::str::FromStr;
 
@@ -115,11 +115,11 @@ impl GenericError {
         Self(msg.to_string())
     }
 
-    pub fn from_error<E: Error>(err: E) -> Self {
+    pub fn from_error<E: StdError + Send + 'static>(err: E) -> Self {
         Self::new(err.to_string())
     }
 
-    pub fn boxed(self) -> Box<dyn Error> {
+    pub fn boxed(self) -> Box<dyn StdError + Send + 'static> {
         Box::new(self)
     }
 
@@ -136,8 +136,8 @@ impl fmt::Display for GenericError {
     }
 }
 
-impl Error for GenericError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl StdError for GenericError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }

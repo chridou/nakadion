@@ -1,7 +1,7 @@
 //! Optional OAUTH authorization for connecting to Nakadi
 //!
 use std::convert::AsRef;
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -281,7 +281,7 @@ impl FixedAccessTokenProvider {
 
     /// Create a new `FixedAccessTokenProvider` initializes the token with the
     /// the value of the given env var `name`.
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error>> {
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn StdError>> {
         Ok(Self {
             token: from_env!(name.as_ref())?,
         })
@@ -308,8 +308,8 @@ impl fmt::Display for TokenError {
     }
 }
 
-impl Error for TokenError {
-    fn cause(&self) -> Option<&dyn Error> {
+impl StdError for TokenError {
+    fn cause(&self) -> Option<&dyn StdError> {
         None
     }
 }
