@@ -1,7 +1,17 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 pub use std::time::Duration;
+
+use futures::future::{BoxFuture, FutureExt};
 
 use crate::api::NakadionEssentials;
 use crate::event_handler::{BatchHandler, BatchHandlerFactory};
+use crate::internals::{
+    controller::{Controller, ControllerParams},
+    ConsumerState,
+};
 pub use crate::nakadi_types::{
     model::subscription::{StreamParameters, SubscriptionId},
     GenericError,
@@ -27,6 +37,47 @@ impl Default for DispatchStrategy {
 }
 
 #[derive(Clone)]
+pub struct Consumer {
+    inner: Arc<dyn ConsumerInternal + Send + Sync + 'static>,
+}
+
+impl Consumer {
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+
+    pub fn builder_from_env() -> Result<Builder, GenericError> {
+        unimplemented!()
+    }
+
+    pub fn start(self) -> (ConsumerHandle, ConsumerTask) {
+        let consumer_state = ConsumerState::new(
+            self.inner.config().subscription_id,
+            self.inner.config().stream_parameters.clone(),
+        );
+
+        let handle = ConsumerHandle {
+            consumer_state: consumer_state.clone(),
+        };
+
+        let f = self.inner.start(consumer_state).map(move |r| {
+            let mut outcome = ConsumptionOutcome {
+                aborted: None,
+                consumer: self,
+            };
+
+            if let Err(err) = r {
+                outcome.aborted = Some(err);
+            }
+
+            outcome
+        });
+        let join = ConsumerTask { inner: f.boxed() };
+        (handle, join)
+    }
+}
+
+#[derive(Default, Clone)]
 #[non_exhaustive]
 pub struct Builder {
     pub subscription_id: Option<SubscriptionId>,
@@ -35,6 +86,7 @@ pub struct Builder {
     pub tick_interval: Option<Duration>,
     pub handler_inactivity_after: Option<Duration>,
     pub stream_dead_after: Option<Duration>,
+    pub dispatch_strategy: DispatchStrategy,
 }
 
 impl Builder {
@@ -68,29 +120,160 @@ impl Builder {
         self
     }
 
-    pub fn finish<C, HF>(self, api_client: C, handler_factory: HF) -> Result<Consumer, GenericError>
+    pub fn finish_with<C, HF>(
+        self,
+        api_client: C,
+        handler_factory: HF,
+    ) -> Result<Consumer, GenericError>
     where
         C: NakadionEssentials + Send + Sync + 'static + Clone,
         HF: BatchHandlerFactory,
         HF::Handler: BatchHandler,
     {
-        self.validate()?;
-        unimplemented!()
+        let config = self.config()?;
+
+        let inner = Inner {
+            config,
+            api_client,
+            handler_factory: Arc::new(handler_factory),
+        };
+
+        Ok(Consumer {
+            inner: Arc::new(inner),
+        })
     }
 
-    fn validate(&self) -> Result<(), GenericError> {
-        if self.subscription_id.is_none() {
+    fn config(self) -> Result<Config, GenericError> {
+        let subscription_id = if let Some(subscription_id) = self.subscription_id {
+            subscription_id
+        } else {
             return Err(GenericError::new("`subscription_id` is missing"));
-        }
+        };
 
-        Ok(())
+        let stream_parameters = self
+            .stream_parameters
+            .unwrap_or_else(StreamParameters::default);
+
+        let config = Config {
+            subscription_id,
+            stream_parameters,
+            instrumentation: self.instrumentation,
+            tick_interval: self.tick_interval.unwrap_or(Duration::from_secs(1)),
+            handler_inactivity_after: self
+                .handler_inactivity_after
+                .unwrap_or(Duration::from_secs(300)),
+            stream_dead_after: self.stream_dead_after,
+            dispatch_strategy: self.dispatch_strategy,
+        };
+
+        Ok(config)
     }
 }
 
-pub struct Consumer;
+#[derive(Clone)]
+struct Config {
+    pub subscription_id: SubscriptionId,
+    pub stream_parameters: StreamParameters,
+    pub instrumentation: Instrumentation,
+    pub tick_interval: Duration,
+    pub handler_inactivity_after: Duration,
+    pub stream_dead_after: Option<Duration>,
+    pub dispatch_strategy: DispatchStrategy,
+}
 
-impl Consumer {
-    pub fn builder() {}
+pub struct ConsumptionOutcome {
+    aborted: Option<ConsumerError>,
+    consumer: Consumer,
+}
 
-    pub fn builder_from_env() {}
+impl ConsumptionOutcome {
+    pub fn is_aborted(&self) -> bool {
+        self.aborted.is_some()
+    }
+
+    pub fn into_consumer(self) -> Consumer {
+        self.consumer
+    }
+
+    pub fn try_into_err(self) -> Result<ConsumerError, Self> {
+        if self.aborted.is_some() {
+            Ok(self.aborted.unwrap())
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn spilt(self) -> (Consumer, Option<ConsumerError>) {
+        (self.consumer, self.aborted)
+    }
+}
+
+pub struct ConsumerTask {
+    inner: Pin<Box<dyn Future<Output = ConsumptionOutcome> + Send>>,
+}
+
+impl ConsumerTask {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Future<Output = ConsumptionOutcome> + Send + 'static,
+    {
+        Self { inner: Box::pin(f) }
+    }
+}
+
+impl Future for ConsumerTask {
+    type Output = ConsumptionOutcome;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        self.inner.as_mut().poll(cx)
+    }
+}
+
+pub struct ConsumerHandle {
+    consumer_state: ConsumerState,
+}
+
+impl ConsumerHandle {
+    pub fn stop(&self) {
+        self.consumer_state.request_global_cancellation()
+    }
+}
+
+trait ConsumerInternal {
+    fn start(&self, consumer_state: ConsumerState)
+        -> BoxFuture<'static, Result<(), ConsumerError>>;
+
+    fn config(&self) -> &Config;
+}
+
+struct Inner<C, H> {
+    config: Config,
+    api_client: C,
+    handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+}
+
+impl<C, H> ConsumerInternal for Inner<C, H>
+where
+    C: NakadionEssentials + Send + Sync + 'static + Clone,
+    H: BatchHandler,
+{
+    fn start(
+        &self,
+        consumer_state: ConsumerState,
+    ) -> BoxFuture<'static, Result<(), ConsumerError>> {
+        let controller_params = ControllerParams {
+            api_client: self.api_client.clone(),
+            consumer_state: consumer_state.clone(),
+            dispatch_strategy: self.config.dispatch_strategy.clone(),
+            handler_factory: Arc::clone(&self.handler_factory),
+            tick_interval: self.config.tick_interval,
+        };
+
+        let controller = Controller::new(controller_params);
+        controller.start(consumer_state).boxed()
+    }
+
+    fn config(&self) -> &Config {
+        &self.config
+    }
 }

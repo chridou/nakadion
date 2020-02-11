@@ -28,7 +28,7 @@ impl SubscriptionId {
         Self(Uuid::new_v4())
     }
 
-    env_funs!(SUBSCRIPTION_ID_ENV_VAR);
+    env_funs!("SUBSCRIPTION_ID");
 
     pub fn into_inner(self) -> Uuid {
         self.0

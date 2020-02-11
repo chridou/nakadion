@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use http::{
-    header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH},
+    header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
     Method, Request, Response, StatusCode,
 };
 use http_api_problem::HttpApiProblem;
@@ -262,6 +262,12 @@ impl ApiClient {
             HeaderName::from_static("x-flow-id"),
             HeaderValue::from_str(flow_id.as_ref())?,
         );
+
+        if content_length > 0 {
+            request
+                .headers_mut()
+                .append(CONTENT_TYPE, HeaderValue::from_str("application/json")?);
+        }
 
         request
             .headers_mut()

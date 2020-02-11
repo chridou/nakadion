@@ -20,7 +20,7 @@ impl NakadiBaseUrl {
         NakadiBaseUrl(url.into())
     }
 
-    env_funs!(NAKADI_BASE_URL_ENV_VAR);
+    env_funs!("NAKADI_BASE_URL");
 
     pub fn as_url(&self) -> &Url {
         &self.0

@@ -1,12 +1,13 @@
 use std::time::{Duration, Instant};
 
-use bytes::Bytes;
+pub use bytes::Bytes;
 use futures::future::BoxFuture;
 
-use crate::nakadi_types::{
-    model::{event_type::EventTypeName, partition::PartitionId, subscription::SubscriptionCursor},
-    GenericError,
+use crate::nakadi_types::model::{
+    event_type::EventTypeName, partition::PartitionId, subscription::SubscriptionCursor,
 };
+
+pub use crate::nakadi_types::GenericError;
 
 pub struct BatchMeta<'a> {
     pub cursor: &'a SubscriptionCursor,
@@ -26,6 +27,18 @@ pub enum BatchPostAction {
     AbortStream,
     /// Abort the consumption and shut down
     ShutDown,
+}
+
+impl BatchPostAction {
+    pub fn commit_no_hint() -> Self {
+        BatchPostAction::Commit { n_events: None }
+    }
+
+    pub fn commit(n_events: usize) -> Self {
+        BatchPostAction::DoNotCommit {
+            n_events: Some(n_events),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +75,7 @@ pub enum HandlerAssignment {
     EventTypePartition(EventTypeName, PartitionId),
 }
 
-pub trait BatchHandlerFactory: Send + Sync {
+pub trait BatchHandlerFactory: Send + Sync + 'static {
     type Handler: BatchHandler;
 
     fn handler(

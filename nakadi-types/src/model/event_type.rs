@@ -29,7 +29,7 @@ impl EventTypeName {
         EventTypeName(v.into())
     }
 
-    env_funs!(EVENT_TYPE_ENV_VAR);
+    env_funs!("EVENT_TYPE");
 
     pub fn as_str(&self) -> &str {
         &self.0.as_ref()

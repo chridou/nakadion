@@ -39,13 +39,12 @@ where
 
     pub async fn start(self, consumer_state: ConsumerState) -> Result<(), ConsumerError> {
         let params = self.params;
-        create_background_task(params, consumer_state).await
+        create_background_task(params).await
     }
 }
 
 async fn create_background_task<H, C>(
     mut params: ControllerParams<H, C>,
-    consumer_state: ConsumerState,
 ) -> Result<(), ConsumerError>
 where
     C: NakadionEssentials + Clone,
@@ -60,7 +59,7 @@ where
     loop {
         let (stream_id, bytes_stream) = match connect_stream::connect_with_retries(
             params.api_client.clone(),
-            consumer_state.clone(),
+            params.consumer_state.clone(),
         )
         .await
         {
@@ -70,14 +69,14 @@ where
             }
         };
 
-        let stream_state = consumer_state.stream_state(stream_id);
+        let stream_state = params.consumer_state.stream_state(stream_id);
         let (returned_params, returned_dispatcher) =
             consume_stream(params, stream_state, bytes_stream, sleeping_dispatcher).await?;
 
         sleeping_dispatcher = returned_dispatcher;
         params = returned_params;
 
-        if consumer_state.global_cancellation_requested() {
+        if params.consumer_state.global_cancellation_requested() {
             return Err(ConsumerError::new(ConsumerErrorKind::UserAbort));
         }
     }
@@ -140,11 +139,11 @@ where
 }
 
 pub struct ControllerParams<H, C> {
-    api_client: C,
-    stream_params: StreamParameters,
-    dispatch_strategy: DispatchStrategy,
-    handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-    tick_interval: Duration,
+    pub api_client: C,
+    pub consumer_state: ConsumerState,
+    pub dispatch_strategy: DispatchStrategy,
+    pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    pub tick_interval: Duration,
 }
 
 impl<H, C> Clone for ControllerParams<H, C>
@@ -154,31 +153,10 @@ where
     fn clone(&self) -> Self {
         Self {
             api_client: self.api_client.clone(),
-            stream_params: self.stream_params.clone(),
+            consumer_state: self.consumer_state.clone(),
             dispatch_strategy: self.dispatch_strategy.clone(),
             handler_factory: Arc::clone(&self.handler_factory),
             tick_interval: self.tick_interval,
-        }
-    }
-}
-
-impl<H, C> ControllerParams<H, C>
-where
-    C: NakadionEssentials,
-    H: BatchHandler,
-{
-    pub fn new(
-        api_client: C,
-        stream_params: StreamParameters,
-        dispatch_strategy: DispatchStrategy,
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-    ) -> Self {
-        Self {
-            api_client,
-            stream_params,
-            dispatch_strategy,
-            handler_factory,
-            tick_interval: Duration::from_secs(1),
         }
     }
 }
@@ -193,8 +171,6 @@ mod connect_stream {
     use crate::consumer::{ConsumerError, ConsumerErrorKind};
 
     use crate::internals::ConsumerState;
-
-    use super::ControllerParams;
 
     pub async fn connect_with_retries<C: SubscriptionStreamApi>(
         api_client: C,
@@ -213,7 +189,9 @@ mod connect_stream {
             .await
             {
                 Ok(stream) => return Ok(stream),
-                Err(err) => continue,
+                Err(err) => {
+                    continue;
+                }
             }
         }
     }

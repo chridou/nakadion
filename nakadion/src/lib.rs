@@ -11,7 +11,7 @@ pub(crate) use nakadi_types::GenericError;
 pub mod auth;
 pub mod consumer;
 pub mod event_handler;
-pub mod event_stream;
+pub(crate) mod event_stream;
 
 //pub mod handler;
 //pub mod model;

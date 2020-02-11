@@ -1,10 +1,6 @@
 #![macro_use]
 
 pub const NAKADION_PREFIX: &str = "NAKADION";
-pub const NAKADI_BASE_URL_ENV_VAR: &str = "NAKADI_BASE_URL";
-
-pub const SUBSCRIPTION_ID_ENV_VAR: &str = "SUBSCRIPTION_ID";
-pub const EVENT_TYPE_ENV_VAR: &str = "EVENT_TYPE";
 
 pub const MAX_UNCOMMITTED_EVENTS_ENV_VAR: &str = "MAX_UNCOMMITTED_EVENTS";
 pub const BATCH_LIMIT_ENV_VAR: &str = "BATCH_LIMIT";
@@ -80,21 +76,34 @@ macro_rules! from_env_maybe {
 }
 
 macro_rules! env_funs {
-    ($var:ident) => {
+    ($var:expr) => {
+        #[doc="Get value from the environment.\n"]
+        #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \"NAKADION_"]
+        #[doc=$var]
+        #[doc="\""]
         pub fn try_from_env() -> Result<Option<Self>, $crate::GenericError> {
             Self::try_from_env_prefixed($crate::env_vars::NAKADION_PREFIX)
         }
 
+        #[doc="Get value from the environment.\n"]
+        #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \"`prefix`_"]
+        #[doc=$var]
+        #[doc="\""]
         pub fn try_from_env_prefixed<T: Into<String>>(
             prefix: T,
         ) -> Result<Option<Self>, $crate::GenericError> {
             let mut var_name: String = prefix.into();
             var_name.push('_');
-            var_name.push_str(&$crate::env_vars::$var);
+            var_name.push_str(&$var);
             Self::try_from_env_named(var_name)
         }
 
-        pub fn try_from_env_named<T: AsRef<str>>(
+        #[doc="Get value from the environment.\n"]
+        #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is `var_name`."]
+         pub fn try_from_env_named<T: AsRef<str>>(
             var_name: T,
         ) -> Result<Option<Self>, $crate::GenericError> {
             match std::env::var(var_name.as_ref()) {
@@ -113,17 +122,30 @@ macro_rules! env_funs {
             }
         }
 
-        pub fn from_env() -> Result<Self, $crate::GenericError> {
+        #[doc="Get value from the environment.\n"]
+        #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \"NAKADION_"]
+        #[doc=$var]
+        #[doc="\""]
+         pub fn from_env() -> Result<Self, $crate::GenericError> {
             Self::from_env_prefixed($crate::env_vars::NAKADION_PREFIX)
         }
 
-        pub fn from_env_prefixed<T: Into<String>>(prefix: T) -> Result<Self, $crate::GenericError> {
+        #[doc="Get value from the environment.\n"]
+        #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \"`prefix`_"]
+        #[doc=$var]
+        #[doc="\""]
+         pub fn from_env_prefixed<T: Into<String>>(prefix: T) -> Result<Self, $crate::GenericError> {
             let mut var_name: String = prefix.into();
             var_name.push('_');
-            var_name.push_str(&$crate::env_vars::$var);
+            var_name.push_str(&$var);
             Self::from_env_named(var_name)
         }
 
+        #[doc="Get value from the environment.\n"]
+        #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is `var_name`."]
         pub fn from_env_named<T: AsRef<str>>(var_name: T) -> Result<Self, $crate::GenericError> {
             Self::try_from_env_named(var_name.as_ref()).and_then(|v| {
                 v.map(Ok).unwrap_or_else(|| {
