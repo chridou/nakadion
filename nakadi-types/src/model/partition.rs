@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::GenericError;
+use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
@@ -86,7 +86,7 @@ impl fmt::Display for CursorOffset {
 }
 
 impl FromStr for CursorOffset {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::new(s))

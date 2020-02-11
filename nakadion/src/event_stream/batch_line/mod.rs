@@ -11,7 +11,7 @@ use pin_utils::{unsafe_pinned, unsafe_unpinned};
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
+use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
 mod line_parser;
 
@@ -207,7 +207,7 @@ impl BatchLine {
         self.items.has_info()
     }
 
-    pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, GenericError> {
+    pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, Error> {
         Ok(serde_json::from_slice(self.cursor_bytes().as_ref())?)
     }
 }

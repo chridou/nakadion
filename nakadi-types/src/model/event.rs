@@ -5,7 +5,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::GenericError;
+use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventId(Uuid);
@@ -21,11 +21,11 @@ impl EventId {
 }
 
 impl FromStr for EventId {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(EventId(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse event id: {}", err))
+            Error::new(format!("could not parse event id: {}", err))
         })?))
     }
 }

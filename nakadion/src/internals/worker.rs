@@ -88,7 +88,7 @@ mod processor {
     use futures::{pin_mut, Stream, StreamExt};
     use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-    use crate::nakadi_types::{model::subscription::SubscriptionCursor, GenericError};
+    use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
     use crate::consumer::{ConsumerError, ConsumerErrorKind};
     use crate::event_handler::{
@@ -217,9 +217,9 @@ mod processor {
             }
         }
 
-        fn try_commit(&mut self, commit_data: CommitData) -> Result<(), GenericError> {
+        fn try_commit(&mut self, commit_data: CommitData) -> Result<(), Error> {
             if let Err(err) = self.committer.send(commit_data) {
-                return Err(GenericError::new(format!(
+                return Err(Error::new(format!(
                     "failed to enqueue commit data '{}'",
                     err
                 )));

@@ -36,11 +36,11 @@ impl NakadiBaseUrl {
 }
 
 impl FromStr for NakadiBaseUrl {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(NakadiBaseUrl(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse nakadi base url: {}", err))
+            Error::new(format!("could not parse nakadi base url: {}", err))
         })?))
     }
 }
@@ -100,7 +100,7 @@ impl AsRef<str> for FlowId {
 }
 
 impl FromStr for FlowId {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(FlowId::new(s))
@@ -108,9 +108,9 @@ impl FromStr for FlowId {
 }
 
 #[derive(Debug)]
-pub struct GenericError(String);
+pub struct Error(String);
 
-impl GenericError {
+impl Error {
     pub fn new<T: fmt::Display>(msg: T) -> Self {
         Self(msg.to_string())
     }
@@ -128,7 +128,7 @@ impl GenericError {
     }
 }
 
-impl fmt::Display for GenericError {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)?;
 
@@ -136,13 +136,13 @@ impl fmt::Display for GenericError {
     }
 }
 
-impl StdError for GenericError {
+impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }
 
-impl From<serde_json::Error> for GenericError {
+impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Self::new(err.to_string())
     }

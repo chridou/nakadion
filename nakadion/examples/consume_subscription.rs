@@ -63,7 +63,7 @@ mod handler {
         fn handler(
             &self,
             assignment: &HandlerAssignment,
-        ) -> BoxFuture<Result<Self::Handler, GenericError>> {
+        ) -> BoxFuture<Result<Self::Handler, Error>> {
             async { Ok(MyHandler) }.boxed()
         }
     }

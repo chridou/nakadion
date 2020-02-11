@@ -11,7 +11,7 @@ use crate::env_vars;
 use crate::model::event_type::EventTypeName;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{Cursor, PartitionId};
-use crate::GenericError;
+use crate::Error;
 
 use from_env_maybe;
 
@@ -42,11 +42,11 @@ impl fmt::Display for SubscriptionId {
 }
 
 impl FromStr for SubscriptionId {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SubscriptionId(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse subscription id: {}", err))
+            Error::new(format!("could not parse subscription id: {}", err))
         })?))
     }
 }
@@ -69,11 +69,11 @@ impl StreamId {
 }
 
 impl FromStr for StreamId {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(StreamId(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse stream id: {}", err))
+            Error::new(format!("could not parse stream id: {}", err))
         })?))
     }
 }
@@ -528,23 +528,23 @@ pub struct StreamParameters {
 }
 
 impl StreamParameters {
-    pub fn from_env() -> Result<Self, GenericError> {
+    pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.fill_from_env()?;
         Ok(me)
     }
 
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         let mut me = Self::default();
         me.fill_from_env_prefixed(prefix)?;
         Ok(me)
     }
 
-    pub fn fill_from_env(&mut self) -> Result<(), GenericError> {
+    pub fn fill_from_env(&mut self) -> Result<(), Error> {
         self.fill_from_env_prefixed(env_vars::NAKADION_PREFIX)
     }
 
-    pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), GenericError> {
+    pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.max_uncommitted_events.is_none() {
             if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)?
             {

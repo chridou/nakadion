@@ -11,7 +11,7 @@ use crate::env_vars;
 
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{CursorOffset, PartitionId};
-use crate::GenericError;
+use crate::Error;
 
 /// Name of an EventType. The name is constrained by a regular expression.
 ///
@@ -53,11 +53,11 @@ impl AsRef<str> for EventTypeName {
 }
 
 impl FromStr for EventTypeName {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(EventTypeName(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse event type name: {}", err))
+            Error::new(format!("could not parse event type name: {}", err))
         })?))
     }
 }

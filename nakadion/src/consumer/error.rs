@@ -77,8 +77,8 @@ impl From<ConsumerErrorKind> for ConsumerError {
     }
 }
 
-impl From<nakadi_types::GenericError> for ConsumerError {
-    fn from(err: nakadi_types::GenericError) -> Self {
+impl From<nakadi_types::Error> for ConsumerError {
+    fn from(err: nakadi_types::Error) -> Self {
         Self {
             message: Some(err.into_inner()),
             kind: ConsumerErrorKind::Other,
