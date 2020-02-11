@@ -46,7 +46,9 @@ where
     where
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
-        let SleepingWorker { handler_slot } = self;
+        let SleepingWorker { mut handler_slot } = self;
+
+        handler_slot.set_logger(stream_state.logger());
 
         let join_handle = processor::start(batches, handler_slot, stream_state, committer);
 
@@ -70,7 +72,9 @@ impl<H: BatchHandler> ActiveWorker<H> {
     pub async fn join(self) -> Result<SleepingWorker<H>, ConsumerError> {
         let ActiveWorker { join_handle, .. } = self;
 
-        let handler_slot = join_handle.await??;
+        let mut handler_slot = join_handle.await??;
+
+        handler_slot.unset_logger();
 
         Ok(SleepingWorker { handler_slot })
     }
@@ -92,12 +96,13 @@ mod processor {
     };
     use crate::event_stream::BatchLine;
     use crate::internals::{committer::CommitData, StreamState};
+    use crate::logging::Logger;
 
     use super::WorkerMessage;
 
     pub fn start<H, S>(
         mut batches: S,
-        handler_slot: HandlerSlot<H>,
+        mut handler_slot: HandlerSlot<H>,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
     ) -> JoinHandle<Result<HandlerSlot<H>, ConsumerError>>
@@ -105,6 +110,7 @@ mod processor {
         H: BatchHandler,
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
+        handler_slot.set_logger(&stream_state.logger());
         let processor_loop = async move {
             let mut processing_compound = ProcessingCompound {
                 handler_slot,
@@ -186,16 +192,25 @@ mod processor {
                         events_hint: n_events,
                     };
                     if let Err(err) = self.try_commit(commit_data) {
+                        self.stream_state
+                            .logger()
+                            .error(format_args!("Failed to enqueue commit data: {}", err));
                         self.stream_state.request_stream_cancellation();
                     }
                     Ok(true)
                 }
                 BatchPostAction::DoNotCommit { n_events } => Ok(true),
                 BatchPostAction::AbortStream => {
+                    self.stream_state
+                        .logger()
+                        .warn(format_args!("Stream cancellation requested by handler"));
                     self.stream_state.request_stream_cancellation();
                     Ok(false)
                 }
                 BatchPostAction::ShutDown => {
+                    self.stream_state
+                        .logger()
+                        .warn(format_args!("Consumer shut down requested by handler"));
                     let err = ConsumerError::new(ConsumerErrorKind::HandlerAbort);
                     Err(err)
                 }
@@ -221,6 +236,7 @@ mod processor {
         pub assignment: HandlerAssignment,
         pub inactivity_after: Duration,
         pub notified_on_inactivity: bool,
+        pub logger: Option<Logger>,
     }
 
     impl<H: BatchHandler> HandlerSlot<H> {
@@ -236,6 +252,7 @@ mod processor {
                 assignment,
                 inactivity_after,
                 notified_on_inactivity: false,
+                logger: None,
             }
         }
 
@@ -259,6 +276,12 @@ mod processor {
                     .map_err(|err| {
                         ConsumerError::from(err).with_kind(ConsumerErrorKind::HandlerFactory)
                     })?;
+                self.with_logger(|l| {
+                    l.info(format_args!(
+                        "Created handler for assignment {}",
+                        self.assignment
+                    ))
+                });
                 self.handler = Some(new_handler);
             }
 
@@ -278,6 +301,31 @@ mod processor {
                     self.handler = Some(handler);
                 }
             }
+        }
+
+        pub fn with_logger<F>(&self, f: F)
+        where
+            F: Fn(&Logger),
+        {
+            if let Some(ref logger) = self.logger {
+                f(logger)
+            }
+        }
+
+        pub fn set_logger(&mut self, logger: &Logger) {
+            let logger = match self.assignment.event_type_and_partition() {
+                (Some(e), Some(p)) => logger
+                    .with_event_type(e.clone())
+                    .with_partition_id(p.clone()),
+                (Some(e), None) => logger.with_event_type(e.clone()),
+                (None, Some(p)) => logger.with_partition_id(p.clone()),
+                (None, None) => logger.clone(),
+            };
+            self.logger = Some(logger)
+        }
+
+        pub fn unset_logger(&mut self) {
+            self.logger = None
         }
     }
 }

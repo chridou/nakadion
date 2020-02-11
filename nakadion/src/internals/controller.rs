@@ -50,7 +50,7 @@ where
     C: NakadionEssentials + Clone,
     H: BatchHandler,
 {
-    let mut sleeping_dispatcher = Dispatcher::new(
+    let mut sleeping_dispatcher = Dispatcher::sleeping(
         params.dispatch_strategy.clone(),
         Arc::clone(&params.handler_factory),
         params.api_client.clone(),

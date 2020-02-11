@@ -17,7 +17,7 @@ pub enum DispatcherMessage {
 pub struct Dispatcher;
 
 impl Dispatcher {
-    pub fn new<H, C>(
+    pub fn sleeping<H, C>(
         strategy: DispatchStrategy,
         handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         api_client: C,

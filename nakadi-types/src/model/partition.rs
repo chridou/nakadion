@@ -25,6 +25,14 @@ impl PartitionId {
     }
 }
 
+impl fmt::Display for PartitionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+
+        Ok(())
+    }
+}
+
 /// A cursor with an offset
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Cursor)

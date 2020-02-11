@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::{Duration, Instant};
 
 pub use bytes::Bytes;
@@ -73,6 +74,42 @@ pub enum HandlerAssignment {
     Unspecified,
     EventType(EventTypeName),
     EventTypePartition(EventTypeName, PartitionId),
+}
+
+impl fmt::Display for HandlerAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HandlerAssignment::Unspecified => write!(f, "[unspecified]")?,
+            HandlerAssignment::EventType(ref event_type) => {
+                write!(f, "[event_type={}]", event_type)?
+            }
+            HandlerAssignment::EventTypePartition(ref event_type, ref partition) => {
+                write!(f, "[event_type={}, partition={}]", event_type, partition)?
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl HandlerAssignment {
+    pub fn event_type(&self) -> Option<&EventTypeName> {
+        self.event_type_and_partition().0
+    }
+
+    pub fn partition(&self) -> Option<&PartitionId> {
+        self.event_type_and_partition().1
+    }
+
+    pub fn event_type_and_partition(&self) -> (Option<&EventTypeName>, Option<&PartitionId>) {
+        match self {
+            HandlerAssignment::Unspecified => (None, None),
+            HandlerAssignment::EventType(event_type) => (Some(&event_type), None),
+            HandlerAssignment::EventTypePartition(ref event_type, ref partition) => {
+                (Some(&event_type), Some(&partition))
+            }
+        }
+    }
 }
 
 pub trait BatchHandlerFactory: Send + Sync + 'static {

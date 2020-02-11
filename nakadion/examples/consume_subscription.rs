@@ -43,7 +43,15 @@ mod handler {
         fn handle(&mut self, events: Bytes, meta: BatchMeta) -> BoxFuture<BatchPostAction> {
             println!("{}", meta.batch_id);
 
-            async { BatchPostAction::commit_no_hint() }.boxed()
+            let batch_id = meta.batch_id;
+            async move {
+                if batch_id > 100 {
+                    BatchPostAction::AbortStream
+                } else {
+                    BatchPostAction::commit_no_hint()
+                }
+            }
+            .boxed()
         }
     }
 

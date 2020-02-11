@@ -58,6 +58,28 @@ impl Logger {
             logging_adapter,
         }
     }
+
+    pub fn with_partition_id(&self, partition_id: PartitionId) -> Self {
+        let mut context = (*self.context).clone();
+        context.partition_id = Some(partition_id);
+        let logging_adapter = Arc::clone(&self.logging_adapter);
+
+        Logger {
+            context: Arc::new(context),
+            logging_adapter,
+        }
+    }
+
+    pub fn with_event_type(&self, event_type: EventTypeName) -> Self {
+        let mut context = (*self.context).clone();
+        context.event_type = Some(event_type);
+        let logging_adapter = Arc::clone(&self.logging_adapter);
+
+        Logger {
+            context: Arc::new(context),
+            logging_adapter,
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -65,7 +87,7 @@ pub struct LoggingContext {
     subscription_id: Option<SubscriptionId>,
     stream_id: Option<StreamId>,
     event_type: Option<EventTypeName>,
-    partition: Option<PartitionId>,
+    partition_id: Option<PartitionId>,
 }
 
 pub trait LoggingAdapter: Send + Sync + 'static {

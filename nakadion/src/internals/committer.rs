@@ -73,7 +73,7 @@ where
 {
     stream_state
         .logger()
-        .info(format_args!("Committer starting"));
+        .debug(format_args!("Committer starting"));
 
     let commit_timeout =
         safe_commit_timeout(stream_state.stream_params.effective_commit_timeout_secs());
@@ -153,7 +153,7 @@ where
 
     stream_state
         .logger()
-        .info(format_args!("Committer stopped"));
+        .debug(format_args!("Committer stopped"));
 
     Ok(())
 }
