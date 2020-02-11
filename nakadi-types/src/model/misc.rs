@@ -8,26 +8,7 @@ use serde::{Deserialize, Serialize};
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct OwningApplication(String);
-
-impl OwningApplication {
-    pub fn new<T: Into<String>>(v: T) -> Self {
-        OwningApplication(v.into())
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for OwningApplication {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+env_extend_string_type!(OwningApplication, "OWNING_APPLICATION");
 
 /// An attribute for authorization.
 ///

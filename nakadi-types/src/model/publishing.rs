@@ -62,12 +62,12 @@ pub enum PublishingStatus {
     Aborted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 /// Indicator of the step in the publishing process this Event reached.
 ///
 /// In Items that “failed” means the step of the failure.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublishingStep {
     /// Indicates that nothing was yet attempted for the publishing of this Event. Should
     /// be present only in the case of aborting the publishing during the validation of another

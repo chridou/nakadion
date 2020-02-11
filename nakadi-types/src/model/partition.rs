@@ -11,28 +11,7 @@ use crate::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct PartitionId(String);
-
-impl PartitionId {
-    pub fn new<T: Into<String>>(id: T) -> Self {
-        Self(id.into())
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for PartitionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-
-        Ok(())
-    }
-}
+env_extend_string_type!(PartitionId, "PARTITION_ID");
 
 /// A cursor with an offset
 ///

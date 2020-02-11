@@ -13,8 +13,6 @@ use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{Cursor, PartitionId};
 use crate::Error;
 
-use from_env_maybe;
-
 /// Id of subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SubscriptionId(Uuid);
@@ -102,20 +100,7 @@ pub struct EventTypeNames(pub Vec<EventTypeName>);
 /// owning_application and event_types.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ConsumerGroup(String);
-
-impl ConsumerGroup {
-    pub fn new<T: Into<String>>(v: T) -> Self {
-        ConsumerGroup(v.into())
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+env_extend_string_type!(ConsumerGroup, "CONSUMER_GROUP");
 
 /// Status of one event-type within a context of subscription
 ///
@@ -495,36 +480,32 @@ pub struct StreamParameters {
     /// The maximum number of uncommitted events that Nakadi will stream before pausing the stream. When in
     /// paused state and commit comes - the stream will resume.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_uncommitted_events: Option<u32>,
+    pub max_uncommitted_events: Option<MaxUncommittedEvents>,
     /// Maximum number of Events in each chunk (and therefore per partition) of the stream.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub batch_limit: Option<u32>,
+    pub batch_limit: Option<BatchLimit>,
     /// Maximum number of Events in this stream (over all partitions being streamed in this
     /// connection)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream_limit: Option<u32>,
+    pub stream_limit: Option<StreamLimit>,
     /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "batch_flush_timeout")]
-    pub batch_flush_timeout_secs: Option<u32>,
+    pub batch_flush_timeout: Option<BatchFlushTimeoutSecs>,
     /// Useful for batching events based on their received_at timestamp. For example, if `batch_timespan` is 5
     /// seconds then Nakadi would flush a batch as soon as the difference in time between the first and the
     /// last event in the batch exceeds 5 seconds. It waits for an event outside of the window to signal the
     /// closure of a batch.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "batch_timespan")]
-    pub batch_timespan_secs: Option<u32>,
+    pub batch_timespan: Option<BatchTimespanSecs>,
     /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "stream_timeout")]
-    pub stream_timeout_secs: Option<u32>,
+    pub stream_timeout: Option<StreamTimeoutSecs>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "commit_timeout")]
     /// Maximum amount of seconds that Nakadi will be waiting for commit after sending a batch to a client.
     /// In case if commit does not come within this timeout, Nakadi will initialize stream termination, no
     /// new data will be sent. Partitions from this stream will be assigned to other streams.
     /// Setting commit_timeout to 0 is equal to setting it to the maximum allowed value - 60 seconds.
-    pub commit_timeout_secs: Option<u32>,
+    pub commit_timeout: Option<CommitTimeoutSecs>,
 }
 
 impl StreamParameters {
@@ -546,46 +527,27 @@ impl StreamParameters {
 
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.max_uncommitted_events.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::MAX_UNCOMMITTED_EVENTS_ENV_VAR)?
-            {
-                self.max_uncommitted_events = Some(v)
-            }
-        };
+            self.max_uncommitted_events =
+                MaxUncommittedEvents::try_from_env_prefixed(prefix.as_ref())?;
+        }
         if self.batch_limit.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_LIMIT_ENV_VAR)?
-            {
-                self.batch_limit = Some(v)
-            }
+            self.batch_limit = BatchLimit::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.stream_limit.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_LIMIT_ENV_VAR)?
-            {
-                self.stream_limit = Some(v)
-            }
+            self.stream_limit = StreamLimit::try_from_env_prefixed(prefix.as_ref())?;
         }
-        if self.batch_flush_timeout_secs.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_FLUSH_TIMEOUT_SECS_ENV_VAR)?
-            {
-                self.batch_flush_timeout_secs = Some(v)
-            }
+        if self.batch_flush_timeout.is_none() {
+            self.batch_flush_timeout =
+                BatchFlushTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
-        if self.batch_timespan_secs.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::BATCH_TIMESPAN_SECS_ENV_VAR)?
-            {
-                self.batch_timespan_secs = Some(v)
-            }
+        if self.batch_timespan.is_none() {
+            self.batch_timespan = BatchTimespanSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
-        if self.stream_timeout_secs.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::STREAM_TIMEOUT_SECS_ENV_VAR)?
-            {
-                self.stream_timeout_secs = Some(v)
-            }
+        if self.stream_timeout.is_none() {
+            self.stream_timeout = StreamTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
-        if self.commit_timeout_secs.is_none() {
-            if let Some(v) = from_env_maybe!(prefix => prefix.as_ref(), postfix => env_vars::COMMIT_TIMEOUT_SECS_ENV_VAR)?
-            {
-                self.commit_timeout_secs = Some(v)
-            }
+        if self.commit_timeout.is_none() {
+            self.commit_timeout = CommitTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())
@@ -593,6 +555,14 @@ impl StreamParameters {
 
     /// Returns the configured value or the default
     pub fn effective_commit_timeout_secs(&self) -> u32 {
-        self.commit_timeout_secs.unwrap_or(60)
+        self.commit_timeout.map(|s| s.to_inner()).unwrap_or(60)
     }
 }
+
+env_type_copy!(MaxUncommittedEvents, u32, "MAX_UNCOMMITTED_EVENTS");
+env_type_copy!(BatchLimit, u32, "BATCH_LIMIT");
+env_type_copy!(StreamLimit, u32, "STREAM_LIMIT");
+env_type_copy!(BatchFlushTimeoutSecs, u32, "BATCH_FLUSH_TIMEOUT_SECS");
+env_type_copy!(BatchTimespanSecs, u32, "BATCH_TIMESPAN_SECS");
+env_type_copy!(StreamTimeoutSecs, u32, "STREAM_TIMEOUT_SECS");
+env_type_copy!(CommitTimeoutSecs, u32, "COMMIT_TIMEOUT_SECS");
