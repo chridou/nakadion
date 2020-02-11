@@ -144,7 +144,19 @@ mod dispatch_single {
 
             let active_worker = worker.start(stream_state.clone(), committer, worker_stream);
 
-            let join = active_worker.join().boxed();
+            let join = {
+                let stream_state = stream_state.clone();
+                async move {
+                    let worker_result = active_worker.join().await;
+                    if let Err(err) = committer_join_handle.await {
+                        stream_state
+                            .logger()
+                            .warn(format_args!("Committer exited with error: {}", err));
+                    };
+                    worker_result
+                }
+                .boxed()
+            };
 
             Active {
                 api_client,
