@@ -21,7 +21,7 @@ mod error;
 mod instrumentation;
 
 use crate::logging::Logger;
-pub use crate::logging::{LoggingAdapter, PrintLogger};
+pub use crate::logging::{DevNullLogger, LoggingAdapter, PrintLogger};
 pub use error::*;
 pub use instrumentation::*;
 

@@ -115,6 +115,15 @@ impl LoggingAdapter for PrintLogger {
     }
 }
 
+pub struct DevNullLogger;
+
+impl LoggingAdapter for DevNullLogger {
+    fn debug(&self, _context: &LoggingContext, _args: Arguments) {}
+    fn info(&self, _context: &LoggingContext, _args: Arguments) {}
+    fn warn(&self, _context: &LoggingContext, _args: Arguments) {}
+    fn error(&self, _context: &LoggingContext, _args: Arguments) {}
+}
+
 /*
 #[cfg(all(not(feature = "log"), not(feature = "slog")))]
 mod logging_internal {
