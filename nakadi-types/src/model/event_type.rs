@@ -1,18 +1,14 @@
 //! Types for defining and monitoring event types
-use std::error::Error as StdError;
 use std::fmt;
-use std::str::FromStr;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::env_vars;
-
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{CursorOffset, PartitionId};
-use crate::Error;
 
+new_type! {
 /// Name of an EventType. The name is constrained by a regular expression.
 ///
 /// Note: the name can encode the owner/responsible for this EventType and ideally should
@@ -22,8 +18,8 @@ use crate::Error;
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct EventTypeName(String);
-env_extend_string_type!(EventTypeName, "EVENT_TYPE");
+    pub struct EventTypeName(String, env="EVENT_TYPE");
+}
 
 /// Defines the category of this EventType.
 ///
@@ -114,10 +110,11 @@ impl Default for CompatibilityMode {
     }
 }
 
+new_type! {
 /// Part of `PartitionKeyFields`
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PartitionKey(String);
-env_extend_string_type!(PartitionKey, "PARTITION_KEY");
+    pub struct PartitionKey(String, env="PARTITION_KEY");
+}
 
 /// Required when 'partition_resolution_strategy' is set to ‘hash’. Must be absent otherwise.
 /// Indicates the fields used for evaluation the partition of Events of this type.

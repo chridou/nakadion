@@ -3,12 +3,13 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+new_type! {
 /// Indicator of the application owning this EventType.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct OwningApplication(String);
-env_extend_string_type!(OwningApplication, "OWNING_APPLICATION");
+    pub struct OwningApplication(String, env="OWNING_APPLICATION");
+}
 
 /// An attribute for authorization.
 ///
@@ -36,6 +37,16 @@ impl AuthorizationAttribute {
     }
 }
 
+impl<U, V> From<(U, V)> for AuthorizationAttribute
+where
+    U: Into<AuthAttDataType>,
+    V: Into<AuthAttValue>,
+{
+    fn from(tuple: (U, V)) -> Self {
+        AuthorizationAttribute::new(tuple.0, tuple.1)
+    }
+}
+
 impl fmt::Display for AuthorizationAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}->{}", self.data_type, self.value)?;
@@ -43,56 +54,25 @@ impl fmt::Display for AuthorizationAttribute {
     }
 }
 
+new_type! {
 /// Data type of `AuthorizationAttribute`
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct AuthAttDataType(String);
+    pub struct AuthAttDataType(String);
+}
 
 impl AuthAttDataType {
-    pub fn new<T: Into<String>>(v: T) -> Self {
-        AuthAttDataType(v.into())
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
+    /// Creates an `AuthorizationAttribute` with the this data type and the given value
+    pub fn with_value<V: Into<AuthAttValue>>(self, value: V) -> AuthorizationAttribute {
+        AuthorizationAttribute::new(self.0, value)
     }
 }
 
-impl fmt::Display for AuthAttDataType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        Ok(())
-    }
-}
-
+new_type! {
 /// Value of `AuthorizationAttribute`
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct AuthAttValue(String);
-
-impl AuthAttValue {
-    pub fn new<T: Into<String>>(v: T) -> Self {
-        AuthAttValue(v.into())
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for AuthAttValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        Ok(())
-    }
+    pub struct AuthAttValue(String);
 }

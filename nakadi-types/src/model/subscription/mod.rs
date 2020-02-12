@@ -1,84 +1,38 @@
 //! Types for subscribing to an `EventType`
 use std::convert::AsRef;
-use std::fmt;
-use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::env_vars;
 use crate::model::event_type::EventTypeName;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{Cursor, PartitionId};
 use crate::Error;
 
-/// Id of subscription
+pub mod subscription_builder;
+
+new_type! {
+/// Id of a subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct SubscriptionId(Uuid);
+       pub copy struct SubscriptionId(Uuid, env="SUBSCRIPTION_ID");
+}
 
 impl SubscriptionId {
-    pub fn new<T: Into<Uuid>>(id: T) -> Self {
-        Self(id.into())
-    }
-
     pub fn random() -> Self {
         Self(Uuid::new_v4())
     }
-
-    env_funs!("SUBSCRIPTION_ID");
-
-    pub fn into_inner(self) -> Uuid {
-        self.0
-    }
 }
 
-impl fmt::Display for SubscriptionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl FromStr for SubscriptionId {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SubscriptionId(s.parse().map_err(|err| {
-            Error::new(format!("could not parse subscription id: {}", err))
-        })?))
-    }
-}
-
+new_type! {
+/// Id of a stream
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-pub struct StreamId(Uuid);
+pub copy struct StreamId(Uuid);
+}
 
 impl StreamId {
-    pub fn new<T: Into<Uuid>>(id: T) -> Self {
-        Self(id.into())
-    }
-
     pub fn random() -> Self {
         Self(Uuid::new_v4())
-    }
-
-    pub fn into_inner(self) -> Uuid {
-        self.0
-    }
-}
-
-impl FromStr for StreamId {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(StreamId(s.parse().map_err(|err| {
-            Error::new(format!("could not parse stream id: {}", err))
-        })?))
-    }
-}
-
-impl fmt::Display for StreamId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 
@@ -92,15 +46,49 @@ pub struct EventTypePartition {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct EventTypeNames(pub Vec<EventTypeName>);
+pub struct EventTypeNames(Vec<EventTypeName>);
+
+impl EventTypeNames {
+    pub fn new<T: Into<Vec<EventTypeName>>>(event_types: T) -> Self {
+        Self(event_types.into())
+    }
+
+    pub fn into_event_type_names(self) -> Vec<EventTypeName> {
+        self.0
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn push<T: Into<EventTypeName>>(&mut self, event_type: T) {
+        self.0.push(event_type.into())
+    }
+}
+
+impl AsRef<[EventTypeName]> for EventTypeNames {
+    fn as_ref(&self) -> &[EventTypeName] {
+        &self.0
+    }
+}
+
+new_type! {
+/// The value describing the use case of this subscription.
+///
+/// In general that is an additional identifier used to differ subscriptions having the same
+/// owning_application and event_types.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+    pub struct ConsumerGroup(String, env="CONSUMER_GROUP");
+}
 
 /// The value describing the use case of this subscription.
 ///
 /// In general that is an additional identifier used to differ subscriptions having the same
 /// owning_application and event_types.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ConsumerGroup(String);
-env_extend_string_type!(ConsumerGroup, "CONSUMER_GROUP");
 
 /// Status of one event-type within a context of subscription
 ///
@@ -160,6 +148,15 @@ pub struct SubscriptionAuthorization {
     pub readers: Vec<AuthorizationAttribute>,
 }
 
+impl SubscriptionAuthorization {
+    pub fn add_admin<T: Into<AuthorizationAttribute>>(&mut self, admin: T) {
+        self.admins.push(admin.into())
+    }
+    pub fn add_reader<T: Into<AuthorizationAttribute>>(&mut self, reader: T) {
+        self.readers.push(reader.into())
+    }
+}
+
 /// Subscription is a high level consumption unit.
 ///
 /// Subscriptions allow applications to easily scale the number of clients by managing
@@ -189,7 +186,9 @@ pub struct Subscription {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Serialize)]
 pub struct SubscriptionInput {
-    pub id: SubscriptionId,
+    /// Should not be set when creating a new subscription. Only when updating (e.g. Auth)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<SubscriptionId>,
     pub owning_application: OwningApplication,
     pub event_types: EventTypeNames,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -210,10 +209,14 @@ pub struct SubscriptionInput {
     /// Clients will get events starting from next offset positions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
-    pub status: Vec<SubscriptionEventTypeStatus>,
     pub authorization: SubscriptionAuthorization,
 }
 
+impl SubscriptionInput {
+    pub fn builder() -> subscription_builder::SubscriptionInputBuilder {
+        subscription_builder::SubscriptionInputBuilder::default()
+    }
+}
 /// Position to start reading events from. Currently supported values:
 ///
 ///  * Begin - read from the oldest available event.
@@ -522,7 +525,7 @@ impl StreamParameters {
     }
 
     pub fn fill_from_env(&mut self) -> Result<(), Error> {
-        self.fill_from_env_prefixed(env_vars::NAKADION_PREFIX)
+        self.fill_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
     }
 
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
@@ -555,14 +558,35 @@ impl StreamParameters {
 
     /// Returns the configured value or the default
     pub fn effective_commit_timeout_secs(&self) -> u32 {
-        self.commit_timeout.map(|s| s.to_inner()).unwrap_or(60)
+        self.commit_timeout.map(|s| s.into_inner()).unwrap_or(60)
     }
 }
 
-env_type_copy!(MaxUncommittedEvents, u32, "MAX_UNCOMMITTED_EVENTS");
-env_type_copy!(BatchLimit, u32, "BATCH_LIMIT");
-env_type_copy!(StreamLimit, u32, "STREAM_LIMIT");
-env_type_copy!(BatchFlushTimeoutSecs, u32, "BATCH_FLUSH_TIMEOUT_SECS");
-env_type_copy!(BatchTimespanSecs, u32, "BATCH_TIMESPAN_SECS");
-env_type_copy!(StreamTimeoutSecs, u32, "STREAM_TIMEOUT_SECS");
-env_type_copy!(CommitTimeoutSecs, u32, "COMMIT_TIMEOUT_SECS");
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct MaxUncommittedEvents(u32, env="MAX_UNCOMMITTED_EVENTS");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct BatchLimit(u32, env="BATCH_LIMIT");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct StreamLimit(u32, env="STREAM_LIMIT");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct BatchFlushTimeoutSecs(u32, env="BATCH_FLUSH_TIMEOUT_SECS");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct BatchTimespanSecs(u32, env="BATCH_TIMESPAN_SECS");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct StreamTimeoutSecs(u32, env="STREAM_TIMEOUT_SECS");
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct CommitTimeoutSecs(u32, env="COMMIT_TIMEOUT_SECS");
+}

@@ -9,9 +9,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::Error;
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct PartitionId(String);
-env_extend_string_type!(PartitionId, "PARTITION_ID");
+new_type! {
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+    pub struct PartitionId(String, env="PARTITION_ID");
+}
 
 /// A cursor with an offset
 ///

@@ -9,39 +9,21 @@ use std::str::FromStr;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize};
 use url::Url;
 
-pub(crate) mod env_vars;
+pub(crate) mod helpers;
 pub mod model;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NakadiBaseUrl(Url);
+new_type! {
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct NakadiBaseUrl(Url, env="NAKADI_BASE_URL");
+}
 
 impl NakadiBaseUrl {
-    pub fn new<T: Into<Url>>(url: T) -> Self {
-        NakadiBaseUrl(url.into())
-    }
-
-    env_funs!("NAKADI_BASE_URL");
-
     pub fn as_url(&self) -> &Url {
         &self.0
     }
 
     pub fn as_str(&self) -> &str {
         &self.0.as_ref()
-    }
-
-    pub fn into_inner(self) -> Url {
-        self.0
-    }
-}
-
-impl FromStr for NakadiBaseUrl {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(NakadiBaseUrl(s.parse().map_err(|err| {
-            Error::new(format!("could not parse nakadi base url: {}", err))
-        })?))
     }
 }
 

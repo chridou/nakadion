@@ -487,14 +487,23 @@ impl SubscriptionApi for ApiClient {
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
     fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<()> {
-        let url = self.urls().subscriptions_update_auth(input.id);
-        self.send_payload(
-            url,
-            Method::PUT,
-            serde_json::to_vec(input).unwrap(),
-            flow_id,
-        )
-        .boxed()
+        if let Some(id) = input.id {
+            let url = self.urls().subscriptions_update_auth(id);
+            self.send_payload(
+                url,
+                Method::PUT,
+                serde_json::to_vec(input).unwrap(),
+                flow_id,
+            )
+            .boxed()
+        } else {
+            async {
+                Err(NakadiApiError::other().with_context(
+                    "to update the subscription `input` must have a `SubscriptionId`(id) set",
+                ))
+            }
+            .boxed()
+        }
     }
 
     /// Deletes a subscription.
