@@ -70,7 +70,7 @@ impl<H: BatchHandler> ActiveWorker<H> {
 
         let mut handler_slot = join_handle.await??;
 
-        handler_slot.unset_logger();
+        handler_slot.reset();
 
         Ok(SleepingWorker { handler_slot })
     }
@@ -327,7 +327,8 @@ mod processor {
             self.logger = Some(logger)
         }
 
-        pub fn unset_logger(&mut self) {
+        pub fn reset(&mut self) {
+            self.tick();
             self.logger = None
         }
     }

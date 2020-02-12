@@ -1,12 +1,4 @@
-use std::convert::AsRef;
-
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::model::event_type::EventTypeName;
-use crate::model::misc::{AuthorizationAttribute, OwningApplication};
-use crate::model::partition::{Cursor, PartitionId};
+use crate::model::misc::OwningApplication;
 use crate::Error;
 
 use super::*;

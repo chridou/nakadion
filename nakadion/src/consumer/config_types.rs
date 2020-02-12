@@ -73,12 +73,7 @@ new_type! {
 }
 new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct ConnectRetryDelaySecs(u64, env="CONNECT_RETRY_DELAY_SECS");
-}
-impl ConnectRetryDelaySecs {
-    pub fn into_duration(self) -> Duration {
-        Duration::from_secs(self.0)
-    }
+    pub copy struct ConnectRetryMaxDelaySecs(u64, env="CONNECT_RETRY_MAX_DELAY_SECS");
 }
 
 #[derive(Default, Clone)]
@@ -94,7 +89,7 @@ pub struct Builder {
     pub commit_strategy: Option<CommitStrategy>,
     pub abort_connect_on_auth_error: Option<AbortConnectOnAuthError>,
     pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
-    pub connect_retry_delay: Option<ConnectRetryDelaySecs>,
+    pub connect_retry_max_delay: Option<ConnectRetryMaxDelaySecs>,
 }
 
 impl Builder {
@@ -151,9 +146,9 @@ impl Builder {
                 AbortConnectOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.connect_retry_delay.is_none() {
-            self.connect_retry_delay =
-                ConnectRetryDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
+        if self.connect_retry_max_delay.is_none() {
+            self.connect_retry_max_delay =
+                ConnectRetryMaxDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())
@@ -174,18 +169,24 @@ impl Builder {
         self
     }
 
-    pub fn tick_interval(mut self, tick_interval: TickIntervalSecs) -> Self {
-        self.tick_interval = Some(tick_interval);
+    pub fn tick_interval<T: Into<TickIntervalSecs>>(mut self, tick_interval: T) -> Self {
+        self.tick_interval = Some(tick_interval.into());
         self
     }
 
-    pub fn inactivity_timeout(mut self, inactivity_timeout: InactivityTimeoutSecs) -> Self {
-        self.inactivity_timeout = Some(inactivity_timeout);
+    pub fn inactivity_timeout<T: Into<InactivityTimeoutSecs>>(
+        mut self,
+        inactivity_timeout: T,
+    ) -> Self {
+        self.inactivity_timeout = Some(inactivity_timeout.into());
         self
     }
 
-    pub fn stream_dead_timeout(mut self, stream_dead_timeout: StreamDeadTimeoutSecs) -> Self {
-        self.stream_dead_timeout = Some(stream_dead_timeout);
+    pub fn stream_dead_timeout<T: Into<StreamDeadTimeoutSecs>>(
+        mut self,
+        stream_dead_timeout: T,
+    ) -> Self {
+        self.stream_dead_timeout = Some(stream_dead_timeout.into());
         self
     }
 
@@ -199,25 +200,28 @@ impl Builder {
         self
     }
 
-    pub fn abort_connect_on_auth_error(
+    pub fn abort_connect_on_auth_error<T: Into<AbortConnectOnAuthError>>(
         mut self,
-        abort_connect_on_auth_error: AbortConnectOnAuthError,
+        abort_connect_on_auth_error: T,
     ) -> Self {
-        self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
+        self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error.into());
         self
     }
 
-    pub fn abort_connect_on_subscription_not_found(
+    pub fn abort_connect_on_subscription_not_found<T: Into<AbortConnectOnSubscriptionNotFound>>(
         mut self,
-        abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
+        abort_connect_on_subscription_not_found: T,
     ) -> Self {
         self.abort_connect_on_subscription_not_found =
-            Some(abort_connect_on_subscription_not_found);
+            Some(abort_connect_on_subscription_not_found.into());
         self
     }
 
-    pub fn connect_retry_delay(mut self, connect_retry_delay: ConnectRetryDelaySecs) -> Self {
-        self.connect_retry_delay = Some(connect_retry_delay);
+    pub fn connect_retry_max_delay<T: Into<ConnectRetryMaxDelaySecs>>(
+        mut self,
+        connect_retry_max_delay: T,
+    ) -> Self {
+        self.connect_retry_max_delay = Some(connect_retry_max_delay.into());
         self
     }
 
@@ -274,19 +278,19 @@ impl Builder {
             commit_strategy
         } else {
             let timeout = stream_parameters.effective_commit_timeout_secs();
-            let timeout = timeout / 2;
-            let timeout = if timeout == 0 { 1 } else { timeout };
+            let commit_after = timeout / 6;
+            let commit_after = std::cmp::max(1, commit_after);
             let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
-            let max_uncommitted_events = max_uncommitted_events / 2;
-            let max_uncommitted_events = if max_uncommitted_events == 0 {
-                1
-            } else {
-                max_uncommitted_events
-            };
+            let effective_events_limit = max_uncommitted_events / 2;
+            let effective_events_limit = std::cmp::max(1, effective_events_limit);
+            let batch_limit = stream_parameters.effective_batch_limit();
+            let effective_batches_limit =
+                stream_parameters.effective_batch_limit() / max_uncommitted_events;
+            let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
             CommitStrategy::After {
-                seconds: Some(timeout),
-                batches: None,
-                events: Some(max_uncommitted_events),
+                seconds: Some(commit_after),
+                batches: Some(effective_batches_limit),
+                events: Some(effective_events_limit),
             }
         };
 
@@ -298,7 +302,7 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_else(|| true.into());
 
-        let connect_retry_delay = self.connect_retry_delay.unwrap_or_else(|| 1.into());
+        let connect_retry_max_delay = self.connect_retry_max_delay.unwrap_or_else(|| 10.into());
 
         let config = Config {
             subscription_id,
@@ -311,7 +315,7 @@ impl Builder {
             commit_strategy,
             abort_connect_on_auth_error,
             abort_connect_on_subscription_not_found,
-            connect_retry_delay,
+            connect_retry_max_delay,
         };
 
         Ok(config)

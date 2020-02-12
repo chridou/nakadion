@@ -58,7 +58,12 @@ where
             _ => panic!("not supported"),
         }
     }
+}
 
+impl<H, C> SleepingDispatcher<H, C>
+where
+    H: BatchHandler,
+{
     pub fn tick(&mut self) {
         match self {
             SleepingDispatcher::SingleWorker(ref mut dispatcher) => dispatcher.tick(),
@@ -153,7 +158,10 @@ mod dispatch_single {
                             .logger()
                             .warn(format_args!("Committer exited with error: {}", err));
                     };
-                    worker_result
+                    worker_result.map(|mut w| {
+                        w.tick();
+                        w
+                    })
                 }
                 .boxed()
             };
@@ -164,12 +172,16 @@ mod dispatch_single {
                 stream_state,
             }
         }
+    }
 
+    impl<H, C> Sleeping<H, C>
+    where
+        H: BatchHandler,
+    {
         pub fn tick(&mut self) {
             self.worker.tick()
         }
     }
-
     pub(crate) struct Active<'a, H, C> {
         stream_state: StreamState,
         api_client: C,

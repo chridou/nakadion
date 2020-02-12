@@ -29,7 +29,7 @@ use crate::logging::Logger;
 pub use crate::logging::{DevNullLogger, LoggingAdapter, StdLogger};
 pub use config_types::{
     AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder, CommitStrategy,
-    ConnectRetryDelaySecs, DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs,
+    ConnectRetryMaxDelaySecs, DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs,
     TickIntervalSecs,
 };
 pub use error::*;
@@ -201,5 +201,5 @@ pub(crate) struct Config {
     pub commit_strategy: CommitStrategy,
     pub abort_connect_on_auth_error: AbortConnectOnAuthError,
     pub abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
-    pub connect_retry_delay: ConnectRetryDelaySecs,
+    pub connect_retry_max_delay: ConnectRetryMaxDelaySecs,
 }

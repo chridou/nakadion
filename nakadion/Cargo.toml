@@ -15,7 +15,7 @@ edition = "2018"
 nakadi-types = { path = "../nakadi-types", version="^0.20"}
 futures = "0.3"
 pin-utils = "0.1.0-alpha.4"
-tokio = {version = "0.2", features = ["fs", "sync", "time", "stream"] }
+tokio = {version = "0.2", features = ["fs", "sync", "time", "stream", "rt-core"] }
 bytes = "0.5"
 uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.1", features = ["serde"] }

@@ -186,7 +186,7 @@ pub struct Subscription {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Clone, Serialize)]
 pub struct SubscriptionInput {
-    /// Should not be set when creating a new subscription. Only when updating (e.g. Auth)
+    /// Must be set **if and only** if an updating operation is performed(e.g. Auth)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<SubscriptionId>,
     pub owning_application: OwningApplication,
@@ -556,16 +556,21 @@ impl StreamParameters {
         Ok(())
     }
 
-    /// Returns the configured value or the default
+    /// Returns the configured value or the Nakadi default
     pub fn effective_commit_timeout_secs(&self) -> u32 {
         self.commit_timeout.map(|s| s.into_inner()).unwrap_or(60)
     }
 
-    /// Returns the configured value or the default
+    /// Returns the configured value or the Nakadi default
     pub fn effective_max_uncommitted_events(&self) -> u32 {
         self.max_uncommitted_events
             .map(|s| s.into_inner())
             .unwrap_or(10)
+    }
+
+    /// Returns the configured value or the Nakadi default
+    pub fn effective_batch_limit(&self) -> u32 {
+        self.batch_limit.map(|s| s.into_inner()).unwrap_or(1)
     }
 }
 

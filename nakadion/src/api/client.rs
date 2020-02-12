@@ -442,6 +442,15 @@ impl SubscriptionApi for ApiClient {
         input: &SubscriptionInput,
         flow_id: FlowId,
     ) -> ApiFuture<Subscription> {
+        if let Some(subscription_id) = input.id {
+            return async move {
+                Err(NakadiApiError::other().with_context(format!(
+                    "to create a subscription `input` must not have a `SubscriptionId`(id={}) set",
+                    subscription_id
+                )))
+            }
+            .boxed();
+        }
         let url = self.urls().subscriptions_create_subscription();
         let serialized = serde_json::to_vec(input).unwrap();
 
