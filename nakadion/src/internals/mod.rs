@@ -114,6 +114,10 @@ impl StreamState {
         self.stream_id
     }
 
+    pub fn subscription_id(&self) -> SubscriptionId {
+        self.config().subscription_id
+    }
+
     pub fn logger(&self) -> &Logger {
         &self.logger
     }

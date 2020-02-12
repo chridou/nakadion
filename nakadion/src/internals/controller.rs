@@ -28,6 +28,12 @@ where
 
     pub(crate) async fn start(self) -> Result<(), ConsumerError> {
         let params = self.params;
+
+        params.consumer_state.logger.debug(format_args!(
+            "Commit strategy: {:?}",
+            params.consumer_state.config()
+        ));
+
         create_background_task(params).await
     }
 }

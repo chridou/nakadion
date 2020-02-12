@@ -46,7 +46,11 @@ impl Consumer {
     }
 
     pub fn builder_from_env() -> Result<Builder, Error> {
-        unimplemented!()
+        Builder::try_from_env()
+    }
+
+    pub fn builder_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Builder, Error> {
+        Builder::try_from_env_prefixed(prefix)
     }
 
     pub fn start(self) -> (ConsumerHandle, ConsumerTask) {
@@ -189,7 +193,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct Config {
     pub subscription_id: SubscriptionId,
     pub stream_parameters: StreamParameters,

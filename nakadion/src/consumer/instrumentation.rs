@@ -1,6 +1,6 @@
 pub trait Instrumented {}
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Instrumentation {
     Off,
 }
