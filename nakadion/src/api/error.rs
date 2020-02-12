@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 
 use http::StatusCode;
@@ -9,7 +9,7 @@ use nakadi_types::FlowId;
 #[derive(Debug)]
 pub struct NakadiApiError {
     context: Option<String>,
-    cause: Option<Box<dyn Error + Send + 'static>>,
+    cause: Option<Box<dyn StdError + Send + 'static>>,
     kind: NakadiApiErrorKind,
     flow_id: Option<FlowId>,
 }
@@ -48,7 +48,7 @@ impl NakadiApiError {
 
     pub fn caused_by<E>(mut self, err: E) -> Self
     where
-        E: Error + Send + 'static,
+        E: StdError + Send + 'static,
     {
         self.cause = Some(Box::new(err));
         self
@@ -136,9 +136,9 @@ impl NakadiApiError {
     }
 }
 
-impl Error for NakadiApiError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause.as_ref().map(|p| &**p as &dyn Error)
+impl StdError for NakadiApiError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.cause.as_ref().map(|p| &**p as &dyn StdError)
     }
 }
 
@@ -162,7 +162,7 @@ impl fmt::Display for NakadiApiError {
     }
 }
 
-fn add_causes(err: &dyn Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+fn add_causes(err: &dyn StdError, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, " - Caused by: {}", err)?;
     if let Some(source) = err.source() {
         add_causes(source, f)?
@@ -313,8 +313,8 @@ impl fmt::Display for IoError {
     }
 }
 
-impl Error for IoError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl StdError for IoError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }

@@ -4,7 +4,7 @@ extern crate metrix;
 pub(crate) mod env_vars;
 
 pub use nakadi_types;
-pub(crate) use nakadi_types::GenericError;
+pub(crate) use nakadi_types::Error;
 
 pub mod api;
 pub mod auth;

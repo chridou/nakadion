@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 use std::sync::Arc;
 
@@ -95,8 +95,8 @@ pub enum PublishFailure {
     Other(NakadiApiError),
 }
 
-impl Error for PublishFailure {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl StdError for PublishFailure {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             PublishFailure::Other(err) => err.source(),
             _ => None,

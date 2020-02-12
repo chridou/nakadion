@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error::Error as StdError;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::env_vars::NAKADION_PREFIX;
 use crate::nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
-use crate::nakadi_types::{FlowId, GenericError, NakadiBaseUrl};
+use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
 
@@ -35,13 +35,13 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn from_env() -> Result<Self, GenericError> {
+    pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.nakadi_base_url = NakadiBaseUrl::try_from_env()?;
 
         Ok(me)
     }
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         let mut me = Self::default();
         me.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
 
@@ -59,7 +59,7 @@ impl Builder {
         mut self,
         dispatch_http_request: D,
         access_token_provider: P,
-    ) -> Result<ApiClient, GenericError>
+    ) -> Result<ApiClient, Error>
     where
         D: DispatchHttpRequest + Send + Sync + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
@@ -67,7 +67,7 @@ impl Builder {
         let nakadi_base_url = if let Some(base_url) = self.nakadi_base_url.take() {
             base_url
         } else {
-            return Err(GenericError::new("'nakadi_base_url' is missing"));
+            return Err(Error::new("'nakadi_base_url' is missing"));
         };
 
         Ok(ApiClient::new(
@@ -80,7 +80,7 @@ impl Builder {
     pub fn finish_from_env_with_dispatcher<D>(
         self,
         dispatch_http_request: D,
-    ) -> Result<ApiClient, GenericError>
+    ) -> Result<ApiClient, Error>
     where
         D: DispatchHttpRequest + Send + Sync + 'static,
     {
@@ -91,7 +91,7 @@ impl Builder {
         mut self,
         prefix: T,
         dispatch_http_request: D,
-    ) -> Result<ApiClient, GenericError>
+    ) -> Result<ApiClient, Error>
     where
         T: AsRef<str>,
         D: DispatchHttpRequest + Send + Sync + 'static,
@@ -107,7 +107,7 @@ impl Builder {
 
 #[cfg(feature = "reqwest")]
 impl Builder {
-    pub fn finish<P>(self, access_token_provider: P) -> Result<ApiClient, GenericError>
+    pub fn finish<P>(self, access_token_provider: P) -> Result<ApiClient, Error>
     where
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
@@ -115,11 +115,11 @@ impl Builder {
         self.finish_with(dispatch_http_request, access_token_provider)
     }
 
-    pub fn finish_from_env(self) -> Result<ApiClient, GenericError> {
+    pub fn finish_from_env(self) -> Result<ApiClient, Error> {
         self.finish_from_env_prefixed(NAKADION_PREFIX)
     }
 
-    pub fn finish_from_env_prefixed<T>(self, prefix: T) -> Result<ApiClient, GenericError>
+    pub fn finish_from_env_prefixed<T>(self, prefix: T) -> Result<ApiClient, Error>
     where
         T: AsRef<str>,
     {

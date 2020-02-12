@@ -14,7 +14,7 @@ use crate::internals::{
 };
 pub use crate::nakadi_types::{
     model::subscription::{StreamParameters, SubscriptionId},
-    GenericError,
+    Error,
 };
 
 mod error;
@@ -53,7 +53,7 @@ impl Consumer {
         Builder::default()
     }
 
-    pub fn builder_from_env() -> Result<Builder, GenericError> {
+    pub fn builder_from_env() -> Result<Builder, Error> {
         unimplemented!()
     }
 
@@ -143,7 +143,7 @@ impl Builder {
         api_client: C,
         handler_factory: HF,
         logs: L,
-    ) -> Result<Consumer, GenericError>
+    ) -> Result<Consumer, Error>
     where
         C: NakadionEssentials + Send + Sync + 'static + Clone,
         HF: BatchHandlerFactory,
@@ -164,11 +164,11 @@ impl Builder {
         })
     }
 
-    fn config(self) -> Result<Config, GenericError> {
+    fn config(self) -> Result<Config, Error> {
         let subscription_id = if let Some(subscription_id) = self.subscription_id {
             subscription_id
         } else {
-            return Err(GenericError::new("`subscription_id` is missing"));
+            return Err(Error::new("`subscription_id` is missing"));
         };
 
         let stream_parameters = self

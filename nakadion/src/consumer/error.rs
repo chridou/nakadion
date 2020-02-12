@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 
 /// Always leads to Nakadion shutting down
@@ -6,7 +6,7 @@ use std::fmt;
 pub struct ConsumerError {
     message: Option<String>,
     kind: ConsumerErrorKind,
-    source: Option<Box<dyn Error + Send + 'static>>,
+    source: Option<Box<dyn StdError + Send + 'static>>,
 }
 
 impl ConsumerError {
@@ -31,7 +31,7 @@ impl ConsumerError {
         self
     }
 
-    pub fn with_source<E: Error + Send + 'static>(mut self, source: E) -> Self {
+    pub fn with_source<E: StdError + Send + 'static>(mut self, source: E) -> Self {
         self.source = Some(Box::new(source));
         self
     }
@@ -50,9 +50,11 @@ impl ConsumerError {
     }
 }
 
-impl Error for ConsumerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source.as_ref().map(|e| &**e as &(dyn Error + 'static))
+impl StdError for ConsumerError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source
+            .as_ref()
+            .map(|e| &**e as &(dyn StdError + 'static))
     }
 }
 
@@ -75,8 +77,8 @@ impl From<ConsumerErrorKind> for ConsumerError {
     }
 }
 
-impl From<nakadi_types::GenericError> for ConsumerError {
-    fn from(err: nakadi_types::GenericError) -> Self {
+impl From<nakadi_types::Error> for ConsumerError {
+    fn from(err: nakadi_types::Error) -> Self {
         Self {
             message: Some(err.into_inner()),
             kind: ConsumerErrorKind::Other,

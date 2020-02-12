@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 
 use super::IoError;
@@ -20,7 +20,7 @@ pub trait DispatchHttpRequest {
 #[derive(Debug)]
 pub struct RemoteCallError {
     message: Option<String>,
-    cause: Option<Box<dyn Error + Send + 'static>>,
+    cause: Option<Box<dyn StdError + Send + 'static>>,
     detail: RemoteCallErrorDetail,
 }
 
@@ -46,7 +46,7 @@ impl RemoteCallError {
         self
     }
 
-    pub fn with_cause<E: Error + Send + 'static>(mut self, cause: E) -> Self {
+    pub fn with_cause<E: StdError + Send + 'static>(mut self, cause: E) -> Self {
         self.cause = Some(Box::new(cause));
         self
     }
@@ -89,9 +89,9 @@ impl fmt::Display for RemoteCallError {
     }
 }
 
-impl Error for RemoteCallError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.cause.as_ref().map(|e| &**e as &dyn Error)
+impl StdError for RemoteCallError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.cause.as_ref().map(|e| &**e as &dyn StdError)
     }
 }
 

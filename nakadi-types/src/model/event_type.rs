@@ -1,5 +1,5 @@
 //! Types for defining and monitoring event types
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
@@ -11,7 +11,7 @@ use crate::env_vars;
 
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{CursorOffset, PartitionId};
-use crate::GenericError;
+use crate::Error;
 
 /// Name of an EventType. The name is constrained by a regular expression.
 ///
@@ -23,44 +23,7 @@ use crate::GenericError;
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct EventTypeName(String);
-
-impl EventTypeName {
-    pub fn new(v: impl Into<String>) -> Self {
-        EventTypeName(v.into())
-    }
-
-    env_funs!("EVENT_TYPE");
-
-    pub fn as_str(&self) -> &str {
-        &self.0.as_ref()
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-}
-
-impl fmt::Display for EventTypeName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl AsRef<str> for EventTypeName {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for EventTypeName {
-    type Err = Box<dyn Error + 'static>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(EventTypeName(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse event type name: {}", err))
-        })?))
-    }
-}
+env_extend_string_type!(EventTypeName, "EVENT_TYPE");
 
 /// Defines the category of this EventType.
 ///
@@ -154,27 +117,7 @@ impl Default for CompatibilityMode {
 /// Part of `PartitionKeyFields`
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PartitionKey(String);
-
-impl PartitionKey {
-    pub fn new(v: impl Into<String>) -> Self {
-        PartitionKey(v.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0.as_ref()
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-}
-
-impl fmt::Display for PartitionKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-        Ok(())
-    }
-}
+env_extend_string_type!(PartitionKey, "PARTITION_KEY");
 
 /// Required when 'partition_resolution_strategy' is set to ‘hash’. Must be absent otherwise.
 /// Indicates the fields used for evaluation the partition of Events of this type.

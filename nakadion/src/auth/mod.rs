@@ -1,7 +1,7 @@
 //! Optional OAUTH authorization for connecting to Nakadi
 //!
 use std::convert::AsRef;
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -13,7 +13,7 @@ use tokio::fs;
 use from_env;
 
 use crate::env_vars::*;
-pub(crate) use nakadi_types::GenericError;
+pub(crate) use nakadi_types::Error;
 
 pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;
 
@@ -51,11 +51,11 @@ impl AsRef<str> for AccessToken {
 }
 
 impl FromStr for AccessToken {
-    type Err = GenericError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(AccessToken(s.parse().map_err(|err| {
-            GenericError::new(format!("could not parse access token: {}", err))
+            Error::new(format!("could not parse access token: {}", err))
         })?))
     }
 }
@@ -92,7 +92,7 @@ impl AccessTokenProvider {
     /// 2. `FixedAccessTokenProvider`
     /// 3. `NoAuthAccessTokenProvider`
     /// 4. Fail
-    pub fn from_env() -> Result<Self, GenericError> {
+    pub fn from_env() -> Result<Self, Error> {
         Self::from_env_prefixed(NAKADION_PREFIX)
     }
 
@@ -106,7 +106,7 @@ impl AccessTokenProvider {
     /// 2. `FixedAccessTokenProvider`
     /// 3. `NoAuthAccessTokenProvider`
     /// 4. Fail
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         if let Ok(provider) = FileAccessTokenProvider::from_env_prefixed(prefix.as_ref()) {
             return Ok(Self::new(provider));
         }
@@ -119,9 +119,7 @@ impl AccessTokenProvider {
             return Ok(Self::new(provider));
         }
 
-        Err(GenericError::new(
-            "no access token provider could be initialized",
-        ))
+        Err(Error::new("no access token provider could be initialized"))
     }
 }
 
@@ -139,7 +137,7 @@ impl NoAuthAccessTokenProvider {
     ///
     /// The env var must exist and must be set to `true` to not make this
     /// function fail.
-    pub fn from_env() -> Result<Self, GenericError> {
+    pub fn from_env() -> Result<Self, Error> {
         Self::create(from_env!(postfix => ALLOW_NO_TOKEN_ENV_VAR)?)
     }
 
@@ -147,7 +145,7 @@ impl NoAuthAccessTokenProvider {
     ///
     /// The env var must exist and must be set to `true` to not make this
     /// function fail.
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         Self::create(from_env!(prefix => prefix.as_ref(), postfix => ALLOW_NO_TOKEN_ENV_VAR)?)
     }
 
@@ -155,15 +153,15 @@ impl NoAuthAccessTokenProvider {
     ///
     /// The env var must exist and must be set to `true` to not make this
     /// function fail.
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Error> {
         Self::create(from_env!(name.as_ref())?)
     }
 
-    fn create(allowed: bool) -> Result<Self, GenericError> {
+    fn create(allowed: bool) -> Result<Self, Error> {
         if allowed {
             Ok(Self)
         } else {
-            Err(GenericError::new("Using the 'NoAuthAccessTokenProvider' was not allowed explicitly via an environment variable."))
+            Err(Error::new("Using the 'NoAuthAccessTokenProvider' was not allowed explicitly via an environment variable."))
         }
     }
 }
@@ -198,7 +196,7 @@ impl FileAccessTokenProvider {
     /// in the env var `NAKADION_ACCESS_TOKEN_PATH`.
     ///
     /// The existence of the file at the given path is not checked.
-    pub fn from_env() -> Result<FileAccessTokenProvider, GenericError> {
+    pub fn from_env() -> Result<FileAccessTokenProvider, Error> {
         Ok(Self {
             path: from_env!(postfix => TOKEN_PATH_ENV_VAR)?,
         })
@@ -211,7 +209,7 @@ impl FileAccessTokenProvider {
     /// in the env var `<prefix>_ACCESS_TOKEN_PATH`.
     ///
     /// The existence of the file at the given path is not checked.
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         Ok(Self {
             path: from_env!(prefix => prefix.as_ref(), postfix => TOKEN_PATH_ENV_VAR)?,
         })
@@ -224,7 +222,7 @@ impl FileAccessTokenProvider {
     /// in the env var `name`.
     ///
     /// The existence of the file at the given path is not checked.
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, GenericError> {
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Error> {
         Ok(Self {
             path: from_env!(name.as_ref())?,
         })
@@ -265,7 +263,7 @@ impl FixedAccessTokenProvider {
 
     /// Create a new `FixedAccessTokenProvider` initializes the token with the
     /// the value of the given env var `NAKADION_ACCESS_TOKEN_FIXED`.
-    pub fn from_env() -> Result<Self, GenericError> {
+    pub fn from_env() -> Result<Self, Error> {
         Ok(Self {
             token: from_env!(postfix => TOKEN_FIXED_ENV_VAR)?,
         })
@@ -273,7 +271,7 @@ impl FixedAccessTokenProvider {
 
     /// Create a new `FixedAccessTokenProvider` initializes the token with the
     /// the value of the given env var `<prefix>_ACCESS_TOKEN_FIXED`.
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, GenericError> {
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         Ok(Self {
             token: from_env!(prefix => prefix.as_ref() , postfix => TOKEN_FIXED_ENV_VAR)?,
         })
@@ -281,7 +279,7 @@ impl FixedAccessTokenProvider {
 
     /// Create a new `FixedAccessTokenProvider` initializes the token with the
     /// the value of the given env var `name`.
-    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn Error>> {
+    pub fn from_env_named<T: AsRef<str>>(name: T) -> Result<Self, Box<dyn StdError>> {
         Ok(Self {
             token: from_env!(name.as_ref())?,
         })
@@ -308,8 +306,8 @@ impl fmt::Display for TokenError {
     }
 }
 
-impl Error for TokenError {
-    fn cause(&self) -> Option<&dyn Error> {
+impl StdError for TokenError {
+    fn cause(&self) -> Option<&dyn StdError> {
         None
     }
 }

@@ -22,16 +22,16 @@ macro_rules! from_env {
     ($ENV_VAR_NAME:expr) => {
         match std::env::var($ENV_VAR_NAME) {
             Ok(value) => value.parse().map_err(|err| {
-                $crate::GenericError::new(format!(
+                $crate::Error::new(format!(
                     "could not parse env var '{}': {}",
                     $ENV_VAR_NAME, err
                 ))
             }),
-            Err(std::env::VarError::NotPresent) => Err($crate::GenericError::new(format!(
+            Err(std::env::VarError::NotPresent) => Err($crate::Error::new(format!(
                 "env var '{}' not found",
                 $ENV_VAR_NAME
             ))),
-            Err(std::env::VarError::NotUnicode(_)) => Err($crate::GenericError::new(format!(
+            Err(std::env::VarError::NotUnicode(_)) => Err($crate::Error::new(format!(
                 "env var '{}' is not unicode",
                 $ENV_VAR_NAME
             ))),

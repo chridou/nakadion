@@ -14,7 +14,7 @@ use crate::nakadi_types::{
         partition::PartitionId,
         subscription::{StreamId, SubscriptionCursor, SubscriptionId},
     },
-    FlowId, GenericError,
+    Error, FlowId,
 };
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
@@ -39,10 +39,7 @@ where
     pub fn start(
         api_client: C,
         stream_state: StreamState,
-    ) -> (
-        UnboundedSender<CommitData>,
-        JoinHandle<Result<(), GenericError>>,
-    ) {
+    ) -> (UnboundedSender<CommitData>, JoinHandle<Result<(), Error>>) {
         let (tx, to_commit) = unbounded_channel();
 
         let join_handle = spawn(run_committer(
@@ -67,7 +64,7 @@ async fn run_committer<C>(
     stream_state: StreamState,
     api_client: C,
     commit_after: Duration,
-) -> Result<(), GenericError>
+) -> Result<(), Error>
 where
     C: SubscriptionCommitApi + Send + 'static,
 {
@@ -192,7 +189,7 @@ async fn commit_due_cursors<C>(
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     mut pending: PendingCursors,
-) -> Result<PendingCursors, GenericError>
+) -> Result<PendingCursors, Error>
 where
     C: SubscriptionCommitApi + Send + 'static,
 {
@@ -241,7 +238,7 @@ async fn commit<C>(
     stream_id: StreamId,
     cursors: &[SubscriptionCursor],
     flow_id: FlowId,
-) -> Result<bool, GenericError>
+) -> Result<bool, Error>
 where
     C: SubscriptionCommitApi + Send + 'static,
 {
@@ -252,7 +249,7 @@ where
         Ok(results) => Ok(true),
         Err(err) => {
             if err.is_client_error() {
-                Err(GenericError::new(err))
+                Err(Error::new(err))
             } else {
                 Ok(false)
             }

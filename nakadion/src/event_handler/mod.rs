@@ -8,7 +8,7 @@ use crate::nakadi_types::model::{
     event_type::EventTypeName, partition::PartitionId, subscription::SubscriptionCursor,
 };
 
-pub use crate::nakadi_types::GenericError;
+pub use crate::nakadi_types::Error;
 
 pub struct BatchMeta<'a> {
     pub cursor: &'a SubscriptionCursor,
@@ -115,8 +115,5 @@ impl HandlerAssignment {
 pub trait BatchHandlerFactory: Send + Sync + 'static {
     type Handler: BatchHandler;
 
-    fn handler(
-        &self,
-        assignment: &HandlerAssignment,
-    ) -> BoxFuture<Result<Self::Handler, GenericError>>;
+    fn handler(&self, assignment: &HandlerAssignment) -> BoxFuture<Result<Self::Handler, Error>>;
 }

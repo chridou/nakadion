@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 
 const OBJ_OPEN: u8 = b'{';
@@ -212,8 +212,8 @@ where
     }
 }
 
-impl Error for ParseLineError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl StdError for ParseLineError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }
