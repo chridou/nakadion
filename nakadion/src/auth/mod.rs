@@ -10,9 +10,7 @@ use std::sync::Arc;
 use futures::future::{self, BoxFuture, FutureExt, TryFutureExt};
 use tokio::fs;
 
-use from_env;
-
-use crate::env_vars::*;
+use crate::helpers::*;
 pub(crate) use nakadi_types::Error;
 
 pub type TokenFuture<'a> = BoxFuture<'a, Result<Option<AccessToken>, TokenError>>;

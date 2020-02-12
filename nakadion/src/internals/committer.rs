@@ -17,8 +17,7 @@ use crate::nakadi_types::{
     Error, FlowId,
 };
 
-use crate::api::{NakadiApiError, SubscriptionCommitApi};
-use crate::consumer::ConsumerError;
+use crate::api::SubscriptionCommitApi;
 use crate::internals::StreamState;
 
 pub struct CommitData {
@@ -28,18 +27,16 @@ pub struct CommitData {
     pub events_hint: Option<usize>,
 }
 
-pub struct Committer<C> {
-    api_client: C,
-}
+pub(crate) struct Committer;
 
-impl<C> Committer<C>
-where
-    C: SubscriptionCommitApi + Send + Sync + 'static,
-{
-    pub fn start(
+impl Committer {
+    pub fn start<C>(
         api_client: C,
         stream_state: StreamState,
-    ) -> (UnboundedSender<CommitData>, JoinHandle<Result<(), Error>>) {
+    ) -> (UnboundedSender<CommitData>, JoinHandle<Result<(), Error>>)
+    where
+        C: SubscriptionCommitApi + Send + Sync + 'static,
+    {
         let (tx, to_commit) = unbounded_channel();
 
         let join_handle = spawn(run_committer(
@@ -72,8 +69,11 @@ where
         .logger()
         .debug(format_args!("Committer starting"));
 
-    let commit_timeout =
-        safe_commit_timeout(stream_state.stream_params.effective_commit_timeout_secs());
+    let commit_timeout = safe_commit_timeout(
+        stream_state
+            .stream_parameters()
+            .effective_commit_timeout_secs(),
+    );
     let commit_interval = Duration::from_millis(200);
     let mut pending = PendingCursors::new();
     let mut next_commit_attempt_at = Instant::now() + commit_interval;
@@ -101,7 +101,7 @@ where
         if next_commit_attempt_at <= now {
             pending = match commit_due_cursors(
                 &api_client,
-                stream_state.subscription_id(),
+                stream_state.config().subscription_id,
                 stream_state.stream_id(),
                 pending,
             )
@@ -134,7 +134,7 @@ where
 
         match commit(
             &api_client,
-            stream_state.subscription_id(),
+            stream_state.config().subscription_id,
             stream_state.stream_id(),
             &cursors,
             FlowId::default(),

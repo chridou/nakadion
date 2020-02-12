@@ -250,8 +250,8 @@ enum NakadiApiErrorKind {
 }
 
 impl NakadiApiErrorKind {
-    pub fn status(&self) -> Option<StatusCode> {
-        match *self {
+    pub fn status(self) -> Option<StatusCode> {
+        match self {
             NakadiApiErrorKind::ClientError(status) => Some(status),
             NakadiApiErrorKind::ServerError(status) => Some(status),
             NakadiApiErrorKind::Io => None,

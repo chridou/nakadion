@@ -47,6 +47,7 @@ impl LineItems {
         pos_to_bytes(self.cursor.line_position, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn cursor_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.cursor.line_position, bytes)
     }
@@ -55,10 +56,12 @@ impl LineItems {
         self.events.map(|pos| pos_to_bytes(pos, bytes))
     }
 
+    #[allow(dead_code)]
     pub fn events_str<'a>(&self, bytes: &'a [u8]) -> Option<&'a str> {
         self.events.map(|pos| pos_to_str(pos, bytes))
     }
 
+    #[allow(dead_code)]
     pub fn info_bytes(&self, bytes: &Bytes) -> Option<Bytes> {
         self.info.map(|pos| pos_to_bytes(pos, bytes))
     }
@@ -67,6 +70,7 @@ impl LineItems {
         self.info.map(|pos| pos_to_str(pos, bytes))
     }
 
+    #[allow(dead_code)]
     pub fn cursor(&self) -> &Cursor {
         &self.cursor
     }
@@ -75,6 +79,7 @@ impl LineItems {
         self.events.is_some()
     }
 
+    #[allow(dead_code)]
     pub fn has_info(&self) -> bool {
         self.info.is_some()
     }
@@ -129,48 +134,58 @@ impl Cursor {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn self_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.line_position, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn self_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.line_position, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn partition_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.partition, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn partition_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.partition, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn event_type_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.event_type, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn event_type_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.event_type, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn offset_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.offset, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn offset_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.offset, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn cursor_token_bytes(&self, bytes: &Bytes) -> Bytes {
         pos_to_bytes(self.cursor_token, bytes)
     }
 
+    #[allow(dead_code)]
     pub fn cursor_token_str<'a>(&self, bytes: &'a [u8]) -> &'a str {
         pos_to_str(self.cursor_token, bytes)
     }
 }
 
-fn pos_to_str<'a>(pos: (usize, usize), bytes: &'a [u8]) -> &'a str {
+fn pos_to_str(pos: (usize, usize), bytes: &[u8]) -> &str {
     let (a, b) = pos;
     let slice = &bytes[a..b];
     unsafe { std::str::from_utf8_unchecked(slice) }

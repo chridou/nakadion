@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
-use crate::logging::{Logger, LoggingContext};
+use crate::consumer::Config;
+use crate::logging::Logger;
 use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
 
 pub mod committer;
@@ -10,23 +11,18 @@ pub mod dispatcher;
 pub mod worker;
 
 #[derive(Clone)]
-pub struct ConsumerState {
+pub(crate) struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
-    stream_params: Arc<StreamParameters>,
-    subscription_id: SubscriptionId,
+    config: Arc<Config>,
     logger: Logger,
 }
 
 impl ConsumerState {
-    pub fn new(
-        subscription_id: SubscriptionId,
-        stream_params: StreamParameters,
-        logger: Logger,
-    ) -> Self {
+    pub fn new(config: Config, logger: Logger) -> Self {
+        let subscription_id = config.subscription_id;
         Self {
             is_globally_cancelled: Arc::new(AtomicBool::new(false)),
-            stream_params: Arc::new(stream_params),
-            subscription_id,
+            config: Arc::new(config),
             logger: logger.with_subscription_id(subscription_id),
         }
     }
@@ -34,8 +30,7 @@ impl ConsumerState {
     pub fn stream_state(&self, stream_id: StreamId) -> StreamState {
         StreamState::new(
             stream_id,
-            self.subscription_id,
-            Arc::clone(&self.stream_params),
+            Arc::clone(&self.config),
             Arc::downgrade(&self.is_globally_cancelled),
             self.logger.with_stream_id(stream_id),
         )
@@ -50,11 +45,15 @@ impl ConsumerState {
     }
 
     pub fn subscription_id(&self) -> SubscriptionId {
-        self.subscription_id
+        self.config().subscription_id
     }
 
-    pub fn stream_params(&self) -> &StreamParameters {
-        &self.stream_params
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn stream_parameters(&self) -> &StreamParameters {
+        &self.config().stream_parameters
     }
 
     pub fn logger(&self) -> &Logger {
@@ -63,10 +62,9 @@ impl ConsumerState {
 }
 
 #[derive(Clone)]
-pub struct StreamState {
+pub(crate) struct StreamState {
     stream_id: StreamId,
-    subscription_id: SubscriptionId,
-    stream_params: Arc<StreamParameters>,
+    config: Arc<Config>,
     is_cancelled: Arc<AtomicBool>,
     is_globally_cancelled: Weak<AtomicBool>,
     logger: Logger,
@@ -75,16 +73,14 @@ pub struct StreamState {
 impl StreamState {
     pub fn new(
         stream_id: StreamId,
-        subscription_id: SubscriptionId,
-        stream_params: Arc<StreamParameters>,
+        config: Arc<Config>,
         is_globally_cancelled: Weak<AtomicBool>,
         logger: Logger,
     ) -> Self {
         Self {
             stream_id,
-            subscription_id,
+            config,
             is_cancelled: Arc::new(AtomicBool::new(false)),
-            stream_params,
             is_globally_cancelled,
             logger,
         }
@@ -106,16 +102,16 @@ impl StreamState {
         self.is_cancelled.store(true, Ordering::SeqCst)
     }
 
-    pub fn subscription_id(&self) -> SubscriptionId {
-        self.subscription_id
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn stream_parameters(&self) -> &StreamParameters {
+        &self.config().stream_parameters
     }
 
     pub fn stream_id(&self) -> StreamId {
         self.stream_id
-    }
-
-    pub fn stream_params(&self) -> &StreamParameters {
-        &self.stream_params
     }
 
     pub fn logger(&self) -> &Logger {

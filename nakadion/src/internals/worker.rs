@@ -19,7 +19,7 @@ pub enum WorkerMessage {
 
 pub struct Worker;
 impl Worker {
-    pub fn new<H: BatchHandler>(
+    pub(crate) fn sleeping<H: BatchHandler>(
         handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         assignment: HandlerAssignment,
     ) -> SleepingWorker<H> {
@@ -29,7 +29,7 @@ impl Worker {
     }
 }
 
-pub struct SleepingWorker<H> {
+pub(crate) struct SleepingWorker<H> {
     handler_slot: HandlerSlot<H>,
 }
 
@@ -55,16 +55,12 @@ where
         ActiveWorker { join_handle }
     }
 
-    pub fn assignment(&self) -> &HandlerAssignment {
-        &self.handler_slot.assignment
-    }
-
     pub fn tick(&mut self) {
         self.handler_slot.tick();
     }
 }
 
-pub struct ActiveWorker<H> {
+pub(crate) struct ActiveWorker<H> {
     join_handle: JoinHandle<Result<HandlerSlot<H>, ConsumerError>>,
 }
 
@@ -100,8 +96,8 @@ mod processor {
 
     use super::WorkerMessage;
 
-    pub fn start<H, S>(
-        mut batches: S,
+    pub(crate) fn start<H, S>(
+        batches: S,
         mut handler_slot: HandlerSlot<H>,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
@@ -229,7 +225,7 @@ mod processor {
         }
     }
 
-    pub struct HandlerSlot<H> {
+    pub(crate) struct HandlerSlot<H> {
         pub handler: Option<H>,
         pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         pub last_event_processed: Instant,
@@ -256,10 +252,10 @@ mod processor {
             }
         }
 
-        async fn process_batch<'a>(
+        async fn process_batch(
             &mut self,
             events: Bytes,
-            meta: BatchMeta<'a>,
+            meta: BatchMeta<'_>,
         ) -> Result<BatchPostAction, ConsumerError> {
             self.last_event_processed = Instant::now();
             self.notified_on_inactivity = false;

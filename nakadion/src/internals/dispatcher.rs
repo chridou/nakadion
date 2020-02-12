@@ -14,7 +14,7 @@ pub enum DispatcherMessage {
     Tick,
 }
 
-pub struct Dispatcher;
+pub(crate) struct Dispatcher;
 
 impl Dispatcher {
     pub fn sleeping<H, C>(
@@ -35,7 +35,7 @@ impl Dispatcher {
     }
 }
 
-pub enum SleepingDispatcher<H, C> {
+pub(crate) enum SleepingDispatcher<H, C> {
     SingleWorker(dispatch_single::Sleeping<H, C>),
 }
 
@@ -67,7 +67,7 @@ where
     }
 }
 
-pub enum ActiveDispatcher<'a, H, C> {
+pub(crate) enum ActiveDispatcher<'a, H, C> {
     SingleWorker(dispatch_single::Active<'a, H, C>),
 }
 
@@ -104,7 +104,7 @@ mod dispatch_single {
     pub struct Dispatcher;
 
     impl Dispatcher {
-        pub fn sleeping<H, C>(
+        pub(crate) fn sleeping<H, C>(
             handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
             api_client: C,
         ) -> Sleeping<H, C>
@@ -112,13 +112,13 @@ mod dispatch_single {
             H: BatchHandler,
             C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
         {
-            let worker = Worker::new(handler_factory, HandlerAssignment::Unspecified);
+            let worker = Worker::sleeping(handler_factory, HandlerAssignment::Unspecified);
 
             Sleeping { worker, api_client }
         }
     }
 
-    pub struct Sleeping<H, C> {
+    pub(crate) struct Sleeping<H, C> {
         worker: SleepingWorker<H>,
         api_client: C,
     }
@@ -170,7 +170,7 @@ mod dispatch_single {
         }
     }
 
-    pub struct Active<'a, H, C> {
+    pub(crate) struct Active<'a, H, C> {
         stream_state: StreamState,
         api_client: C,
         join: BoxFuture<'a, Result<SleepingWorker<H>, ConsumerError>>,

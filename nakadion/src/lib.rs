@@ -1,7 +1,7 @@
 #[cfg(feature = "metrix")]
 extern crate metrix;
 
-pub(crate) mod env_vars;
+pub(crate) mod helpers;
 
 pub use nakadi_types;
 pub(crate) use nakadi_types::Error;

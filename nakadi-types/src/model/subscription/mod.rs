@@ -560,6 +560,13 @@ impl StreamParameters {
     pub fn effective_commit_timeout_secs(&self) -> u32 {
         self.commit_timeout.map(|s| s.into_inner()).unwrap_or(60)
     }
+
+    /// Returns the configured value or the default
+    pub fn effective_max_uncommitted_events(&self) -> u32 {
+        self.max_uncommitted_events
+            .map(|s| s.into_inner())
+            .unwrap_or(10)
+    }
 }
 
 new_type! {

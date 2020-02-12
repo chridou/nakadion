@@ -10,7 +10,7 @@ use crate::nakadi_types::model::{
 //pub use logging_internal::*;
 
 #[derive(Clone)]
-pub struct Logger {
+pub(crate) struct Logger {
     context: Arc<LoggingContext>,
     logging_adapter: Arc<dyn LoggingAdapter>,
 }

@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-pub use std::time::Duration;
 
 use futures::future::{BoxFuture, FutureExt};
 
@@ -17,6 +16,7 @@ pub use crate::nakadi_types::{
     Error,
 };
 
+mod config_types;
 mod error;
 mod instrumentation;
 
@@ -27,21 +27,13 @@ pub use crate::logging::slog_adapter::SlogLogger;
 
 use crate::logging::Logger;
 pub use crate::logging::{DevNullLogger, LoggingAdapter, StdLogger};
+pub use config_types::{
+    AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder, CommitStrategy,
+    ConnectRetryDelaySecs, DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs,
+    TickIntervalSecs,
+};
 pub use error::*;
 pub use instrumentation::*;
-
-#[derive(Debug, Clone)]
-pub enum DispatchStrategy {
-    SingleWorker,
-    EventType,
-    EventTypePartition,
-}
-
-impl Default for DispatchStrategy {
-    fn default() -> Self {
-        DispatchStrategy::SingleWorker
-    }
-}
 
 #[derive(Clone)]
 pub struct Consumer {
@@ -68,11 +60,7 @@ impl Consumer {
             subscription_id
         ));
 
-        let consumer_state = ConsumerState::new(
-            subscription_id,
-            self.inner.config().stream_parameters.clone(),
-            logger,
-        );
+        let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
 
         let handle = ConsumerHandle {
             consumer_state: consumer_state.clone(),
@@ -93,113 +81,6 @@ impl Consumer {
         let join = ConsumerTask { inner: f.boxed() };
         (handle, join)
     }
-}
-
-#[derive(Default, Clone)]
-#[non_exhaustive]
-pub struct Builder {
-    pub subscription_id: Option<SubscriptionId>,
-    pub stream_parameters: Option<StreamParameters>,
-    pub instrumentation: Instrumentation,
-    pub tick_interval: Option<Duration>,
-    pub handler_inactivity_after: Option<Duration>,
-    pub stream_dead_after: Option<Duration>,
-    pub dispatch_strategy: DispatchStrategy,
-}
-
-impl Builder {
-    pub fn subscription_id(mut self, subscription_id: SubscriptionId) -> Self {
-        self.subscription_id = Some(subscription_id);
-        self
-    }
-
-    pub fn stream_parameters(mut self, params: StreamParameters) -> Self {
-        self.stream_parameters = Some(params);
-        self
-    }
-
-    pub fn instrumentation(mut self, instr: Instrumentation) -> Self {
-        self.instrumentation = instr;
-        self
-    }
-
-    pub fn tick_interval(mut self, tick_interval: Duration) -> Self {
-        self.tick_interval = Some(tick_interval);
-        self
-    }
-
-    pub fn handler_inactivity_after(mut self, handler_inactivity_after: Duration) -> Self {
-        self.handler_inactivity_after = Some(handler_inactivity_after);
-        self
-    }
-
-    pub fn stream_dead_after(mut self, stream_dead_after: Duration) -> Self {
-        self.stream_dead_after = Some(stream_dead_after);
-        self
-    }
-
-    pub fn finish_with<C, HF, L>(
-        self,
-        api_client: C,
-        handler_factory: HF,
-        logs: L,
-    ) -> Result<Consumer, Error>
-    where
-        C: NakadionEssentials + Send + Sync + 'static + Clone,
-        HF: BatchHandlerFactory,
-        HF::Handler: BatchHandler,
-        L: LoggingAdapter,
-    {
-        let config = self.config()?;
-
-        let inner = Inner {
-            config,
-            api_client,
-            handler_factory: Arc::new(handler_factory),
-            logging_adapter: Arc::new(logs),
-        };
-
-        Ok(Consumer {
-            inner: Arc::new(inner),
-        })
-    }
-
-    fn config(self) -> Result<Config, Error> {
-        let subscription_id = if let Some(subscription_id) = self.subscription_id {
-            subscription_id
-        } else {
-            return Err(Error::new("`subscription_id` is missing"));
-        };
-
-        let stream_parameters = self
-            .stream_parameters
-            .unwrap_or_else(StreamParameters::default);
-
-        let config = Config {
-            subscription_id,
-            stream_parameters,
-            instrumentation: self.instrumentation,
-            tick_interval: self.tick_interval.unwrap_or(Duration::from_secs(1)),
-            handler_inactivity_after: self
-                .handler_inactivity_after
-                .unwrap_or(Duration::from_secs(300)),
-            stream_dead_after: self.stream_dead_after,
-            dispatch_strategy: self.dispatch_strategy,
-        };
-
-        Ok(config)
-    }
-}
-
-#[derive(Clone)]
-struct Config {
-    pub subscription_id: SubscriptionId,
-    pub stream_parameters: StreamParameters,
-    pub instrumentation: Instrumentation,
-    pub tick_interval: Duration,
-    pub handler_inactivity_after: Duration,
-    pub stream_dead_after: Option<Duration>,
-    pub dispatch_strategy: DispatchStrategy,
 }
 
 pub struct ConsumptionOutcome {
@@ -291,14 +172,12 @@ where
     ) -> BoxFuture<'static, Result<(), ConsumerError>> {
         let controller_params = ControllerParams {
             api_client: self.api_client.clone(),
-            consumer_state: consumer_state.clone(),
-            dispatch_strategy: self.config.dispatch_strategy.clone(),
+            consumer_state,
             handler_factory: Arc::clone(&self.handler_factory),
-            tick_interval: self.config.tick_interval,
         };
 
         let controller = Controller::new(controller_params);
-        controller.start(consumer_state).boxed()
+        controller.start().boxed()
     }
 
     fn config(&self) -> &Config {
@@ -308,4 +187,19 @@ where
     fn logging_adapter(&self) -> Arc<dyn LoggingAdapter> {
         Arc::clone(&self.logging_adapter)
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct Config {
+    pub subscription_id: SubscriptionId,
+    pub stream_parameters: StreamParameters,
+    pub instrumentation: Instrumentation,
+    pub tick_interval: TickIntervalSecs,
+    pub inactivity_timeout: Option<InactivityTimeoutSecs>,
+    pub stream_dead_timeout: Option<StreamDeadTimeoutSecs>,
+    pub dispatch_strategy: DispatchStrategy,
+    pub commit_strategy: CommitStrategy,
+    pub abort_connect_on_auth_error: AbortConnectOnAuthError,
+    pub abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
+    pub connect_retry_delay: ConnectRetryDelaySecs,
 }

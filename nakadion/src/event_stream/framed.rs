@@ -18,6 +18,7 @@ pub struct NakadiFrame {
 }
 
 impl NakadiFrame {
+    #[allow(dead_code)]
     pub fn new(bytes: Vec<u8>, received_at: Instant, frame_id: usize) -> Self {
         Self {
             bytes: bytes.into(),

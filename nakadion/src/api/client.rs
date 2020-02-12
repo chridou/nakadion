@@ -1,4 +1,3 @@
-use std::error::Error as StdError;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -12,13 +11,11 @@ use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
-use crate::env_vars::NAKADION_PREFIX;
+use crate::helpers::NAKADION_PREFIX;
 use crate::nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
 use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
-
-pub use crate::env_vars::*;
 
 use super::dispatch_http_request::{DispatchHttpRequest, ResponseFuture};
 use super::*;

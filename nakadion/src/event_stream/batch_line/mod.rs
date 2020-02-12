@@ -11,7 +11,7 @@ use pin_utils::{unsafe_pinned, unsafe_unpinned};
 use serde::de::DeserializeOwned;
 use serde_json;
 
-use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
+use crate::Error;
 
 mod line_parser;
 
@@ -91,6 +91,7 @@ pub struct BatchLine {
 }
 
 impl BatchLine {
+    #[allow(dead_code)]
     pub fn new<T: Into<Bytes>>(bytes: T) -> Result<BatchLine, ParseLineError> {
         let bytes = bytes.into();
 
@@ -108,6 +109,7 @@ impl BatchLine {
         })
     }
 
+    #[allow(dead_code)]
     pub fn try_from_slice<T: AsRef<[u8]>>(slice: T) -> Result<BatchLine, ParseLineError> {
         let items = parse_line(slice.as_ref())?;
 
@@ -123,6 +125,7 @@ impl BatchLine {
         })
     }
 
+    #[allow(dead_code)]
     pub fn try_from_frame(frame: NakadiFrame) -> Result<BatchLine, ParseLineError> {
         let items = parse_line(frame.as_ref())?;
 
@@ -138,11 +141,13 @@ impl BatchLine {
         })
     }
 
+    #[allow(dead_code)]
     pub fn with_frame_id(mut self, frame_id: usize) -> Self {
         self.frame_id = frame_id;
         self
     }
 
+    #[allow(dead_code)]
     pub fn frame_id(&self) -> usize {
         self.frame_id
     }
@@ -151,62 +156,77 @@ impl BatchLine {
         self.received_at
     }
 
+    #[allow(dead_code)]
     pub fn bytes(&self) -> Bytes {
         self.bytes.clone()
     }
 
+    #[allow(dead_code)]
     pub fn cursor_str(&self) -> &str {
         self.items.cursor_str(self.bytes.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn cursor_bytes(&self) -> Bytes {
         self.items.cursor_bytes(&self.bytes)
     }
 
+    #[allow(dead_code)]
     pub fn partition_bytes(&self) -> Bytes {
         self.items.cursor().partition_bytes(&self.bytes)
     }
 
+    #[allow(dead_code)]
     pub fn partition_str(&self) -> &str {
         self.items.cursor().partition_str(self.bytes.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn event_type_bytes(&self) -> Bytes {
         self.items.cursor().event_type_bytes(&self.bytes)
     }
 
+    #[allow(dead_code)]
     pub fn event_type_str(&self) -> &str {
         self.items.cursor().event_type_str(self.bytes.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn events_bytes(&self) -> Option<Bytes> {
         self.items.events_bytes(&self.bytes)
     }
 
+    #[allow(dead_code)]
     pub fn events_str(&self) -> Option<&str> {
         self.items.events_str(self.bytes.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn info_bytes(&self) -> Option<Bytes> {
         self.items.info_bytes(&self.bytes)
     }
 
+    #[allow(dead_code)]
     pub fn info_str(&self) -> Option<&str> {
         self.items.info_str(self.bytes.as_ref())
     }
 
+    #[allow(dead_code)]
     pub fn is_keep_alive_line(&self) -> bool {
         !self.items.has_events()
     }
 
+    #[allow(dead_code)]
     pub fn has_events(&self) -> bool {
         self.items.has_events()
     }
 
+    #[allow(dead_code)]
     pub fn has_info(&self) -> bool {
         self.items.has_info()
     }
 
+    #[allow(dead_code)]
     pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, Error> {
         Ok(serde_json::from_slice(self.cursor_bytes().as_ref())?)
     }
@@ -387,6 +407,7 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
 
 #[test]
 fn deserialize_subscription_cursor() {
+    use crate::nakadi_types::model::subscription::SubscriptionCursor;
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;

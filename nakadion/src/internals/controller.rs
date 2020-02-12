@@ -1,30 +1,18 @@
 use std::sync::Arc;
-use std::time::Duration;
 
-use futures::{pin_mut, stream, StreamExt, TryFutureExt, TryStreamExt};
-use std::future::Future;
-use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver},
-    time::interval,
-};
+use futures::{pin_mut, stream, StreamExt, TryStreamExt};
+use tokio::{sync::mpsc::unbounded_channel, time::interval};
 
-use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
-
-use crate::api::{
-    BytesStream, NakadionEssentials, SubscriptionCommitApi, SubscriptionStream,
-    SubscriptionStreamApi,
-};
-use crate::consumer::{ConsumerError, ConsumerErrorKind, DispatchStrategy};
+use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
+use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::{BatchLineErrorKind, BatchLineStream, FramedStream};
-use crate::internals::dispatcher::{
-    ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher,
-};
+use crate::internals::dispatcher::{Dispatcher, DispatcherMessage, SleepingDispatcher};
 
 use super::{ConsumerState, StreamState};
 
 #[derive(Clone)]
-pub struct Controller<H, C> {
+pub(crate) struct Controller<H, C> {
     params: ControllerParams<H, C>,
 }
 
@@ -33,11 +21,11 @@ where
     C: NakadionEssentials + Clone,
     H: BatchHandler,
 {
-    pub fn new(params: ControllerParams<H, C>) -> Self {
+    pub(crate) fn new(params: ControllerParams<H, C>) -> Self {
         Self { params }
     }
 
-    pub async fn start(self, consumer_state: ConsumerState) -> Result<(), ConsumerError> {
+    pub(crate) async fn start(self) -> Result<(), ConsumerError> {
         let params = self.params;
         create_background_task(params).await
     }
@@ -51,7 +39,7 @@ where
     H: BatchHandler,
 {
     let mut sleeping_dispatcher = Dispatcher::sleeping(
-        params.dispatch_strategy.clone(),
+        params.consumer_state.config().dispatch_strategy.clone(),
         Arc::clone(&params.handler_factory),
         params.api_client.clone(),
     );
@@ -95,7 +83,8 @@ where
     let frame_stream = FramedStream::new(bytes_stream);
     let batch_stream = BatchLineStream::new(frame_stream).map_ok(DispatcherMessage::Batch);
 
-    let ticker = interval(params.tick_interval).map(|_| Ok(DispatcherMessage::Tick));
+    let ticker = interval(stream_state.config().tick_interval.into_duration())
+        .map(|_| Ok(DispatcherMessage::Tick));
 
     let merged = stream::select(batch_stream, ticker);
 
@@ -148,12 +137,10 @@ where
     Ok((params, sleeping_dispatcher))
 }
 
-pub struct ControllerParams<H, C> {
+pub(crate) struct ControllerParams<H, C> {
     pub api_client: C,
     pub consumer_state: ConsumerState,
-    pub dispatch_strategy: DispatchStrategy,
     pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
-    pub tick_interval: Duration,
 }
 
 impl<H, C> Clone for ControllerParams<H, C>
@@ -164,9 +151,7 @@ where
         Self {
             api_client: self.api_client.clone(),
             consumer_state: self.consumer_state.clone(),
-            dispatch_strategy: self.dispatch_strategy.clone(),
             handler_factory: Arc::clone(&self.handler_factory),
-            tick_interval: self.tick_interval,
         }
     }
 }
@@ -188,7 +173,7 @@ mod connect_stream {
 
     use crate::internals::ConsumerState;
 
-    pub async fn connect_with_retries<C: SubscriptionStreamApi>(
+    pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi>(
         api_client: C,
         consumer_state: ConsumerState,
     ) -> Result<SubscriptionStream, ConsumerError> {
@@ -199,8 +184,8 @@ mod connect_stream {
 
             match connect(
                 &api_client,
-                consumer_state.subscription_id,
-                &consumer_state.stream_params,
+                consumer_state.subscription_id(),
+                consumer_state.stream_parameters(),
             )
             .await
             {
