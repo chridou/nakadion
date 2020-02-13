@@ -14,7 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(10)
         //.stream_dead_timeout_secs(10)
-        .commit_timeout_millis(100)
+        .commit_timeout_millis(1000)
+        .update_stream_parameters(|p| p.batch_limit(1).max_uncommitted_events(1000))
         .connect_stream_timeout_secs(5);
 
     builder.apply_defaults();
@@ -61,11 +62,7 @@ mod handler {
             async move {
                 let batch_id = meta.batch_id;
                 println!("{}: {}", self.count, batch_id);
-                if batch_id > 100 {
-                    BatchPostAction::AbortStream
-                } else {
-                    BatchPostAction::commit_no_hint()
-                }
+                BatchPostAction::commit_no_hint()
             }
             .boxed()
         }

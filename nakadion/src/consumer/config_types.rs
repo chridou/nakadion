@@ -325,6 +325,24 @@ impl Builder {
         self
     }
 
+    pub fn update_stream_parameters<F>(mut self, mut f: F) -> Self
+    where
+        F: FnMut(StreamParameters) -> StreamParameters,
+    {
+        let stream_parameters = self.stream_parameters.unwrap_or_default();
+        self.stream_parameters = Some(f(stream_parameters));
+        self
+    }
+
+    pub fn try_update_stream_parameters<F>(mut self, mut f: F) -> Result<Self, Error>
+    where
+        F: FnMut(StreamParameters) -> Result<StreamParameters, Error>,
+    {
+        let stream_parameters = self.stream_parameters.unwrap_or_default();
+        self.stream_parameters = Some(f(stream_parameters)?);
+        Ok(self)
+    }
+
     pub fn apply_defaults(&mut self) {
         let stream_parameters = self
             .stream_parameters
