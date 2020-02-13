@@ -556,6 +556,61 @@ impl StreamParameters {
         Ok(())
     }
 
+    /// List of partitions to read from in this stream. If absent or empty - then the partitions will be
+    /// automatically assigned by Nakadi.
+    pub fn partitions(mut self, partitions: Vec<EventTypePartition>) -> Self {
+        self.partitions = partitions;
+        self
+    }
+    /// The maximum number of uncommitted events that Nakadi will stream before pausing the stream.
+    ///
+    /// When in
+    /// paused state and commit comes - the stream will resume.
+    pub fn max_uncommitted_events<T: Into<MaxUncommittedEvents>>(mut self, value: T) -> Self {
+        self.max_uncommitted_events = Some(value.into());
+        self
+    }
+    /// Maximum number of Events in each chunk (and therefore per partition) of the stream.
+    pub fn batch_limit<T: Into<BatchLimit>>(mut self, value: T) -> Self {
+        self.batch_limit = Some(value.into());
+        self
+    }
+    /// Maximum number of Events in this stream (over all partitions being streamed in this
+    /// connection)
+    pub fn stream_limit<T: Into<StreamLimit>>(mut self, value: T) -> Self {
+        self.stream_limit = Some(value.into());
+        self
+    }
+    /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
+    pub fn batch_flush_timeout<T: Into<BatchFlushTimeoutSecs>>(mut self, value: T) -> Self {
+        self.batch_flush_timeout = Some(value.into());
+        self
+    }
+    /// Useful for batching events based on their received_at timestamp.
+    ///
+    /// For example, if `batch_timespan` is 5
+    /// seconds then Nakadi would flush a batch as soon as the difference in time between the first and the
+    /// last event in the batch exceeds 5 seconds. It waits for an event outside of the window to signal the
+    /// closure of a batch.
+    pub fn batch_timespan<T: Into<BatchTimespanSecs>>(mut self, value: T) -> Self {
+        self.batch_timespan = Some(value.into());
+        self
+    }
+    /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
+    pub fn stream_timeout<T: Into<StreamTimeoutSecs>>(mut self, value: T) -> Self {
+        self.stream_timeout = Some(value.into());
+        self
+    }
+    /// Maximum amount of seconds that Nakadi will be waiting for commit after sending a batch to a client.
+    ///
+    /// In case if commit does not come within this timeout, Nakadi will initialize stream termination, no
+    /// new data will be sent. Partitions from this stream will be assigned to other streams.
+    /// Setting commit_timeout to 0 is equal to setting it to the maximum allowed value - 60 seconds.
+    pub fn commit_timeout<T: Into<CommitTimeoutSecs>>(mut self, value: T) -> Self {
+        self.commit_timeout = Some(value.into());
+        self
+    }
+
     /// Returns the configured value or the Nakadi default
     pub fn effective_commit_timeout_secs(&self) -> u32 {
         self.commit_timeout.map(|s| s.into_inner()).unwrap_or(60)
