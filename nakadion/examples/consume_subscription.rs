@@ -13,6 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let consumer = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(10)
+        .connect_stream_timeout_secs(5)
         .finish_with(client, handler::MyHandlerFactory, StdLogger::new())?;
 
     let (handle, task) = consumer.start();

@@ -11,6 +11,7 @@ use crate::internals::{
     controller::{Controller, ControllerParams},
     ConsumerState,
 };
+use crate::logging::Logs;
 pub use crate::nakadi_types::{
     model::subscription::{StreamParameters, SubscriptionId},
     Error,
@@ -29,8 +30,8 @@ use crate::logging::Logger;
 pub use crate::logging::{DevNullLogger, LoggingAdapter, StdLogger};
 pub use config_types::{
     AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder, CommitStrategy,
-    ConnectRetryMaxDelaySecs, DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs,
-    TickIntervalSecs,
+    ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs, DispatchStrategy,
+    InactivityTimeoutSecs, StreamDeadTimeoutSecs, TickIntervalSecs,
 };
 pub use error::*;
 pub use instrumentation::*;
@@ -59,12 +60,12 @@ impl Consumer {
         let logger =
             Logger::new(self.inner.logging_adapter()).with_subscription_id(subscription_id);
 
-        logger.info(format_args!(
+        let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
+
+        consumer_state.info(format_args!(
             "Connecting to subscription with id {}",
             subscription_id
         ));
-
-        let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
 
         let handle = ConsumerHandle {
             consumer_state: consumer_state.clone(),
@@ -205,5 +206,6 @@ pub(crate) struct Config {
     pub commit_strategy: CommitStrategy,
     pub abort_connect_on_auth_error: AbortConnectOnAuthError,
     pub abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
-    pub connect_retry_max_delay: ConnectRetryMaxDelaySecs,
+    pub connect_stream_retry_max_delay: ConnectStreamRetryMaxDelaySecs,
+    pub connect_stream_timeout: Option<ConnectStreamTimeoutSecs>,
 }

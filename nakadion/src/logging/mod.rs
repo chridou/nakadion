@@ -7,7 +7,12 @@ use crate::nakadi_types::model::{
     subscription::{StreamId, SubscriptionId},
 };
 
-//pub use logging_internal::*;
+pub(crate) trait Logs {
+    fn debug(&self, args: Arguments);
+    fn info(&self, args: Arguments);
+    fn warn(&self, args: Arguments);
+    fn error(&self, args: Arguments);
+}
 
 #[derive(Clone)]
 pub(crate) struct Logger {
@@ -21,20 +26,6 @@ impl Logger {
             context: Arc::new(LoggingContext::default()),
             logging_adapter,
         }
-    }
-
-    pub fn debug(&self, args: Arguments) {
-        self.logging_adapter.debug(&self.context, args);
-    }
-    pub fn info(&self, args: Arguments) {
-        self.logging_adapter.info(&self.context, args);
-    }
-    pub fn warn(&self, args: Arguments) {
-        self.logging_adapter.warn(&self.context, args);
-    }
-
-    pub fn error(&self, args: Arguments) {
-        self.logging_adapter.error(&self.context, args);
     }
 
     pub fn with_subscription_id(&self, subscription_id: SubscriptionId) -> Self {
@@ -79,6 +70,22 @@ impl Logger {
             context: Arc::new(context),
             logging_adapter,
         }
+    }
+}
+
+impl Logs for Logger {
+    fn debug(&self, args: Arguments) {
+        self.logging_adapter.debug(&self.context, args);
+    }
+    fn info(&self, args: Arguments) {
+        self.logging_adapter.info(&self.context, args);
+    }
+    fn warn(&self, args: Arguments) {
+        self.logging_adapter.warn(&self.context, args);
+    }
+
+    fn error(&self, args: Arguments) {
+        self.logging_adapter.error(&self.context, args);
     }
 }
 

@@ -1,8 +1,9 @@
+use std::fmt::Arguments;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 use crate::consumer::Config;
-use crate::logging::Logger;
+use crate::logging::{Logger, Logs};
 use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
 
 pub mod committer;
@@ -58,6 +59,22 @@ impl ConsumerState {
 
     pub fn logger(&self) -> &Logger {
         &self.logger
+    }
+}
+
+impl Logs for ConsumerState {
+    fn debug(&self, args: Arguments) {
+        self.logger.debug(args);
+    }
+    fn info(&self, args: Arguments) {
+        self.logger.info(args);
+    }
+    fn warn(&self, args: Arguments) {
+        self.logger.warn(args);
+    }
+
+    fn error(&self, args: Arguments) {
+        self.logger.error(args);
     }
 }
 
@@ -120,5 +137,21 @@ impl StreamState {
 
     pub fn logger(&self) -> &Logger {
         &self.logger
+    }
+}
+
+impl Logs for StreamState {
+    fn debug(&self, args: Arguments) {
+        self.logger.debug(args);
+    }
+    fn info(&self, args: Arguments) {
+        self.logger.info(args);
+    }
+    fn warn(&self, args: Arguments) {
+        self.logger.warn(args);
+    }
+
+    fn error(&self, args: Arguments) {
+        self.logger.error(args);
     }
 }

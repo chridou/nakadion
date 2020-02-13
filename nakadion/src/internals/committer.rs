@@ -12,7 +12,7 @@ use crate::nakadi_types::{
     model::{
         event_type::EventTypeName,
         partition::PartitionId,
-        subscription::{StreamId, StreamParameters, SubscriptionCursor, SubscriptionId},
+        subscription::{StreamId, SubscriptionCursor, SubscriptionId},
     },
     Error, FlowId,
 };
@@ -20,6 +20,7 @@ use crate::nakadi_types::{
 use crate::api::SubscriptionCommitApi;
 use crate::consumer::CommitStrategy;
 use crate::internals::StreamState;
+use crate::logging::Logs;
 
 pub struct CommitData {
     pub cursor: SubscriptionCursor,
@@ -271,12 +272,10 @@ where
         .await
         {
             Ok(()) => {
-                stream_state
-                    .logger()
-                    .debug(format_args!("Committed {} final cursors.", n_to_commit));
+                stream_state.debug(format_args!("Committed {} final cursors.", n_to_commit));
             }
             Err(err) => {
-                stream_state.logger().warn(format_args!(
+                stream_state.warn(format_args!(
                     "Failed to commit {} final cursors: {}",
                     n_to_commit, err
                 ));
@@ -284,9 +283,7 @@ where
         };
     }
 
-    stream_state
-        .logger()
-        .debug(format_args!("Committer stopped"));
+    stream_state.debug(format_args!("Committer stopped"));
 
     Ok(())
 }

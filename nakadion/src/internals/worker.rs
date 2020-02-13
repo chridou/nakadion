@@ -1,13 +1,13 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-use crate::consumer::ConsumerError;
+use crate::consumer::{ConsumerError, InactivityTimeoutSecs};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::event_stream::BatchLine;
 use crate::internals::{committer::CommitData, StreamState};
+use crate::logging::Logs;
 
 use processor::HandlerSlot;
 
@@ -22,9 +22,10 @@ impl Worker {
     pub(crate) fn sleeping<H: BatchHandler>(
         handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         assignment: HandlerAssignment,
+        inactivity_after: Option<InactivityTimeoutSecs>,
     ) -> SleepingWorker<H> {
         SleepingWorker {
-            handler_slot: HandlerSlot::new(handler_factory, assignment, Duration::from_secs(60)),
+            handler_slot: HandlerSlot::new(handler_factory, assignment, inactivity_after),
         }
     }
 }
@@ -78,7 +79,7 @@ impl<H: BatchHandler> ActiveWorker<H> {
 
 mod processor {
     use std::sync::Arc;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     use bytes::Bytes;
     use futures::{pin_mut, Stream, StreamExt};
@@ -86,13 +87,13 @@ mod processor {
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
-    use crate::consumer::{ConsumerError, ConsumerErrorKind};
+    use crate::consumer::{ConsumerError, ConsumerErrorKind, InactivityTimeoutSecs};
     use crate::event_handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, HandlerAssignment,
     };
     use crate::event_stream::BatchLine;
     use crate::internals::{committer::CommitData, StreamState};
-    use crate::logging::Logger;
+    use crate::logging::{Logger, Logs};
 
     use super::WorkerMessage;
 
@@ -189,7 +190,6 @@ mod processor {
                     };
                     if let Err(err) = self.try_commit(commit_data) {
                         self.stream_state
-                            .logger()
                             .error(format_args!("Failed to enqueue commit data: {}", err));
                         self.stream_state.request_stream_cancellation();
                     }
@@ -198,14 +198,12 @@ mod processor {
                 BatchPostAction::DoNotCommit { n_events } => Ok(true),
                 BatchPostAction::AbortStream => {
                     self.stream_state
-                        .logger()
                         .warn(format_args!("Stream cancellation requested by handler"));
                     self.stream_state.request_stream_cancellation();
                     Ok(false)
                 }
                 BatchPostAction::ShutDown => {
                     self.stream_state
-                        .logger()
                         .warn(format_args!("Consumer shut down requested by handler"));
                     let err = ConsumerError::new(ConsumerErrorKind::HandlerAbort);
                     Err(err)
@@ -230,7 +228,7 @@ mod processor {
         pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         pub last_event_processed: Instant,
         pub assignment: HandlerAssignment,
-        pub inactivity_after: Duration,
+        pub inactivity_after: Option<InactivityTimeoutSecs>,
         pub notified_on_inactivity: bool,
         pub logger: Option<Logger>,
     }
@@ -239,7 +237,7 @@ mod processor {
         pub fn new(
             handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
             assignment: HandlerAssignment,
-            inactivity_after: Duration,
+            inactivity_after: Option<InactivityTimeoutSecs>,
         ) -> Self {
             Self {
                 handler: None,
@@ -285,23 +283,35 @@ mod processor {
         }
 
         pub fn tick(&mut self) {
-            if let Some(mut handler) = self.handler.take() {
-                let elapsed = self.last_event_processed.elapsed();
-                if elapsed > self.inactivity_after && !self.notified_on_inactivity {
-                    if handler
-                        .on_inactivity_detected(elapsed, self.last_event_processed)
-                        .should_stay_alive()
-                    {
-                        self.notified_on_inactivity = true;
-                        self.handler = Some(handler);
-                        self.with_logger(|l| {
-                            l.info(format_args!("Keeping inactive handler alive"))
-                        });
+            if let Some(inactivity_after) = self.inactivity_after {
+                if let Some(mut handler) = self.handler.take() {
+                    let elapsed = self.last_event_processed.elapsed();
+                    if elapsed > inactivity_after.duration() && !self.notified_on_inactivity {
+                        if handler
+                            .on_inactivity_detected(elapsed, self.last_event_processed)
+                            .should_stay_alive()
+                        {
+                            self.notified_on_inactivity = true;
+                            self.handler = Some(handler);
+                            self.with_logger(|l| {
+                                l.info(format_args!(
+                                    "Keeping inactive handler \
+                                for assignment {} alive.",
+                                    self.assignment
+                                ))
+                            });
+                        } else {
+                            self.with_logger(|l| {
+                                l.info(format_args!(
+                                    "Killed inactive handler \
+                            for assignment {}.",
+                                    self.assignment
+                                ))
+                            });
+                        }
                     } else {
-                        self.with_logger(|l| l.info(format_args!("Killed inactive handler")));
+                        self.handler = Some(handler);
                     }
-                } else {
-                    self.handler = Some(handler);
                 }
             }
         }

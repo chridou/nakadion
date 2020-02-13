@@ -3,10 +3,11 @@ use std::sync::Arc;
 use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
-use crate::consumer::{ConsumerError, DispatchStrategy};
+use crate::consumer::{Config, ConsumerError, DispatchStrategy};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::BatchLine;
 use crate::internals::StreamState;
+use crate::logging::Logs;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
@@ -21,6 +22,7 @@ impl Dispatcher {
         strategy: DispatchStrategy,
         handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
         api_client: C,
+        config: Config,
     ) -> SleepingDispatcher<H, C>
     where
         H: BatchHandler,
@@ -28,9 +30,13 @@ impl Dispatcher {
     {
         match strategy {
             DispatchStrategy::SingleWorker => SleepingDispatcher::SingleWorker(
-                self::dispatch_single::Dispatcher::sleeping(handler_factory, api_client),
+                self::dispatch_single::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
-            _ => panic!("not supported"),
+            _ => SleepingDispatcher::SingleWorker(self::dispatch_single::Dispatcher::sleeping(
+                handler_factory,
+                api_client,
+                config,
+            )),
         }
     }
 }
@@ -48,14 +54,11 @@ where
     where
         S: Stream<Item = DispatcherMessage> + Send + 'static,
     {
-        stream_state
-            .logger()
-            .debug(format_args!("Dispatcher starting"));
+        stream_state.debug(format_args!("Dispatcher starting"));
         match self {
             SleepingDispatcher::SingleWorker(dispatcher) => {
                 ActiveDispatcher::SingleWorker(dispatcher.start(stream_state, messages))
             }
-            _ => panic!("not supported"),
         }
     }
 }
@@ -67,7 +70,6 @@ where
     pub fn tick(&mut self) {
         match self {
             SleepingDispatcher::SingleWorker(ref mut dispatcher) => dispatcher.tick(),
-            _ => panic!("not supported"),
         }
     }
 }
@@ -100,9 +102,10 @@ mod dispatch_single {
     use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 
     use crate::api::SubscriptionCommitApi;
-    use crate::consumer::ConsumerError;
+    use crate::consumer::{Config, ConsumerError};
     use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
     use crate::internals::{committer::*, worker::*, StreamState};
+    use crate::logging::Logs;
 
     use super::DispatcherMessage;
 
@@ -112,12 +115,17 @@ mod dispatch_single {
         pub(crate) fn sleeping<H, C>(
             handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
             api_client: C,
+            config: Config,
         ) -> Sleeping<H, C>
         where
             H: BatchHandler,
             C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
         {
-            let worker = Worker::sleeping(handler_factory, HandlerAssignment::Unspecified);
+            let worker = Worker::sleeping(
+                handler_factory,
+                HandlerAssignment::Unspecified,
+                config.inactivity_timeout,
+            );
 
             Sleeping { worker, api_client }
         }
@@ -154,9 +162,7 @@ mod dispatch_single {
                 async move {
                     let worker_result = active_worker.join().await;
                     if let Err(err) = committer_join_handle.await {
-                        stream_state
-                            .logger()
-                            .warn(format_args!("Committer exited with error: {}", err));
+                        stream_state.warn(format_args!("Committer exited with error: {}", err));
                     };
                     worker_result.map(|mut w| {
                         w.tick();
@@ -202,9 +208,7 @@ mod dispatch_single {
 
             let worker = join.await?;
 
-            stream_state
-                .logger()
-                .debug(format_args!("Dispatcher going to sleep"));
+            stream_state.debug(format_args!("Dispatcher going to sleep"));
 
             Ok(Sleeping { worker, api_client })
         }
