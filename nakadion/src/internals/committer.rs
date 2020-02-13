@@ -1,11 +1,12 @@
 use std::collections::{hash_map::Entry, HashMap};
 use std::time::{Duration, Instant};
 
+use http::StatusCode;
 use tokio::{
     spawn,
     sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
-    time::delay_for,
+    time::{delay_for, timeout},
 };
 
 use crate::nakadi_types::{
@@ -17,7 +18,7 @@ use crate::nakadi_types::{
     Error, FlowId,
 };
 
-use crate::api::SubscriptionCommitApi;
+use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::consumer::CommitStrategy;
 use crate::internals::StreamState;
 use crate::logging::Logs;
@@ -198,11 +199,14 @@ where
         .logger()
         .debug(format_args!("Committer starting"));
 
+    let config = stream_state.config().clone();
+
     let mut pending = PendingCursors::new(&stream_state);
     let delay_on_no_cursor = Duration::from_millis(50);
     let subscription_id = stream_state.subscription_id();
     let stream_id = stream_state.stream_id();
 
+    let mut next_commit_earliest_at = Instant::now();
     loop {
         if stream_state.cancellation_requested() {
             to_commit.close();
@@ -223,6 +227,10 @@ where
             }
         };
 
+        if next_commit_earliest_at > now {
+            continue;
+        }
+
         if !pending.commit_required(now) {
             if !cursor_received {
                 delay_for(delay_on_no_cursor).await;
@@ -240,6 +248,7 @@ where
             subscription_id,
             stream_id,
             &cursors,
+            config.commit_timeout.duration(),
             FlowId::default(),
         )
         .await
@@ -251,8 +260,19 @@ where
                 stream_state
                     .logger()
                     .warn(format_args!("Failed to commit cursors: {}", err));
-                stream_state.request_stream_cancellation();
-                return Err(err);
+                match err.status() {
+                    Some(StatusCode::UNAUTHORIZED)
+                    | Some(StatusCode::FORBIDDEN)
+                    | Some(StatusCode::NOT_FOUND)
+                    | Some(StatusCode::UNPROCESSABLE_ENTITY) => {
+                        stream_state.request_stream_cancellation();
+                        return Err(Error::from_error(err));
+                    }
+                    _ => {
+                        next_commit_earliest_at =
+                            Instant::now() + config.commit_retry_delay.duration()
+                    }
+                }
             }
         };
     }
@@ -267,6 +287,7 @@ where
             stream_state.config().subscription_id,
             stream_state.stream_id(),
             &cursors,
+            config.commit_timeout.duration() * 2,
             FlowId::default(),
         )
         .await
@@ -293,23 +314,27 @@ async fn commit<C>(
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     cursors: &[SubscriptionCursor],
+    commit_timeout: Duration,
     flow_id: FlowId,
-) -> Result<(), Error>
+) -> Result<(), NakadiApiError>
 where
     C: SubscriptionCommitApi + Send + 'static,
 {
-    match client
-        .commit_cursors(subscription_id, stream_id, cursors, flow_id)
-        .await
+    let started = Instant::now();
+    match timeout(
+        commit_timeout,
+        client.commit_cursors(subscription_id, stream_id, cursors, flow_id),
+    )
+    .await
     {
-        Ok(results) => Ok(()),
-        Err(err) => {
-            if err.is_client_error() {
-                Err(Error::new(err))
-            } else {
-                Ok(())
-            }
-        }
+        Ok(Ok(results)) => Ok(()),
+        Ok(Err(err)) => Err(err),
+        Err(err) => Err(NakadiApiError::io()
+            .with_context(format!(
+                "Commit attempt timed out after {:?}",
+                started.elapsed()
+            ))
+            .caused_by(err)),
     }
 }
 

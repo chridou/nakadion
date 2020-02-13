@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(10)
         //.stream_dead_timeout_secs(10)
+        .commit_timeout_millis(100)
         .connect_stream_timeout_secs(5);
 
     builder.apply_defaults();
