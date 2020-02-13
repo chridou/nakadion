@@ -30,7 +30,7 @@ pub use crate::logging::log_adapter::LogLogger;
 pub use crate::logging::slog_adapter::SlogLogger;
 
 use crate::logging::Logger;
-pub use crate::logging::{DevNullLogger, LoggingAdapter, StdLogger};
+pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogger};
 pub use config_types::{
     AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder, CommitRetryDelayMillis,
     CommitStrategy, CommitTimeoutMillis, ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs,
@@ -119,6 +119,14 @@ impl ConsumptionOutcome {
 
     pub fn error(&self) -> Option<&ConsumerError> {
         self.aborted.as_ref()
+    }
+
+    pub fn into_result(self) -> Result<Consumer, ConsumerError> {
+        if let Some(aborted) = self.aborted {
+            Err(aborted)
+        } else {
+            Ok(self.consumer)
+        }
     }
 }
 

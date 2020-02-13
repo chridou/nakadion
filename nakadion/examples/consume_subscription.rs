@@ -22,7 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:#?}", builder);
 
-    let consumer = builder.build_with(client, handler::MyHandlerFactory, StdLogger::new())?;
+    let consumer =
+        builder.build_with(client, handler::MyHandlerFactory, StdOutLogger::default())?;
 
     let (handle, task) = consumer.start();
 
