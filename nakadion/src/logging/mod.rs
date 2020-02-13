@@ -74,9 +74,14 @@ impl Logger {
 }
 
 impl Logs for Logger {
+    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logging_adapter.debug(&self.context, args);
     }
+
+    #[cfg(not(feature = "debug-mode"))]
+    fn debug(&self, args: Arguments) {}
+
     fn info(&self, args: Arguments) {
         self.logging_adapter.info(&self.context, args);
     }

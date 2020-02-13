@@ -44,6 +44,12 @@ impl TickIntervalSecs {
         Duration::from_secs(self.0)
     }
 }
+impl Default for TickIntervalSecs {
+    fn default() -> Self {
+        1.into()
+    }
+}
+
 new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct InactivityTimeoutSecs(u64, env="INACTIVITY_TIMEOUT_SECS");
@@ -66,13 +72,34 @@ new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct AbortConnectOnAuthError(bool, env="ABORT_CONNECT_ON_AUTH_ERROR");
 }
+impl Default for AbortConnectOnAuthError {
+    fn default() -> Self {
+        false.into()
+    }
+}
 new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct AbortConnectOnSubscriptionNotFound(bool, env="ABORT_CONNECT_ON_SUBSCRIPTION_NOT_FOUND");
 }
+impl Default for AbortConnectOnSubscriptionNotFound {
+    fn default() -> Self {
+        true.into()
+    }
+}
+
 new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct ConnectStreamRetryMaxDelaySecs(u64, env="CONNECT_STREAM_RETRY_MAX_DELAY_SECS");
+}
+impl Default for ConnectStreamRetryMaxDelaySecs {
+    fn default() -> Self {
+        60.into()
+    }
+}
+impl ConnectStreamRetryMaxDelaySecs {
+    pub fn duration(self) -> Duration {
+        Duration::from_secs(self.0)
+    }
 }
 new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,8 +110,41 @@ impl ConnectStreamTimeoutSecs {
         Duration::from_secs(self.0)
     }
 }
+impl Default for ConnectStreamTimeoutSecs {
+    fn default() -> Self {
+        10.into()
+    }
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct CommitTimeoutMillis(u64, env="COMMIT_TIMEOUT_MILLIS");
+}
+impl CommitTimeoutMillis {
+    pub fn duration(self) -> Duration {
+        Duration::from_millis(self.0)
+    }
+}
+impl Default for CommitTimeoutMillis {
+    fn default() -> Self {
+        1000.into()
+    }
+}
+new_type! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct CommitRetryDelayMillis(u64, env="COMMIT_RETRY_DELAY_MILLIS");
+}
+impl CommitRetryDelayMillis {
+    pub fn duration(self) -> Duration {
+        Duration::from_millis(self.0)
+    }
+}
+impl Default for CommitRetryDelayMillis {
+    fn default() -> Self {
+        500.into()
+    }
+}
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 #[non_exhaustive]
 pub struct Builder {
     pub subscription_id: Option<SubscriptionId>,
@@ -99,6 +159,8 @@ pub struct Builder {
     pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
     pub connect_stream_retry_max_delay_secs: Option<ConnectStreamRetryMaxDelaySecs>,
     pub connect_stream_timeout_secs: Option<ConnectStreamTimeoutSecs>,
+    pub commit_timeout_millis: Option<CommitTimeoutMillis>,
+    pub commit_retry_delay_millis: Option<CommitRetryDelayMillis>,
 }
 
 impl Builder {
@@ -247,8 +309,77 @@ impl Builder {
         self
     }
 
-    pub fn finish_with<C, HF, L>(
-        self,
+    pub fn commit_timeout_millis<T: Into<CommitTimeoutMillis>>(
+        mut self,
+        commit_timeout_millis: T,
+    ) -> Self {
+        self.commit_timeout_millis = Some(commit_timeout_millis.into());
+        self
+    }
+
+    pub fn commit_retry_delay_millis<T: Into<CommitRetryDelayMillis>>(
+        mut self,
+        commit_retry_delay_millis: T,
+    ) -> Self {
+        self.commit_retry_delay_millis = Some(commit_retry_delay_millis.into());
+        self
+    }
+
+    pub fn apply_defaults(&mut self) {
+        let stream_parameters = self
+            .stream_parameters
+            .clone()
+            .unwrap_or_else(StreamParameters::default);
+
+        let instrumentation = self
+            .instrumentation
+            .clone()
+            .unwrap_or_else(Instrumentation::default);
+
+        let tick_interval = self.tick_interval_secs.unwrap_or_default();
+
+        let inactivity_timeout = self.inactivity_timeout_secs;
+
+        let stream_dead_timeout = self.stream_dead_timeout_secs;
+
+        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
+
+        let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
+            commit_strategy
+        } else {
+            self.guess_commit_strategy(&stream_parameters)
+        };
+
+        let abort_connect_on_auth_error = self.abort_connect_on_auth_error.unwrap_or_default();
+
+        let abort_connect_on_subscription_not_found = self
+            .abort_connect_on_subscription_not_found
+            .unwrap_or_default();
+
+        let connect_stream_retry_max_delay =
+            self.connect_stream_retry_max_delay_secs.unwrap_or_default();
+        let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
+
+        let commit_timeout = self.commit_timeout_millis.unwrap_or_default();
+        let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
+
+        self.stream_parameters = Some(stream_parameters);
+        self.instrumentation = Some(instrumentation);
+        self.tick_interval_secs = Some(tick_interval);
+        self.inactivity_timeout_secs = inactivity_timeout;
+        self.stream_dead_timeout_secs = stream_dead_timeout;
+        self.dispatch_strategy = Some(dispatch_strategy);
+        self.commit_strategy = Some(commit_strategy);
+        self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
+        self.abort_connect_on_subscription_not_found =
+            Some(abort_connect_on_subscription_not_found);
+        self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
+        self.commit_timeout_millis = Some(commit_timeout);
+        self.commit_retry_delay_millis = Some(commit_retry_delay);
+    }
+
+    pub fn build_with<C, HF, L>(
+        &self,
         api_client: C,
         handler_factory: HF,
         logs: L,
@@ -273,7 +404,7 @@ impl Builder {
         })
     }
 
-    fn config(self) -> Result<Config, Error> {
+    fn config(&self) -> Result<Config, Error> {
         let subscription_id = if let Some(subscription_id) = self.subscription_id {
             subscription_id
         } else {
@@ -282,52 +413,40 @@ impl Builder {
 
         let stream_parameters = self
             .stream_parameters
+            .clone()
             .unwrap_or_else(StreamParameters::default);
 
         let instrumentation = self
             .instrumentation
+            .clone()
             .unwrap_or_else(Instrumentation::default);
 
-        let tick_interval = self.tick_interval_secs.unwrap_or_else(|| 1.into());
+        let tick_interval = self.tick_interval_secs.unwrap_or_default();
 
         let inactivity_timeout = self.inactivity_timeout_secs;
 
         let stream_dead_timeout = self.stream_dead_timeout_secs;
 
-        let dispatch_strategy = self.dispatch_strategy.unwrap_or_default();
+        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
 
         let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
             commit_strategy
         } else {
-            let timeout = stream_parameters.effective_commit_timeout_secs();
-            let commit_after = timeout / 6;
-            let commit_after = std::cmp::max(1, commit_after);
-            let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
-            let effective_events_limit = max_uncommitted_events / 2;
-            let effective_events_limit = std::cmp::max(1, effective_events_limit);
-            let batch_limit = stream_parameters.effective_batch_limit();
-            let effective_batches_limit = std::cmp::max(max_uncommitted_events / batch_limit, 1);
-            let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
-            CommitStrategy::After {
-                seconds: Some(commit_after),
-                batches: Some(effective_batches_limit),
-                events: Some(effective_events_limit),
-            }
+            self.guess_commit_strategy(&stream_parameters)
         };
 
-        let abort_connect_on_auth_error = self
-            .abort_connect_on_auth_error
-            .unwrap_or_else(|| false.into());
+        let abort_connect_on_auth_error = self.abort_connect_on_auth_error.unwrap_or_default();
 
         let abort_connect_on_subscription_not_found = self
             .abort_connect_on_subscription_not_found
-            .unwrap_or_else(|| true.into());
+            .unwrap_or_default();
 
-        let connect_stream_retry_max_delay = self
-            .connect_stream_retry_max_delay_secs
-            .unwrap_or_else(|| 10.into());
+        let connect_stream_retry_max_delay =
+            self.connect_stream_retry_max_delay_secs.unwrap_or_default();
+        let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
 
-        let connect_stream_timeout = self.connect_stream_timeout_secs;
+        let commit_timeout = self.commit_timeout_millis.unwrap_or_default();
+        let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
 
         let config = Config {
             subscription_id,
@@ -342,8 +461,27 @@ impl Builder {
             abort_connect_on_subscription_not_found,
             connect_stream_retry_max_delay,
             connect_stream_timeout,
+            commit_timeout,
+            commit_retry_delay,
         };
 
         Ok(config)
+    }
+
+    fn guess_commit_strategy(&self, stream_parameters: &StreamParameters) -> CommitStrategy {
+        let timeout = stream_parameters.effective_commit_timeout_secs();
+        let commit_after = timeout / 6;
+        let commit_after = std::cmp::max(1, commit_after);
+        let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
+        let effective_events_limit = max_uncommitted_events / 2;
+        let effective_events_limit = std::cmp::max(1, effective_events_limit);
+        let batch_limit = stream_parameters.effective_batch_limit();
+        let effective_batches_limit = std::cmp::max((max_uncommitted_events / batch_limit) / 2, 1);
+        let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
+        CommitStrategy::After {
+            seconds: Some(commit_after),
+            batches: Some(effective_batches_limit),
+            events: Some(effective_events_limit),
+        }
     }
 }

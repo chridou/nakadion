@@ -2,7 +2,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::{pin_mut, stream, StreamExt, TryStreamExt};
 use tokio::{
@@ -15,7 +15,9 @@ use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
 use crate::consumer::{Config, ConsumerError, ConsumerErrorKind};
 use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::{BatchLine, BatchLineErrorKind, BatchLineStream, FramedStream};
-use crate::internals::dispatcher::{Dispatcher, DispatcherMessage, SleepingDispatcher};
+use crate::internals::dispatcher::{
+    ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher,
+};
 use crate::logging::Logs;
 
 use super::{ConsumerState, StreamState};
@@ -35,14 +37,7 @@ where
     }
 
     pub(crate) async fn start(self) -> Result<(), ConsumerError> {
-        let params = self.params;
-
-        params.consumer_state.logger.debug(format_args!(
-            "Commit strategy: {:?}",
-            params.consumer_state.config()
-        ));
-
-        create_background_task(params).await
+        create_background_task(self.params).await
     }
 }
 
@@ -62,12 +57,7 @@ where
     );
 
     loop {
-        let wake_up = Arc::new(AtomicBool::new(false));
-        let wake_up_handle = tick_sleeping(
-            Arc::clone(&wake_up),
-            sleeping_dispatcher,
-            consumer_state.clone(),
-        );
+        let sleep_ticker = SleepTicker::start(sleeping_dispatcher, consumer_state.clone());
         let (stream_id, bytes_stream) = match connect_stream::connect_with_retries(
             params.api_client.clone(),
             params.consumer_state.clone(),
@@ -84,13 +74,9 @@ where
             .logger()
             .info(format_args!("Connected to stream {}.", stream_id));
 
-        wake_up.store(true, Ordering::SeqCst);
-
-        sleeping_dispatcher = wake_up_handle.await?;
-
         let stream_state = consumer_state.stream_state(stream_id);
         let (returned_params, returned_dispatcher) =
-            consume_stream(params, stream_state, bytes_stream, sleeping_dispatcher).await?;
+            consume_stream(params, stream_state, bytes_stream, sleep_ticker).await?;
 
         sleeping_dispatcher = returned_dispatcher;
         params = returned_params;
@@ -110,7 +96,7 @@ async fn consume_stream<H, C>(
     params: ControllerParams<H, C>,
     stream_state: StreamState,
     bytes_stream: BytesStream,
-    dispatcher: SleepingDispatcher<H, C>,
+    sleep_ticker: SleepTicker<H, C>,
 ) -> Result<(ControllerParams<H, C>, SleepingDispatcher<H, C>), ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
@@ -127,16 +113,59 @@ where
 
     let (batch_lines_sink, batch_lines_receiver) = unbounded_channel::<DispatcherMessage>();
 
-    let active_dispatcher = dispatcher.start(stream_state.clone(), batch_lines_receiver);
-
     let stream_dead_timeout = stream_state
         .config()
         .stream_dead_timeout
         .map(|t| t.duration());
 
-    let mut first_line_received = false;
-
     let mut last_batch_received = Instant::now();
+    pin_mut!(merged);
+
+    let (active_dispatcher, first_line) = loop {
+        if let Some(next) = merged.next().await {
+            match next {
+                Ok(BatchLineMessage::BatchLine(line)) => {
+                    stream_state.info(format_args!("Received first batch line from Nakadi."));
+                    last_batch_received = Instant::now();
+                    let sleeping_dispatcher = sleep_ticker.join().await?;
+                    let active_dispatcher =
+                        sleeping_dispatcher.start(stream_state.clone(), batch_lines_receiver);
+                    break (active_dispatcher, line);
+                }
+                Ok(BatchLineMessage::Tick) => {
+                    if let Some(stream_dead_timeout) = stream_dead_timeout {
+                        let elapsed = last_batch_received.elapsed();
+                        if elapsed > stream_dead_timeout {
+                            stream_state.warn(format_args!(
+                                "The stream is dead boys... after {:?}",
+                                elapsed
+                            ));
+                            let sleeping_dispatcher = sleep_ticker.join().await?;
+                            stream_state.request_stream_cancellation();
+                            return Ok((params, sleeping_dispatcher));
+                        }
+                    }
+                }
+                Err(batch_line_error) => match batch_line_error.kind() {
+                    BatchLineErrorKind::Parser => {
+                        return Err(ConsumerErrorKind::InvalidBatch.into())
+                    }
+                    BatchLineErrorKind::Io => {
+                        let sleeping_dispatcher = sleep_ticker.join().await?;
+                        stream_state.request_stream_cancellation();
+                        return Ok((params, sleeping_dispatcher));
+                    }
+                },
+            }
+        } else {
+            let sleeping_dispatcher = sleep_ticker.join().await?;
+            stream_state.request_stream_cancellation();
+            return Ok((params, sleeping_dispatcher));
+        }
+    };
+
+    let merged = stream::once(async { Ok(BatchLineMessage::BatchLine(first_line)) }).chain(merged);
+
     pin_mut!(merged);
     while let Some(batch_line_message_or_err) = merged.next().await {
         let batch_line_message = match batch_line_message_or_err {
@@ -155,7 +184,10 @@ where
                 if let Some(stream_dead_timeout) = stream_dead_timeout {
                     let elapsed = last_batch_received.elapsed();
                     if elapsed > stream_dead_timeout {
-                        stream_state.warn(format_args!("Stream dead after {:?}", elapsed));
+                        stream_state.warn(format_args!(
+                            "The stream is dead boys... after {:?}",
+                            elapsed
+                        ));
                         break;
                     }
                 }
@@ -164,10 +196,7 @@ where
             }
             BatchLineMessage::BatchLine(batch) => {
                 last_batch_received = Instant::now();
-                if !first_line_received {
-                    stream_state.info(format_args!("Received first batch line from Nakadi."));
-                    first_line_received = true;
-                }
+
                 if let Some(info_str) = batch.info_str() {
                     stream_state.info(format_args!("Received info line: {}", info_str));
                 }
@@ -186,9 +215,7 @@ where
         }
     }
 
-    let mut sleeping_dispatcher = active_dispatcher.join().await?;
-
-    sleeping_dispatcher.tick();
+    let sleeping_dispatcher = active_dispatcher.join().await?;
 
     stream_state.info(format_args!("Streaming stopped"));
 
@@ -220,30 +247,73 @@ where
     }
 }
 
-fn tick_sleeping<H, C>(
+struct SleepTicker<H, C> {
+    join_handle: Option<tokio::task::JoinHandle<SleepingDispatcher<H, C>>>,
     wake_up: Arc<AtomicBool>,
-    mut sleeping_dispatcher: SleepingDispatcher<H, C>,
-    consumer_state: ConsumerState,
-) -> tokio::task::JoinHandle<SleepingDispatcher<H, C>>
+}
+
+impl<H, C> SleepTicker<H, C>
 where
     H: BatchHandler,
     C: Send + 'static,
 {
-    let delay = consumer_state.config().tick_interval.duration();
+    pub fn start(
+        sleeping_dispatcher: SleepingDispatcher<H, C>,
+        consumer_state: ConsumerState,
+    ) -> Self {
+        let wake_up = Arc::new(AtomicBool::new(false));
+        let join_handle =
+            Self::tick_sleeping(Arc::clone(&wake_up), sleeping_dispatcher, consumer_state);
 
-    let sleep = async move {
-        loop {
-            if wake_up.load(Ordering::SeqCst) || consumer_state.global_cancellation_requested() {
-                break;
-            }
-            sleeping_dispatcher.tick();
-            delay_for(delay).await
+        Self {
+            join_handle: Some(join_handle),
+            wake_up,
         }
+    }
 
-        sleeping_dispatcher
-    };
+    pub fn join(mut self) -> tokio::task::JoinHandle<SleepingDispatcher<H, C>> {
+        self.join_handle.take().unwrap()
+    }
 
-    tokio::spawn(sleep)
+    fn tick_sleeping(
+        wake_up: Arc<AtomicBool>,
+        mut sleeping_dispatcher: SleepingDispatcher<H, C>,
+        consumer_state: ConsumerState,
+    ) -> tokio::task::JoinHandle<SleepingDispatcher<H, C>>
+    where
+        H: BatchHandler,
+        C: Send + 'static,
+    {
+        let delay = consumer_state.config().tick_interval.duration();
+
+        let mut last_wait_notification = Instant::now();
+        consumer_state.info(format_args!("Waiting for connection"));
+        let sleep = async move {
+            loop {
+                if wake_up.load(Ordering::SeqCst) || consumer_state.global_cancellation_requested()
+                {
+                    consumer_state.debug(format_args!("Woke up!"));
+                    break;
+                }
+                sleeping_dispatcher.tick();
+                delay_for(delay).await;
+                if last_wait_notification.elapsed() > Duration::from_secs(10) {
+                    consumer_state.info(format_args!("Waiting for incoming batches..."));
+                    last_wait_notification = Instant::now();
+                }
+            }
+
+            sleeping_dispatcher
+        };
+
+        tokio::spawn(sleep)
+    }
+}
+
+impl<H, C> Drop for SleepTicker<H, C> {
+    fn drop(&mut self) {
+        self.wake_up.store(true, Ordering::SeqCst)
+    }
 }
 
 mod connect_stream {
@@ -267,7 +337,7 @@ mod connect_stream {
         consumer_state: ConsumerState,
     ) -> Result<SubscriptionStream, ConsumerError> {
         let config = consumer_state.config();
-        let connect_stream_timeout = config.connect_stream_timeout.map(|t| t.duration());
+        let connect_stream_timeout = config.connect_stream_timeout.duration();
         let max_retry_delay = config.connect_stream_retry_max_delay.into_inner();
         let mut current_retry_delay = 0;
         let flow_id = FlowId::default();
@@ -331,23 +401,19 @@ mod connect_stream {
         client: &C,
         subscription_id: SubscriptionId,
         stream_params: &StreamParameters,
-        connect_timeout: Option<Duration>,
+        connect_timeout: Duration,
         flow_id: FlowId,
     ) -> Result<SubscriptionStream, NakadiApiError> {
         let f = client.request_stream(subscription_id, stream_params, flow_id.clone());
-        if let Some(connect_timeout) = connect_timeout {
-            let started = Instant::now();
-            match timeout(connect_timeout, f).await {
-                Ok(r) => r,
-                Err(err) => Err(NakadiApiError::io()
-                    .with_context(format!(
-                        "Connecting to Nakadi for a stream timed ot after {:?}.",
-                        started.elapsed()
-                    ))
-                    .caused_by(err)),
-            }
-        } else {
-            f.await
+        let started = Instant::now();
+        match timeout(connect_timeout, f).await {
+            Ok(r) => r,
+            Err(err) => Err(NakadiApiError::io()
+                .with_context(format!(
+                    "Connecting to Nakadi for a stream timed ot after {:?}.",
+                    started.elapsed()
+                ))
+                .caused_by(err)),
         }
     }
 }

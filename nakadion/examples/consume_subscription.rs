@@ -10,11 +10,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let subscription_id = SubscriptionId::from_env()?;
 
-    let consumer = Consumer::builder_from_env()?
+    let mut builder = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(10)
-        .connect_stream_timeout_secs(5)
-        .finish_with(client, handler::MyHandlerFactory, StdLogger::new())?;
+        //.stream_dead_timeout_secs(10)
+        .connect_stream_timeout_secs(5);
+
+    builder.apply_defaults();
+
+    println!("{:#?}", builder);
+
+    let consumer = builder.build_with(client, handler::MyHandlerFactory, StdLogger::new())?;
 
     let (handle, task) = consumer.start();
 
