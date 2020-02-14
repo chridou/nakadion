@@ -36,6 +36,7 @@ pub enum CommitStrategy {
 }
 
 new_type! {
+    #[doc="The internal tick interval.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct TickIntervalSecs(u64, env="TICK_INTERVAL_SECS");
 }
@@ -51,6 +52,7 @@ impl Default for TickIntervalSecs {
 }
 
 new_type! {
+    #[doc="The time after which a stream or partition is considered inactive.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct InactivityTimeoutSecs(u64, env="INACTIVITY_TIMEOUT_SECS");
 }
@@ -60,6 +62,7 @@ impl InactivityTimeoutSecs {
     }
 }
 new_type! {
+    #[doc="The time after which a stream is considered stuck and has to be aborted.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamDeadTimeoutSecs(u64, env="STREAM_DEAD_TIMEOUT_SECS");
 }
@@ -69,6 +72,7 @@ impl StreamDeadTimeoutSecs {
     }
 }
 new_type! {
+    #[doc="If `true` abort the consumer when an auth error occurs while connecting to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct AbortConnectOnAuthError(bool, env="ABORT_CONNECT_ON_AUTH_ERROR");
 }
@@ -78,6 +82,7 @@ impl Default for AbortConnectOnAuthError {
     }
 }
 new_type! {
+    #[doc="If `true` abort the consumer when a subscription does not exist when connection to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct AbortConnectOnSubscriptionNotFound(bool, env="ABORT_CONNECT_ON_SUBSCRIPTION_NOT_FOUND");
 }
@@ -88,6 +93,7 @@ impl Default for AbortConnectOnSubscriptionNotFound {
 }
 
 new_type! {
+    #[doc="The maximum retry delay between failed attempts to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct ConnectStreamRetryMaxDelaySecs(u64, env="CONNECT_STREAM_RETRY_MAX_DELAY_SECS");
 }
@@ -102,6 +108,7 @@ impl ConnectStreamRetryMaxDelaySecs {
     }
 }
 new_type! {
+    #[doc="The timeout for a request made to Nakadi to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct ConnectStreamTimeoutSecs(u64, env="CONNECT_STREAM_TIMEOUT_SECS");
 }
@@ -116,6 +123,7 @@ impl Default for ConnectStreamTimeoutSecs {
     }
 }
 new_type! {
+    #[doc="The timeout for a request made to Nakadi to commit cursors.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct CommitTimeoutMillis(u64, env="COMMIT_TIMEOUT_MILLIS");
 }
@@ -130,6 +138,7 @@ impl Default for CommitTimeoutMillis {
     }
 }
 new_type! {
+    #[doc="The delay between failed attempts to commit cursors.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct CommitRetryDelayMillis(u64, env="COMMIT_RETRY_DELAY_MILLIS");
 }
@@ -144,40 +153,82 @@ impl Default for CommitRetryDelayMillis {
     }
 }
 
+/// Creates a `Consumer`
+///
+/// This struct configures and creates a consumer. Before a consumer is build
+/// the given values will be validated and defaults will be applied.
+///
+/// The `Builder` can be created and updated from the environment. When updated
+/// from the environment only those values will be updated which were not set
+/// before.
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
 pub struct Builder {
+    /// The `SubscriptionId` of the subscription to be consumed.
+    ///
+    /// This value **must** be set.
     pub subscription_id: Option<SubscriptionId>,
+    /// Parameters that configure the stream to be consumed.
     pub stream_parameters: Option<StreamParameters>,
+    /// The instrumentation to be used to generate metrics
     pub instrumentation: Option<Instrumentation>,
+    /// The internal tick interval.
+    ///
+    /// This triggers internal notification used to montitor the state
+    /// of the currently consumed stream.
     pub tick_interval_secs: Option<TickIntervalSecs>,
+    /// The time after which a stream or partition is considered inactive.
     pub inactivity_timeout_secs: Option<InactivityTimeoutSecs>,
+    /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_timeout_secs: Option<StreamDeadTimeoutSecs>,
+    /// Defines how batches are internally dispatched.
+    ///
+    /// This e.g. configures parallelism.
     pub dispatch_strategy: Option<DispatchStrategy>,
+    /// Defines when to commit cursors.
+    ///
+    /// It is recommended to set this value instead of letting Nakadion
+    /// determine defaults.
     pub commit_strategy: Option<CommitStrategy>,
+    /// If `true` abort the consumer when an auth error occurs while connecting to a stream.
     pub abort_connect_on_auth_error: Option<AbortConnectOnAuthError>,
+    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
+    /// The maximum retry delay between failed attempts to connect to a stream.
     pub connect_stream_retry_max_delay_secs: Option<ConnectStreamRetryMaxDelaySecs>,
+    /// The timeout for a request made to Nakadi to connect to a stream.
     pub connect_stream_timeout_secs: Option<ConnectStreamTimeoutSecs>,
+    /// The timeout for a request made to Nakadi to commit cursors.
     pub commit_timeout_millis: Option<CommitTimeoutMillis>,
+    /// The delay between failed attempts to commit cursors.
     pub commit_retry_delay_millis: Option<CommitRetryDelayMillis>,
 }
 
 impl Builder {
+    /// Creates a new `Builder` from the environment where all the env vars
+    /// are prefixed with `NAKADION_`.
     pub fn try_from_env() -> Result<Self, Error> {
         Self::try_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
     }
 
+    /// Creates a new `Builder` from the environment where all the env vars
+    /// are prefixed with `<prefix>_`.
     pub fn try_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         let mut me = Self::default();
         me.fill_from_env_prefixed(prefix)?;
         Ok(me)
     }
 
+    /// Sets all values that have not been set so far from the environment.
+    ///
+    /// All the env vars are prefixed with `NAKADION_`.
     pub fn fill_from_env(&mut self) -> Result<(), Error> {
         self.fill_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
     }
 
+    /// Sets all values that have not been set so far from the environment.
+    ///
+    /// All the env vars are prefixed with `<prefix>_`.
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.subscription_id.is_none() {
             self.subscription_id = SubscriptionId::try_from_env_prefixed(prefix.as_ref())?;
@@ -230,26 +281,36 @@ impl Builder {
         Ok(())
     }
 
+    /// The `SubscriptionId` of the subscription to be consumed.
+    ///
+    /// This value **must** be set.
     pub fn subscription_id(mut self, subscription_id: SubscriptionId) -> Self {
         self.subscription_id = Some(subscription_id);
         self
     }
 
+    /// Parameters that configure the stream to be consumed.
     pub fn stream_parameters(mut self, params: StreamParameters) -> Self {
         self.stream_parameters = Some(params);
         self
     }
 
+    /// The instrumentation to be used to generate metrics
     pub fn instrumentation(mut self, instr: Instrumentation) -> Self {
         self.instrumentation = Some(instr);
         self
     }
 
+    /// The internal tick interval.
+    ///
+    /// This triggers internal notification used to montitor the state
+    /// of the currently consumed stream.
     pub fn tick_interval_secs<T: Into<TickIntervalSecs>>(mut self, tick_interval: T) -> Self {
         self.tick_interval_secs = Some(tick_interval.into());
         self
     }
 
+    /// The time after which a stream or partition is considered inactive.
     pub fn inactivity_timeout_secs<T: Into<InactivityTimeoutSecs>>(
         mut self,
         inactivity_timeout: T,
@@ -258,6 +319,7 @@ impl Builder {
         self
     }
 
+    /// The time after which a stream is considered stuck and has to be aborted.
     pub fn stream_dead_timeout_secs<T: Into<StreamDeadTimeoutSecs>>(
         mut self,
         stream_dead_timeout: T,
@@ -266,16 +328,24 @@ impl Builder {
         self
     }
 
+    /// Defines how batches are internally dispatched.
+    ///
+    /// This e.g. configures parallelism.
     pub fn dispatch_strategy(mut self, dispatch_strategy: DispatchStrategy) -> Self {
         self.dispatch_strategy = Some(dispatch_strategy);
         self
     }
 
+    /// Defines when to commit cursors.
+    ///
+    /// It is recommended to set this value instead of letting Nakadion
+    /// determine defaults.
     pub fn commit_strategy(mut self, commit_strategy: CommitStrategy) -> Self {
         self.commit_strategy = Some(commit_strategy);
         self
     }
 
+    /// If `true` abort the consumer when an auth error occurs while connecting to a stream.
     pub fn abort_connect_on_auth_error<T: Into<AbortConnectOnAuthError>>(
         mut self,
         abort_connect_on_auth_error: T,
@@ -284,6 +354,7 @@ impl Builder {
         self
     }
 
+    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub fn abort_connect_on_subscription_not_found<T: Into<AbortConnectOnSubscriptionNotFound>>(
         mut self,
         abort_connect_on_subscription_not_found: T,
@@ -293,6 +364,7 @@ impl Builder {
         self
     }
 
+    /// The maximum retry delay between failed attempts to connect to a stream.
     pub fn connect_stream_retry_max_delay_secs<T: Into<ConnectStreamRetryMaxDelaySecs>>(
         mut self,
         connect_stream_retry_max_delay_secs: T,
@@ -301,6 +373,7 @@ impl Builder {
         self
     }
 
+    /// The timeout for a request made to Nakadi to connect to a stream.
     pub fn connect_stream_timeout_secs<T: Into<ConnectStreamTimeoutSecs>>(
         mut self,
         connect_stream_timeout_secs: T,
@@ -309,6 +382,7 @@ impl Builder {
         self
     }
 
+    /// The timeout for a request made to Nakadi to commit cursors.
     pub fn commit_timeout_millis<T: Into<CommitTimeoutMillis>>(
         mut self,
         commit_timeout_millis: T,
@@ -317,6 +391,7 @@ impl Builder {
         self
     }
 
+    /// The delay between failed attempts to commit cursors.
     pub fn commit_retry_delay_millis<T: Into<CommitRetryDelayMillis>>(
         mut self,
         commit_retry_delay_millis: T,
@@ -325,6 +400,10 @@ impl Builder {
         self
     }
 
+    /// Modify the current `StreamParameters` with a closure.
+    ///
+    /// If these have not been set `StreamParameters::default()` will
+    /// be passed into the closure.
     pub fn update_stream_parameters<F>(mut self, mut f: F) -> Self
     where
         F: FnMut(StreamParameters) -> StreamParameters,
@@ -334,6 +413,12 @@ impl Builder {
         self
     }
 
+    /// Modify the current `StreamParameters` with a closure.
+    ///
+    /// If these have not been set `StreamParameters::default()` will
+    /// be passed into the closure.
+    ///
+    /// If the closure fails, the whole `Builder` will fail.
     pub fn try_update_stream_parameters<F>(mut self, mut f: F) -> Result<Self, Error>
     where
         F: FnMut(StreamParameters) -> Result<StreamParameters, Error>,
@@ -343,6 +428,9 @@ impl Builder {
         Ok(self)
     }
 
+    /// Applies the defaults to all values that have not been set so far.
+    ///
+    /// Remember that there is no default for a `SubscriptionId` which must be set otherwise.
     pub fn apply_defaults(&mut self) {
         let stream_parameters = self
             .stream_parameters
@@ -392,10 +480,12 @@ impl Builder {
         self.abort_connect_on_subscription_not_found =
             Some(abort_connect_on_subscription_not_found);
         self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
+        self.connect_stream_timeout_secs = Some(connect_stream_timeout);
         self.commit_timeout_millis = Some(commit_timeout);
         self.commit_retry_delay_millis = Some(commit_retry_delay);
     }
 
+    /// Create a `Consumer`
     pub fn build_with<C, HF, L>(
         &self,
         api_client: C,

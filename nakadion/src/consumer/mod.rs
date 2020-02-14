@@ -1,3 +1,4 @@
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -91,6 +92,13 @@ impl Consumer {
     }
 }
 
+impl fmt::Debug for Consumer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Consumer({:?})", self.inner)?;
+        Ok(())
+    }
+}
+
 pub struct ConsumptionOutcome {
     aborted: Option<ConsumerError>,
     consumer: Consumer,
@@ -161,7 +169,7 @@ impl ConsumerHandle {
     }
 }
 
-trait ConsumerInternal {
+trait ConsumerInternal: fmt::Debug {
     fn start(&self, consumer_state: ConsumerState)
         -> BoxFuture<'static, Result<(), ConsumerError>>;
 
@@ -175,6 +183,13 @@ struct Inner<C, H> {
     api_client: C,
     handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
     logging_adapter: Arc<dyn LoggingAdapter>,
+}
+
+impl<C, H> fmt::Debug for Inner<C, H> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[]")?;
+        Ok(())
+    }
 }
 
 impl<C, H> ConsumerInternal for Inner<C, H>

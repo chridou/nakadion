@@ -41,7 +41,7 @@ macro_rules! from_env {
 
 macro_rules! env_funs {
     ($var:expr) => {
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
         #[doc=$var]
@@ -50,7 +50,7 @@ macro_rules! env_funs {
             Self::try_from_env_prefixed($crate::helpers::NAKADION_PREFIX)
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
@@ -64,7 +64,7 @@ macro_rules! env_funs {
             Self::try_from_env_named(var_name)
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is `var_name`."]
          pub fn try_from_env_named<T: AsRef<str>>(
@@ -86,7 +86,7 @@ macro_rules! env_funs {
             }
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
         #[doc=$var]
@@ -95,7 +95,7 @@ macro_rules! env_funs {
             Self::from_env_prefixed($crate::helpers::NAKADION_PREFIX)
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
@@ -107,7 +107,7 @@ macro_rules! env_funs {
             Self::from_env_named(var_name)
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is `var_name`."]
         pub fn from_env_named<T: AsRef<str>>(var_name: T) -> Result<Self, $crate::Error> {
@@ -121,7 +121,7 @@ macro_rules! env_funs {
             })
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
         #[doc=$var]
@@ -130,7 +130,7 @@ macro_rules! env_funs {
             Self::from_env_prefixed($crate::helpers::NAKADION_PREFIX).ok()
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
@@ -142,7 +142,7 @@ macro_rules! env_funs {
             Self::from_env_named(var_name).ok()
         }
 
-        #[doc="Get value from the environment.\n"]
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
         #[doc="The name of the environment variable is `var_name`."]
         pub fn from_env_opt_named<T: AsRef<str>>(var_name: T) -> Option<Self> {

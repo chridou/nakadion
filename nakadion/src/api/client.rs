@@ -281,6 +281,13 @@ impl ApiClient {
     }
 }
 
+impl fmt::Debug for ApiClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ApiClient({:?})", self.inner)?;
+        Ok(())
+    }
+}
+
 impl MonitoringApi for ApiClient {
     fn get_cursor_distances<T: Into<FlowId>>(
         &self,
@@ -757,6 +764,13 @@ struct Inner {
     access_token_provider: Box<dyn ProvidesAccessToken + Send + Sync + 'static>,
 }
 
+impl fmt::Debug for Inner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.urls.base_url)?;
+        Ok(())
+    }
+}
+
 mod urls {
     use url::Url;
 
@@ -764,6 +778,7 @@ mod urls {
     use nakadi_types::model::subscription::SubscriptionId;
 
     pub struct Urls {
+        pub base_url: Url,
         event_types: Url,
         subscriptions: Url,
     }
@@ -771,6 +786,7 @@ mod urls {
     impl Urls {
         pub fn new(base_url: Url) -> Self {
             Self {
+                base_url: base_url.clone(),
                 event_types: base_url.join("event-types/").unwrap(),
                 subscriptions: base_url.join("subscriptions/").unwrap(),
             }

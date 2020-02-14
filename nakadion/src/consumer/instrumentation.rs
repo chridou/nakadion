@@ -1,6 +1,8 @@
+use std::fmt;
+
 pub trait Instrumented {}
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Instrumentation {
     Off,
 }
@@ -8,5 +10,14 @@ pub enum Instrumentation {
 impl Default for Instrumentation {
     fn default() -> Self {
         Instrumentation::Off
+    }
+}
+
+impl fmt::Debug for Instrumentation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instrumentation::Off => write!(f, "Instrumentation(Off)")?,
+        }
+        Ok(())
     }
 }
