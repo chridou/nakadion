@@ -1,4 +1,3 @@
-use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
 
