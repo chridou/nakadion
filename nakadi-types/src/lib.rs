@@ -45,6 +45,10 @@ impl FlowId {
         FlowId(s.into())
     }
 
+    pub fn new_disp<T: fmt::Display>(s: T) -> Self {
+        FlowId(s.to_string())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0.as_ref()
     }
@@ -52,26 +56,49 @@ impl FlowId {
     pub fn into_inner(self) -> String {
         self.0
     }
+
+    pub fn random() -> Self {
+        FlowId(uuid::Uuid::new_v4().to_string())
+    }
 }
 
-impl Default for FlowId {
-    fn default() -> Self {
-        FlowId(uuid::Uuid::new_v4().to_string())
+/// Crates a random `FlowId` when converted into a `FlowId`
+#[derive(Debug, Clone, Copy)]
+pub struct RandomFlowId;
+
+impl From<RandomFlowId> for FlowId {
+    fn from(_: RandomFlowId) -> Self {
+        Self::random()
+    }
+}
+
+impl From<()> for FlowId {
+    fn from(_: ()) -> Self {
+        Self::random()
+    }
+}
+
+impl From<String> for FlowId {
+    fn from(v: String) -> Self {
+        Self::new(v)
+    }
+}
+
+impl From<&str> for FlowId {
+    fn from(v: &str) -> Self {
+        Self::new(v.to_owned())
+    }
+}
+
+impl From<uuid::Uuid> for FlowId {
+    fn from(v: uuid::Uuid) -> Self {
+        Self::new(v.to_string())
     }
 }
 
 impl fmt::Display for FlowId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-impl<T> From<T> for FlowId
-where
-    T: Into<String>,
-{
-    fn from(v: T) -> Self {
-        FlowId::new(v)
     }
 }
 

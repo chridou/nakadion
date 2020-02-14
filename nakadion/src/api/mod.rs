@@ -28,27 +28,27 @@ pub trait MonitoringApi {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
-    fn get_cursor_distances(
+    fn get_cursor_distances<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         query: &CursorDistanceQuery,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<CursorDistanceResult>;
 
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursors-lag_post)
-    fn get_cursor_lag(
+    fn get_cursor_lag<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         cursors: &[Cursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<Partition>>;
 
-    fn get_event_type_partitions(
+    fn get_event_type_partitions<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<Partition>>;
 }
 
@@ -56,32 +56,41 @@ pub trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
-    fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()>;
+    fn create_event_type<T: Into<FlowId>>(
+        &self,
+        event_type: &EventType,
+        flow_id: T,
+    ) -> ApiFuture<()>;
 
     /// Returns the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
-    fn get_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType>;
+    fn get_event_type<T: Into<FlowId>>(
+        &self,
+        name: &EventTypeName,
+        flow_id: T,
+    ) -> ApiFuture<EventType>;
 
     /// Updates the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
-    fn update_event_type(
+    fn update_event_type<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         event_type: &EventType,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<()>;
 
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()>;
+    fn delete_event_type<T: Into<FlowId>>(&self, name: &EventTypeName, flow_id: T)
+        -> ApiFuture<()>;
 }
 
 /// Possible error variants returned from publishing events
@@ -170,11 +179,11 @@ pub trait PublishApi {
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<E: Serialize>(
+    fn publish_events<E: Serialize, T: Into<FlowId>>(
         &self,
         event_type: &EventTypeName,
         events: &[E],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> PublishFuture;
 }
 
@@ -182,16 +191,20 @@ pub trait SubscriptionApi {
     /// This endpoint creates a subscription for EventTypes.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
-    fn create_subscription(
+    fn create_subscription<T: Into<FlowId>>(
         &self,
         input: &SubscriptionInput,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Subscription>;
 
     /// Returns a subscription identified by id.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
-    fn get_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription>;
+    fn get_subscription<T: Into<FlowId>>(
+        &self,
+        id: SubscriptionId,
+        flow_id: T,
+    ) -> ApiFuture<Subscription>;
 
     /// This endpoint only allows to update the authorization section of a subscription.
     ///
@@ -200,40 +213,41 @@ pub trait SubscriptionApi {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<()>;
+    fn update_auth<T: Into<FlowId>>(&self, input: &SubscriptionInput, flow_id: T) -> ApiFuture<()>;
 
     /// Deletes a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
-    fn delete_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()>;
+    fn delete_subscription<T: Into<FlowId>>(&self, id: SubscriptionId, flow_id: T)
+        -> ApiFuture<()>;
 
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_committed_offsets(
+    fn get_committed_offsets<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<SubscriptionCursor>>;
 
     /// Exposes statistics of specified subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/stats_get)
-    fn get_subscription_stats(
+    fn get_subscription_stats<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         show_time_lag: bool,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<SubscriptionEventTypeStats>>;
 
     /// Reset subscription offsets to specified values.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
-    fn reset_subscription_cursors(
+    fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         cursors: &[SubscriptionCursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<()>;
 }
 
@@ -241,12 +255,12 @@ pub trait SubscriptionCommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)
-    fn commit_cursors(
+    fn commit_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         stream: StreamId,
         cursors: &[SubscriptionCursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<CursorCommitResults>;
 }
 
@@ -280,11 +294,11 @@ pub trait SubscriptionStreamApi {
     /// Using the GET /subscriptions/{subscription_id}/stats endpoint can be helpful.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
-    fn request_stream(
+    fn request_stream<T: Into<FlowId>>(
         &self,
         subscription_id: SubscriptionId,
         parameters: &StreamParameters,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<SubscriptionStream>;
 }
 
@@ -303,19 +317,9 @@ impl SubscriptionStream {
 pub trait NakadionEssentials:
     SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
 {
-    fn into_commit_api(self: Arc<Self>) -> Arc<dyn SubscriptionCommitApi + Send + Sync + 'static>;
-    fn into_stream_api(self: Arc<Self>) -> Arc<dyn SubscriptionStreamApi + Send + Sync + 'static>;
 }
 
-impl<T> NakadionEssentials for T
-where
-    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static,
+impl<T> NakadionEssentials for T where
+    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
 {
-    fn into_commit_api(self: Arc<Self>) -> Arc<dyn SubscriptionCommitApi + Send + Sync + 'static> {
-        self
-    }
-
-    fn into_stream_api(self: Arc<Self>) -> Arc<dyn SubscriptionStreamApi + Send + Sync + 'static> {
-        self
-    }
 }

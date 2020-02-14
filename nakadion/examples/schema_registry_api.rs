@@ -1,5 +1,5 @@
 use nakadi_types::model::event_type::*;
-use nakadi_types::FlowId;
+use nakadi_types::RandomFlowId;
 use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 
 #[cfg(feature = "reqwest")]
@@ -14,12 +14,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_type_name = EventTypeName::from_env()?;
 
     let event_type = client
-        .get_event_type(&event_type_name, FlowId::default())
+        .get_event_type(&event_type_name, RandomFlowId)
         .await?;
 
     println!("{:#?}", event_type);
     let event_type = client
-        .get_event_type_partitions(&event_type_name, FlowId::default())
+        .get_event_type_partitions(&event_type_name, RandomFlowId)
         .await?;
 
     println!("{:#?}", event_type);

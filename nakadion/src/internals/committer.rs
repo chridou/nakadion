@@ -249,7 +249,7 @@ where
             stream_id,
             &cursors,
             config.commit_timeout.duration(),
-            FlowId::default(),
+            FlowId::random(),
         )
         .await
         {
@@ -288,7 +288,7 @@ where
             stream_state.stream_id(),
             &cursors,
             config.commit_timeout.duration() * 2,
-            FlowId::default(),
+            FlowId::random(),
         )
         .await
         {

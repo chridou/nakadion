@@ -26,9 +26,10 @@ use crate::api::dispatch_http_request::ReqwestDispatchHttpRequest;
 
 const SCHEME_BEARER: &str = "Bearer";
 
-#[derive(Default)]
+#[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct Builder {
-    nakadi_base_url: Option<NakadiBaseUrl>,
+    pub nakadi_base_url: Option<NakadiBaseUrl>,
 }
 
 impl Builder {
@@ -52,7 +53,7 @@ impl Builder {
 }
 
 impl Builder {
-    pub fn finish_with<D, P>(
+    pub fn build_with<D, P>(
         mut self,
         dispatch_http_request: D,
         access_token_provider: P,
@@ -74,17 +75,17 @@ impl Builder {
         ))
     }
 
-    pub fn finish_from_env_with_dispatcher<D>(
+    pub fn build_from_env_with_dispatcher<D>(
         self,
         dispatch_http_request: D,
     ) -> Result<ApiClient, Error>
     where
         D: DispatchHttpRequest + Send + Sync + 'static,
     {
-        self.finish_from_env_prefixed_with_dispatcher(NAKADION_PREFIX, dispatch_http_request)
+        self.build_from_env_prefixed_with_dispatcher(NAKADION_PREFIX, dispatch_http_request)
     }
 
-    pub fn finish_from_env_prefixed_with_dispatcher<T, D>(
+    pub fn build_from_env_prefixed_with_dispatcher<T, D>(
         mut self,
         prefix: T,
         dispatch_http_request: D,
@@ -98,7 +99,7 @@ impl Builder {
         }
         let access_token_provider = AccessTokenProvider::from_env_prefixed(prefix.as_ref())?;
 
-        self.finish_with(dispatch_http_request, access_token_provider)
+        self.build_with(dispatch_http_request, access_token_provider)
     }
 }
 
@@ -109,7 +110,7 @@ impl Builder {
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
         let dispatch_http_request = ReqwestDispatchHttpRequest::default();
-        self.finish_with(dispatch_http_request, access_token_provider)
+        self.build_with(dispatch_http_request, access_token_provider)
     }
 
     pub fn finish_from_env(self) -> Result<ApiClient, Error> {
@@ -121,7 +122,7 @@ impl Builder {
         T: AsRef<str>,
     {
         let dispatch_http_request = ReqwestDispatchHttpRequest::default();
-        self.finish_from_env_prefixed_with_dispatcher(prefix, dispatch_http_request)
+        self.build_from_env_prefixed_with_dispatcher(prefix, dispatch_http_request)
     }
 }
 
@@ -281,45 +282,45 @@ impl ApiClient {
 }
 
 impl MonitoringApi for ApiClient {
-    fn get_cursor_distances(
+    fn get_cursor_distances<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         query: &CursorDistanceQuery,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<CursorDistanceResult> {
         let payload_to_send = serde_json::to_vec(query).unwrap();
         self.send_receive_payload(
             self.urls().monitoring_cursor_distances(name),
             Method::POST,
             payload_to_send,
-            flow_id,
+            flow_id.into(),
         )
         .boxed()
     }
 
-    fn get_cursor_lag(
+    fn get_cursor_lag<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         cursors: &[Cursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<Partition>> {
         let payload_to_send = serde_json::to_vec(cursors).unwrap();
         self.send_receive_payload(
             self.urls().monitoring_cursor_lag(name),
             Method::POST,
             payload_to_send,
-            flow_id,
+            flow_id.into(),
         )
         .boxed()
     }
 
-    fn get_event_type_partitions(
+    fn get_event_type_partitions<T: Into<FlowId>>(
         &self,
         event_type: &EventTypeName,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<Partition>> {
         let url = self.urls().monitoring_event_type_partitions(event_type);
-        self.get(url, flow_id).boxed()
+        self.get(url, flow_id.into()).boxed()
     }
 }
 
@@ -327,20 +328,24 @@ impl SchemaRegistryApi for ApiClient {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>> {
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>> {
         self.get(self.urls().schema_registry_list_event_types(), flow_id)
             .boxed()
     }
     /// Creates a new EventType.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
-    fn create_event_type(&self, event_type: &EventType, flow_id: FlowId) -> ApiFuture<()> {
+    fn create_event_type<T: Into<FlowId>>(
+        &self,
+        event_type: &EventType,
+        flow_id: T,
+    ) -> ApiFuture<()> {
         let payload_to_send = serde_json::to_vec(event_type).unwrap();
         self.send_receive_payload(
             self.urls().schema_registry_create_event_type(),
             Method::POST,
             payload_to_send,
-            flow_id,
+            flow_id.into(),
         )
         .boxed()
     }
@@ -348,25 +353,29 @@ impl SchemaRegistryApi for ApiClient {
     /// Returns the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
-    fn get_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<EventType> {
+    fn get_event_type<T: Into<FlowId>>(
+        &self,
+        name: &EventTypeName,
+        flow_id: T,
+    ) -> ApiFuture<EventType> {
         let url = self.urls().schema_registry_get_event_type(name);
-        self.get(url, flow_id).boxed()
+        self.get(url, flow_id.into()).boxed()
     }
 
     /// Updates the EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
-    fn update_event_type(
+    fn update_event_type<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
         event_type: &EventType,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<()> {
         self.send_payload(
             self.urls().schema_registry_update_event_type(name),
             Method::PUT,
             serde_json::to_vec(event_type).unwrap(),
-            flow_id,
+            flow_id.into(),
         )
         .boxed()
     }
@@ -374,22 +383,30 @@ impl SchemaRegistryApi for ApiClient {
     /// Deletes an EventType identified by its name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type(&self, name: &EventTypeName, flow_id: FlowId) -> ApiFuture<()> {
-        self.delete(self.urls().schema_registry_delete_event_type(name), flow_id)
-            .boxed()
+    fn delete_event_type<T: Into<FlowId>>(
+        &self,
+        name: &EventTypeName,
+        flow_id: T,
+    ) -> ApiFuture<()> {
+        self.delete(
+            self.urls().schema_registry_delete_event_type(name),
+            flow_id.into(),
+        )
+        .boxed()
     }
 }
 
 impl PublishApi for ApiClient {
-    fn publish_events<E: Serialize>(
+    fn publish_events<E: Serialize, T: Into<FlowId>>(
         &self,
         event_type: &EventTypeName,
         events: &[E],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> PublishFuture {
         let serialized = serde_json::to_vec(events).unwrap();
         let url = self.urls().publish_events(event_type);
 
+        let flow_id = flow_id.into();
         async move {
             let mut request = self.create_request(&url, serialized, flow_id).await?;
             *request.method_mut() = Method::POST;
@@ -437,10 +454,10 @@ impl SubscriptionApi for ApiClient {
     /// This endpoint creates a subscription for EventTypes.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
-    fn create_subscription(
+    fn create_subscription<T: Into<FlowId>>(
         &self,
         input: &SubscriptionInput,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Subscription> {
         if let Some(subscription_id) = input.id {
             return async move {
@@ -454,6 +471,7 @@ impl SubscriptionApi for ApiClient {
         let url = self.urls().subscriptions_create_subscription();
         let serialized = serde_json::to_vec(input).unwrap();
 
+        let flow_id = flow_id.into();
         async move {
             let mut request = self
                 .create_request(&url, serialized, flow_id.clone())
@@ -480,9 +498,13 @@ impl SubscriptionApi for ApiClient {
     /// Returns a subscription identified by id.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
-    fn get_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<Subscription> {
+    fn get_subscription<T: Into<FlowId>>(
+        &self,
+        id: SubscriptionId,
+        flow_id: T,
+    ) -> ApiFuture<Subscription> {
         let url = self.urls().subscriptions_get_subscription(id);
-        self.get(url, flow_id).boxed()
+        self.get(url, flow_id.into()).boxed()
     }
 
     /// This endpoint only allows to update the authorization section of a subscription.
@@ -492,14 +514,14 @@ impl SubscriptionApi for ApiClient {
     /// This call captures the timestamp of the update request.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth(&self, input: &SubscriptionInput, flow_id: FlowId) -> ApiFuture<()> {
+    fn update_auth<T: Into<FlowId>>(&self, input: &SubscriptionInput, flow_id: T) -> ApiFuture<()> {
         if let Some(id) = input.id {
             let url = self.urls().subscriptions_update_auth(id);
             self.send_payload(
                 url,
                 Method::PUT,
                 serde_json::to_vec(input).unwrap(),
-                flow_id,
+                flow_id.into(),
             )
             .boxed()
         } else {
@@ -515,18 +537,22 @@ impl SubscriptionApi for ApiClient {
     /// Deletes a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
-    fn delete_subscription(&self, id: SubscriptionId, flow_id: FlowId) -> ApiFuture<()> {
+    fn delete_subscription<T: Into<FlowId>>(
+        &self,
+        id: SubscriptionId,
+        flow_id: T,
+    ) -> ApiFuture<()> {
         let url = self.urls().subscriptions_delete_subscription(id);
-        self.delete(url, flow_id).boxed()
+        self.delete(url, flow_id.into()).boxed()
     }
 
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_committed_offsets(
+    fn get_committed_offsets<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<SubscriptionCursor>> {
         #[derive(Deserialize)]
         struct EntityWrapper {
@@ -535,16 +561,16 @@ impl SubscriptionApi for ApiClient {
         };
 
         let url = self.urls().subscriptions_get_committed_offsets(id);
-        self.get::<EntityWrapper>(url, flow_id)
+        self.get::<EntityWrapper>(url, flow_id.into())
             .map_ok(|wrapper| wrapper.items)
             .boxed()
     }
 
-    fn get_subscription_stats(
+    fn get_subscription_stats<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         show_time_lag: bool,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<Vec<SubscriptionEventTypeStats>> {
         #[derive(Deserialize)]
         struct EntityWrapper {
@@ -552,7 +578,7 @@ impl SubscriptionApi for ApiClient {
             items: Vec<SubscriptionEventTypeStats>,
         };
         let url = self.urls().subscriptions_stats(id, show_time_lag);
-        self.get::<EntityWrapper>(url, flow_id)
+        self.get::<EntityWrapper>(url, flow_id.into())
             .map_ok(|wrapper| wrapper.items)
             .boxed()
     }
@@ -560,11 +586,11 @@ impl SubscriptionApi for ApiClient {
     /// Reset subscription offsets to specified values.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
-    fn reset_subscription_cursors(
+    fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         cursors: &[SubscriptionCursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<()> {
         #[derive(Serialize)]
         struct EntityWrapper<'b> {
@@ -576,19 +602,19 @@ impl SubscriptionApi for ApiClient {
             url,
             Method::PATCH,
             serde_json::to_vec(&data).unwrap(),
-            flow_id,
+            flow_id.into(),
         )
         .boxed()
     }
 }
 
 impl SubscriptionCommitApi for ApiClient {
-    fn commit_cursors(
+    fn commit_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         stream: StreamId,
         cursors: &[SubscriptionCursor],
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<CursorCommitResults> {
         #[derive(Serialize)]
         struct ItemsWrapper<'a> {
@@ -599,6 +625,7 @@ impl SubscriptionCommitApi for ApiClient {
 
         let serialized = serde_json::to_vec(&wrapped).unwrap();
 
+        let flow_id = flow_id.into();
         async move {
             let url = self.urls().subscriptions_commit_cursors(id);
             let mut request = self.create_request(&url, serialized, flow_id).await?;
@@ -626,15 +653,15 @@ impl SubscriptionCommitApi for ApiClient {
 }
 
 impl SubscriptionStreamApi for ApiClient {
-    fn request_stream(
+    fn request_stream<T: Into<FlowId>>(
         &self,
         subscription_id: SubscriptionId,
         parameters: &StreamParameters,
-        flow_id: FlowId,
+        flow_id: T,
     ) -> ApiFuture<SubscriptionStream> {
         let url = self.urls().subscriptions_request_stream(subscription_id);
         let parameters = serde_json::to_vec(parameters).unwrap();
-
+        let flow_id = flow_id.into();
         async move {
             let mut request = self
                 .create_request(&url, parameters, flow_id.clone())

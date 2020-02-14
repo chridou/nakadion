@@ -340,7 +340,7 @@ mod connect_stream {
         let connect_stream_timeout = config.connect_stream_timeout.duration();
         let max_retry_delay = config.connect_stream_retry_max_delay.into_inner();
         let mut current_retry_delay = 0;
-        let flow_id = FlowId::default();
+        let flow_id = FlowId::random();
         loop {
             if current_retry_delay < max_retry_delay {
                 current_retry_delay += 1;
