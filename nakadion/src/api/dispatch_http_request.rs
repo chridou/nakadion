@@ -69,10 +69,6 @@ impl RemoteCallError {
     pub fn message(&self) -> Option<&str> {
         self.message.as_ref().map(|m| &**m)
     }
-
-    pub fn is_retry_suggested(&self) -> bool {
-        self.detail.is_retry_suggested()
-    }
 }
 
 pub type RemoteCallResult<T> = Result<T, RemoteCallError>;
@@ -126,13 +122,6 @@ impl RemoteCallErrorDetail {
         match self {
             RemoteCallErrorDetail::Other => true,
             _ => false,
-        }
-    }
-
-    pub fn is_retry_suggested(&self) -> bool {
-        match self {
-            RemoteCallErrorDetail::Other => false,
-            RemoteCallErrorDetail::Io => true,
         }
     }
 }
