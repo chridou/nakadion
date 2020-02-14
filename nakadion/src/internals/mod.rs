@@ -71,7 +71,6 @@ impl Logs for ConsumerState {
     #[cfg(not(feature = "debug-mode"))]
     fn debug(&self, args: Arguments) {}
 
-    #[cfg(feature = "debug-mode")]
     fn info(&self, args: Arguments) {
         self.logger.info(args);
     }
