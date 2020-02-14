@@ -95,6 +95,9 @@ impl Logs for Logger {
     }
 }
 
+/// An adapter for pluggable logging.
+///
+/// Implementors can be used by the `Consumer`
 pub trait LoggingAdapter: Send + Sync + 'static {
     fn debug(&self, context: &LoggingContext, args: Arguments);
     fn info(&self, context: &LoggingContext, args: Arguments);
@@ -102,84 +105,76 @@ pub trait LoggingAdapter: Send + Sync + 'static {
     fn error(&self, context: &LoggingContext, args: Arguments);
 }
 
-#[derive(Clone, Copy)]
-pub struct StdOutLogger(bool);
+/// Logs to stdout
+///
+/// This does not use the tokio version. It blocks the current thread.
+#[derive(Clone)]
+pub struct StdOutLogger(LogConfig);
 
 impl StdOutLogger {
-    pub fn new(long_display: bool) -> Self {
-        Self(long_display)
-    }
-
-    pub fn long_display() -> Self {
-        Self(true)
-    }
-
-    pub fn short_display() -> Self {
-        Self(false)
+    pub fn new(config: LogConfig) -> Self {
+        Self(config)
     }
 }
 
 impl Default for StdOutLogger {
     fn default() -> Self {
-        Self::short_display()
+        Self::new(LogConfig::default())
     }
 }
 
 impl LoggingAdapter for StdOutLogger {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        println!("[DEBUG]{} {}", context.select_display(self.0), args);
+        println!("[DEBUG]{}{}", context.create_display(&self.0), args);
     }
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        println!("[INFO]{} {}", context.select_display(self.0), args);
+        println!("[INFO]{}{}", context.create_display(&self.0), args);
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        println!("[WARN]{} {}", context.select_display(self.0), args);
+        println!("[WARN]{}{}", context.create_display(&self.0), args);
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        println!("[ERROR]{} {}", context.select_display(self.0), args);
+        println!("[ERROR]{}{}", context.create_display(&self.0), args);
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct StdErrLogger(bool);
+/// Logs to stderr
+///
+/// This does not use the tokio version. It blocks the current thread.
+#[derive(Clone)]
+pub struct StdErrLogger(LogConfig);
 
 impl StdErrLogger {
-    pub fn new(long_display: bool) -> Self {
-        Self(long_display)
-    }
-
-    pub fn long_display() -> Self {
-        Self(true)
-    }
-
-    pub fn short_display() -> Self {
-        Self(false)
+    pub fn new(config: LogConfig) -> Self {
+        Self(config)
     }
 }
 
 impl Default for StdErrLogger {
     fn default() -> Self {
-        Self::short_display()
+        Self::new(LogConfig::default())
     }
 }
+
 impl LoggingAdapter for StdErrLogger {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[DEBUG]{} {}", context.select_display(self.0), args);
+        eprintln!("[DEBUG]{}{}", context.create_display(&self.0), args);
     }
 
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[INFO]{} {}", context.select_display(self.0), args);
+        eprintln!("[INFO]{}{}", context.create_display(&self.0), args);
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[WARN]{} {}", context.select_display(self.0), args);
+        eprintln!("[WARN]{}{}", context.create_display(&self.0), args);
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[ERROR]{} {}", context.select_display(self.0), args);
+        eprintln!("[ERROR]{}{}", context.create_display(&self.0), args);
     }
 }
 
+/// Does no logging at all
 #[derive(Clone, Copy)]
 pub struct DevNullLogger;
 
@@ -190,7 +185,9 @@ impl LoggingAdapter for DevNullLogger {
     fn error(&self, _context: &LoggingContext, _args: Arguments) {}
 }
 
+/// Contextual data passed to a logger to be displayed along with a log message
 #[derive(Default, Debug, Clone)]
+#[non_exhaustive]
 pub struct LoggingContext {
     subscription_id: Option<SubscriptionId>,
     stream_id: Option<StreamId>,
@@ -198,133 +195,209 @@ pub struct LoggingContext {
     partition_id: Option<PartitionId>,
 }
 
-impl LoggingContext {
-    fn select_display(&self, long: bool) -> ContextDisplay {
-        ContextDisplay {
-            context: self,
-            long,
+/// Configures which contextual data should be made available with a log message
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct LogConfig {
+    pub show_subscription_id: bool,
+    pub show_stream_id: bool,
+    pub show_event_type: bool,
+    pub show_partition_id: bool,
+}
+
+impl LogConfig {
+    /// Only display the stream id and the partition id
+    pub fn short() -> Self {
+        Self {
+            show_subscription_id: false,
+            show_stream_id: true,
+            show_event_type: false,
+            show_partition_id: true,
         }
     }
 
-    fn format(&self, f: &mut fmt::Formatter, long: bool) -> Result<(), fmt::Error> {
-        let mut n = self.item_count(long);
+    /// Only display the stream id, the event type and the partition id
+    pub fn medium() -> Self {
+        Self {
+            show_subscription_id: false,
+            show_stream_id: true,
+            show_event_type: true,
+            show_partition_id: true,
+        }
+    }
+
+    /// Only display the subscription id, the stream id, the event type and the partition id
+    pub fn long() -> Self {
+        Self {
+            show_subscription_id: true,
+            show_stream_id: true,
+            show_event_type: true,
+            show_partition_id: true,
+        }
+    }
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self::short()
+    }
+}
+
+impl LoggingContext {
+    /// Creates a `Display` based on the given `LogConfig`
+    pub fn create_display<'a>(&'a self, config: &'a LogConfig) -> ContextDisplay<'a> {
+        ContextDisplay {
+            context: self,
+            config,
+        }
+    }
+}
+
+pub struct ContextDisplay<'a> {
+    config: &'a LogConfig,
+    context: &'a LoggingContext,
+}
+
+impl<'a> ContextDisplay<'a> {
+    fn format(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let mut n = self.item_count();
         if n == 0 {
             return Ok(());
         }
 
         write!(f, "[")?;
-        if long {
-            if let Some(subscription_id) = self.subscription_id {
+        if self.config.show_subscription_id {
+            if let Some(subscription_id) = self.context.subscription_id {
                 write!(f, "SUB:{}", subscription_id)?;
-                add_delemiter(&mut n, f)?;
+                add_delimiter(&mut n, f)?;
             }
         }
-        if let Some(stream_id) = self.stream_id {
-            write!(f, "STR:{}", stream_id)?;
-            add_delemiter(&mut n, f)?;
+        if self.config.show_stream_id {
+            if let Some(stream_id) = self.context.stream_id {
+                write!(f, "STR:{}", stream_id)?;
+                add_delimiter(&mut n, f)?;
+            }
         }
-        if long {
-            if let Some(ref event_type) = self.event_type {
+        if self.config.show_event_type {
+            if let Some(ref event_type) = self.context.event_type {
                 write!(f, "E:{}", event_type)?;
-                add_delemiter(&mut n, f)?;
+                add_delimiter(&mut n, f)?;
             }
         }
-        if let Some(ref partition_id) = self.partition_id {
-            write!(f, "P:{}", partition_id)?;
-            add_delemiter(&mut n, f)?;
+        if self.config.show_partition_id {
+            if let Some(ref partition_id) = self.context.partition_id {
+                write!(f, "P:{}", partition_id)?;
+                add_delimiter(&mut n, f)?;
+            }
         }
-
         Ok(())
     }
 
-    fn item_count(&self, long: bool) -> usize {
+    fn item_count(&self) -> usize {
         let mut n = 0;
-        if long && self.subscription_id.is_some() {
+        if self.config.show_subscription_id && self.context.subscription_id.is_some() {
             n += 1;
         }
 
-        if self.stream_id.is_some() {
+        if self.config.show_stream_id && self.context.stream_id.is_some() {
             n += 1;
         }
-        if long && self.event_type.is_some() {
+        if self.config.show_event_type && self.context.event_type.is_some() {
             n += 1;
         }
-        if self.partition_id.is_some() {
+        if self.config.show_partition_id && self.context.partition_id.is_some() {
             n += 1;
         }
         n
     }
 }
 
-fn add_delemiter(n: &mut usize, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+fn add_delimiter(n: &mut usize, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
     (*n) -= 1;
     if *n == 0 {
-        write!(f, "]")?;
+        write!(f, "] ")?;
     } else {
         write!(f, ";")?;
     }
     Ok(())
 }
 
-struct ContextDisplay<'a> {
-    long: bool,
-    context: &'a LoggingContext,
-}
-
 impl<'a> fmt::Display for ContextDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.context.format(f, self.long)
+        self.format(f)
     }
 }
 
 #[cfg(feature = "slog")]
 pub mod slog_adapter {
-    use std::fmt::Arguments;
+    use std::fmt;
 
     use super::*;
-    use slog::{debug, error, info, kv, warn, Logger, OwnedKVList};
+    use slog::{debug, error, info, o, warn, Logger};
 
+    /// A logger based on `slog`
     #[derive(Clone)]
     pub struct SlogLogger {
         logger: Logger,
-        long_display: Option<bool>,
+        config: LogConfig,
     }
 
     impl SlogLogger {
         pub fn new(logger: Logger) -> Self {
             SlogLogger {
                 logger,
-                long_display: None,
+                config: LogConfig::short(),
             }
         }
 
-        pub fn long_display(mut self) -> Self {
-            self.long_display = Some(true);
-            self
-        }
-
-        pub fn short_display(mut self) -> Self {
-            self.long_display = Some(false);
-            self
+        pub fn new_with_config(logger: Logger, config: LogConfig) -> Self {
+            SlogLogger { logger, config }
         }
     }
 
     impl LoggingAdapter for SlogLogger {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
-            debug!(&self.logger, "{}", args)
+            let ctx_display = context.create_display(&self.config);
+            let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+            "stream" => value(context.stream_id.as_ref()),
+            "event_type" => value(context.event_type.as_ref()),
+            "partition" => value(context.partition_id.as_ref()));
+
+            debug!(&self.logger, "{}{}", ctx_display, args; kvs)
         }
 
         fn info(&self, context: &LoggingContext, args: Arguments) {
-            info!(&self.logger, "{}", args)
+            let ctx_display = context.create_display(&self.config);
+            let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+            "stream" => value(context.stream_id.as_ref()),
+            "event_type" => value(context.event_type.as_ref()),
+            "partition" => value(context.partition_id.as_ref()));
+            info!(&self.logger, "{}{}", ctx_display, args; kvs)
         }
 
         fn warn(&self, context: &LoggingContext, args: Arguments) {
-            warn!(&self.logger, "{}", args)
+            let ctx_display = context.create_display(&self.config);
+            let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+            "stream" => value(context.stream_id.as_ref()),
+            "event_type" => value(context.event_type.as_ref()),
+            "partition" => value(context.partition_id.as_ref()));
+            warn!(&self.logger, "{}{}", ctx_display, args; kvs)
         }
 
         fn error(&self, context: &LoggingContext, args: Arguments) {
-            error!(&self.logger, "{}", args)
+            let ctx_display = context.create_display(&self.config);
+            let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+            "stream" => value(context.stream_id.as_ref()),
+            "event_type" => value(context.event_type.as_ref()),
+            "partition" => value(context.partition_id.as_ref()));
+            error!(&self.logger, "{}{}", ctx_display, args; kvs)
         }
+    }
+
+    fn value<V: fmt::Display>(value: Option<&V>) -> String {
+        value
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "none".to_owned())
     }
 }
 
@@ -335,33 +408,34 @@ pub mod log_adapter {
     use super::*;
     use log::{debug, error, info, warn};
 
+    /// A logger based on `log`
     #[derive(Clone)]
-    pub struct LogLogger(bool);
+    pub struct LogLogger(LogConfig);
 
     impl LogLogger {
-        pub fn new(long_display: bool) -> Self {
-            Self(long_display)
+        pub fn new(config: LogConfig) -> Self {
+            Self(config)
         }
-        pub fn long_display() -> Self {
-            Self(true)
-        }
-        pub fn short_display() -> Self {
-            Self(false)
+    }
+
+    impl Default for LogLogger {
+        fn default() -> Self {
+            Self::new(LogConfig::default())
         }
     }
 
     impl LoggingAdapter for LogLogger {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
-            debug!("[DEBUG]{} {}", context.select_display(self.0), args);
+            debug!("[DEBUG]{}{}", context.create_display(&self.0), args);
         }
         fn info(&self, context: &LoggingContext, args: Arguments) {
-            info!("[INFO]{} {}", context.select_display(self.0), args);
+            info!("[INFO]{}{}", context.create_display(&self.0), args);
         }
         fn warn(&self, context: &LoggingContext, args: Arguments) {
-            warn!("[WARN]{} {}", context.select_display(self.0), args);
+            warn!("[WARN]{}{}", context.create_display(&self.0), args);
         }
         fn error(&self, context: &LoggingContext, args: Arguments) {
-            error!("[ERROR]{} {}", context.select_display(self.0), args);
+            error!("[ERROR]{}{}", context.create_display(&self.0), args);
         }
     }
 }

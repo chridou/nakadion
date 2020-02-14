@@ -1,3 +1,8 @@
+use slog::Drain;
+use slog::{o, Logger};
+use slog_async;
+use slog_term;
+
 use nakadi_types::model::subscription::*;
 
 use nakadion::api::ApiClient;
@@ -6,16 +11,20 @@ use nakadion::consumer::*;
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    let logger = Logger::root(drain, o!());
+
     let client = ApiClient::builder().finish_from_env()?;
 
     let subscription_id = SubscriptionId::from_env()?;
 
     let mut builder = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
-        .inactivity_timeout_secs(10)
-        //.stream_dead_timeout_secs(10)
-        .commit_timeout_millis(1000)
-        .update_stream_parameters(|p| p.batch_limit(1).max_uncommitted_events(1000))
+        .inactivity_timeout_secs(30)
+        .commit_timeout_millis(1500)
+        .update_stream_parameters(|p| p.batch_limit(10).max_uncommitted_events(1000))
         .connect_stream_timeout_secs(5);
 
     builder.apply_defaults();
@@ -23,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:#?}", builder);
 
     let consumer =
-        builder.build_with(client, handler::MyHandlerFactory, StdOutLogger::default())?;
+        builder.build_with(client, handler::MyHandlerFactory, SlogLogger::new(logger))?;
 
     let (handle, task) = consumer.start();
 
@@ -55,14 +64,19 @@ mod handler {
     impl BatchHandler for MyHandler {
         fn handle<'a>(
             &'a mut self,
-            _events: Bytes,
+            events: Bytes,
             meta: BatchMeta<'a>,
         ) -> BoxFuture<'a, BatchPostAction> {
             self.count += 1;
 
             async move {
                 let batch_id = meta.batch_id;
-                println!("{}: {}", self.count, batch_id);
+                println!(
+                    "batches: {} - batch id: {} - bytes: {}",
+                    self.count,
+                    batch_id,
+                    events.len()
+                );
                 BatchPostAction::commit_no_hint()
             }
             .boxed()
