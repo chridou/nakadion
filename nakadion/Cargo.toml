@@ -2,7 +2,7 @@
 name = "nakadion"
 version = "0.20.0-alpha.1"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
-readme = "./nakadion/README.md"
+readme = "README.md"
 license = "Apache-2.0/MIT"
 description = "Types for interacting with the Nakadi Event Broker"
 documentation = "https://docs.rs/nakadion"
