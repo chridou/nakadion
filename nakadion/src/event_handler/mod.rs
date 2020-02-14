@@ -8,7 +8,9 @@ pub use bytes::Bytes;
 use futures::future::BoxFuture;
 
 use crate::nakadi_types::model::{
-    event_type::EventTypeName, partition::PartitionId, subscription::SubscriptionCursor,
+    event_type::EventTypeName,
+    partition::PartitionId,
+    subscription::{EventTypePartition, EventTypePartitionLike as _, SubscriptionCursor},
 };
 
 pub use crate::nakadi_types::Error;
@@ -76,7 +78,7 @@ pub trait BatchHandler: Send + 'static {
 pub enum HandlerAssignment {
     Unspecified,
     EventType(EventTypeName),
-    EventTypePartition(EventTypeName, PartitionId),
+    EventTypePartition(EventTypePartition),
 }
 
 impl fmt::Display for HandlerAssignment {
@@ -86,9 +88,12 @@ impl fmt::Display for HandlerAssignment {
             HandlerAssignment::EventType(ref event_type) => {
                 write!(f, "[event_type={}]", event_type)?
             }
-            HandlerAssignment::EventTypePartition(ref event_type, ref partition) => {
-                write!(f, "[event_type={}, partition={}]", event_type, partition)?
-            }
+            HandlerAssignment::EventTypePartition(ref event_type_partition) => write!(
+                f,
+                "[event_type={}, partition={}]",
+                event_type_partition.event_type(),
+                event_type_partition.partition()
+            )?,
         }
 
         Ok(())
@@ -108,8 +113,8 @@ impl HandlerAssignment {
         match self {
             HandlerAssignment::Unspecified => (None, None),
             HandlerAssignment::EventType(event_type) => (Some(&event_type), None),
-            HandlerAssignment::EventTypePartition(ref event_type, ref partition) => {
-                (Some(&event_type), Some(&partition))
+            HandlerAssignment::EventTypePartition(ref etp) => {
+                (Some(etp.event_type()), Some(etp.partition()))
             }
         }
     }

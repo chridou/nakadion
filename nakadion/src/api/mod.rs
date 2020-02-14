@@ -1,6 +1,8 @@
+/// Direct interaction with Nakadi through its REST API
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
 use std::error::Error as StdError;
 use std::fmt;
-use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
@@ -35,7 +37,8 @@ pub trait MonitoringApi {
         flow_id: T,
     ) -> ApiFuture<CursorDistanceResult>;
 
-    /// Deletes an EventType identified by its name.
+    /// Used when a consumer wants to know how far behind
+    /// in the stream its application is lagging.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursors-lag_post)
     fn get_cursor_lag<T: Into<FlowId>>(
@@ -45,6 +48,15 @@ pub trait MonitoringApi {
         flow_id: T,
     ) -> ApiFuture<Vec<Partition>>;
 
+    /// Lists the Partitions for the given event-type.
+    ///
+    /// This endpoint is mostly interesting for
+    /// monitoring purposes or in cases when consumer wants
+    /// to start consuming older messages.
+    /// If per-EventType authorization is enabled,
+    /// the caller must be authorized to read from the EventType.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/partitions_get)
     fn get_event_type_partitions<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,

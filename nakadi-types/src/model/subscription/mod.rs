@@ -36,6 +36,12 @@ impl StreamId {
     }
 }
 
+pub trait EventTypePartitionLike {
+    fn event_type(&self) -> &EventTypeName;
+
+    fn partition(&self) -> &PartitionId;
+}
+
 /// Represents event-type:partition pair.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypePartition)
@@ -43,6 +49,16 @@ impl StreamId {
 pub struct EventTypePartition {
     pub event_type: EventTypeName,
     pub partition: PartitionId,
+}
+
+impl EventTypePartitionLike for EventTypePartition {
+    fn event_type(&self) -> &EventTypeName {
+        &self.event_type
+    }
+
+    fn partition(&self) -> &PartitionId {
+        &self.partition
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -243,6 +259,16 @@ pub struct SubscriptionCursorWithoutToken {
     pub event_type: EventTypeName,
 }
 
+impl EventTypePartitionLike for SubscriptionCursorWithoutToken {
+    fn event_type(&self) -> &EventTypeName {
+        &self.event_type
+    }
+
+    fn partition(&self) -> &PartitionId {
+        &self.cursor.partition
+    }
+}
+
 /// An opaque value defined by the server.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CursorToken(String);
@@ -265,6 +291,16 @@ pub struct SubscriptionCursor {
     pub event_type: EventTypeName,
     /// An opaque value defined by the server.
     pub cursor_token: CursorToken,
+}
+
+impl EventTypePartitionLike for SubscriptionCursor {
+    fn event_type(&self) -> &EventTypeName {
+        &self.event_type
+    }
+
+    fn partition(&self) -> &PartitionId {
+        &self.cursor.partition
+    }
 }
 
 /// The result of all cursor commits with the `SubscriptionCursor`s themselves.
