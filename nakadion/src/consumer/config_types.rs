@@ -59,6 +59,9 @@ impl FromStr for DispatchStrategy {
 }
 
 /// Defines how to commit cursors
+///
+/// This value should always be set when creating a `Consumer` because otherwise
+/// a it will be guessed by `Nakadion` which might not result in best performance.
 #[derive(Debug, Clone, Copy)]
 pub enum CommitStrategy {
     /// Commit cursors immediately
