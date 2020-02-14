@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.20.0-alpha.1"
+version = "0.20.0-alpha.2"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -37,6 +37,15 @@ debug-mode = []
 [dev-dependencies]
 env_logger = "0.7"
 tokio = {version = "0.2", features = ["macros"] }
+slog-term = "2.5.0"
+slog-async = "2.4.0"
+
+[[example]]
+name = "consume_subscription"
+required-features = ["slog"]
 
 [package.metadata.docs.rs]
 all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+
