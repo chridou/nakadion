@@ -116,6 +116,7 @@ impl FromStr for FlowId {
     }
 }
 
+/// An error for cases where further investigation is not necessary
 #[derive(Debug)]
 pub struct Error(String);
 

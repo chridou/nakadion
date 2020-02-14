@@ -6,6 +6,7 @@ use http_api_problem::HttpApiProblem;
 
 use nakadi_types::FlowId;
 
+/// An error type to get insights on why an HTTP request failed
 #[derive(Debug)]
 pub struct NakadiApiError {
     context: Option<String>,
@@ -15,18 +16,29 @@ pub struct NakadiApiError {
 }
 
 impl NakadiApiError {
+    /// Create an response based error from a `StatusCode` received
+    /// from a server
     pub fn http<T: Into<StatusCode>>(status: T) -> Self {
         Self::create(status.into())
     }
 
+    /// Create an io based error.
     pub fn io() -> Self {
         Self::create(NakadiApiErrorKind::Io)
     }
 
+    /// Create an error for some other cause
     pub fn other() -> Self {
         Self::create(NakadiApiErrorKind::Other(None))
     }
 
+    /// Create an error from an `HttpApiProblem`.
+    ///
+    /// Keep in mind that an `HttpApiProblem` can also be created
+    /// from a `StatusCode` but in that case you should prefer
+    /// `NakadiApiError::http`.
+    ///
+    /// This will also set the `HttpApiProblem` as the cause for this error.
     pub fn http_problem<T: Into<HttpApiProblem>>(prob: T) -> Self {
         let prob = prob.into();
         if let Some(status) = prob.status {
@@ -46,6 +58,7 @@ impl NakadiApiError {
         }
     }
 
+    /// Add a cause to this error
     pub fn caused_by<E>(mut self, err: E) -> Self
     where
         E: StdError + Send + 'static,
@@ -54,13 +67,15 @@ impl NakadiApiError {
         self
     }
 
+    /// Add  a message that adds context to the cause for this error.
     pub fn with_context<T: Into<String>>(mut self, context: T) -> Self {
         self.context = Some(context.into());
         self
     }
 
-    pub fn with_flow_id(mut self, flow_id: FlowId) -> Self {
-        self.flow_id = Some(flow_id);
+    /// Add a `FlowId` to this error
+    pub fn with_flow_id<T: Into<FlowId>>(mut self, flow_id: T) -> Self {
+        self.flow_id = Some(flow_id.into());
         self
     }
 
@@ -69,10 +84,16 @@ impl NakadiApiError {
         self
     }
 
+    /// Returns the `FlowId` associated with this error
     pub fn flow_id(&self) -> Option<&FlowId> {
         self.flow_id.as_ref()
     }
 
+    /// Returns the `HttpApiProblem` associated with this error
+    /// if the cause of this error was an `HttpApiProblem`
+    ///
+    /// If the cause was not an `HttpApiProblem` `None` is
+    /// returned.
     pub fn problem(&self) -> Option<&HttpApiProblem> {
         if let Some(cause) = self.cause.as_ref() {
             cause.downcast_ref::<HttpApiProblem>()
@@ -81,6 +102,10 @@ impl NakadiApiError {
         }
     }
 
+    /// Try to turn this error into an `HttpApiProblem`.
+    ///
+    /// If the cause was not an `HttpApiProblem` `Self` is
+    /// returned as an error.
     pub fn try_into_problem(mut self) -> Result<HttpApiProblem, Self> {
         if let Some(cause) = self.cause.take() {
             match cause.downcast::<HttpApiProblem>() {
@@ -95,10 +120,13 @@ impl NakadiApiError {
         }
     }
 
+    /// Get the `HttpStatusCode` for this error if there
+    /// is a status code associated with this error
     pub fn status(&self) -> Option<StatusCode> {
         self.kind.status()
     }
 
+    /// Returns true if there is a `StatusCode` and if it is a client error.
     pub fn is_client_error(&self) -> bool {
         match self.kind {
             NakadiApiErrorKind::ClientError(_) => true,
@@ -106,6 +134,8 @@ impl NakadiApiError {
         }
     }
 
+    /// Returns true if there is a `StatusCode`
+    /// and if it `StatusCode::FORBIDDEN` or `StatusCode::UNAUTHORIZED`.
     pub fn is_auth_error(&self) -> bool {
         match self.kind {
             NakadiApiErrorKind::ClientError(StatusCode::FORBIDDEN)
@@ -114,6 +144,7 @@ impl NakadiApiError {
         }
     }
 
+    /// Returns true if there is a `StatusCode` and if it is a server error.
     pub fn is_server_error(&self) -> bool {
         match self.kind {
             NakadiApiErrorKind::ServerError(_) => true,
@@ -121,6 +152,7 @@ impl NakadiApiError {
         }
     }
 
+    /// Returns true if the error was created with `NakadiApiError::other`.
     pub fn is_other_error(&self) -> bool {
         match self.kind {
             NakadiApiErrorKind::Other(_) => true,
@@ -128,6 +160,7 @@ impl NakadiApiError {
         }
     }
 
+    /// Returns true if the error was created with `NakadiApiError::io`.
     pub fn is_io_error(&self) -> bool {
         match self.kind {
             NakadiApiErrorKind::Io => true,

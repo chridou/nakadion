@@ -126,6 +126,9 @@ impl Builder {
     }
 }
 
+/// A client to connect to the API of `Nakadi`.
+///
+/// The actual HTTP client is pluggable via the `DispatchHttpRequest` trait.
 #[derive(Clone)]
 pub struct ApiClient {
     inner: Arc<Inner>,

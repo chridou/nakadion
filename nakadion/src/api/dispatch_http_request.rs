@@ -13,10 +13,17 @@ use super::BytesStream;
 
 pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream>, RemoteCallError>>;
 
+/// A common trait for dispatching Http requests.
+///
+/// This trait is used to enable pluggable
+/// HTTP clients
 pub trait DispatchHttpRequest {
     fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture;
 }
 
+/// An error with can be caused by a remote call.
+///
+/// This is a low level error.
 #[derive(Debug)]
 pub struct RemoteCallError {
     message: Option<String>,
