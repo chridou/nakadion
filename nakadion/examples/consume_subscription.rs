@@ -1,0 +1,84 @@
+use nakadi_types::model::subscription::*;
+
+use nakadion::api::ApiClient;
+use nakadion::consumer::*;
+
+#[cfg(feature = "reqwest")]
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = ApiClient::builder().finish_from_env()?;
+
+    let subscription_id = SubscriptionId::from_env()?;
+
+    let mut builder = Consumer::builder_from_env()?
+        .subscription_id(subscription_id)
+        .inactivity_timeout_secs(10)
+        //.stream_dead_timeout_secs(10)
+        .commit_timeout_millis(1000)
+        .update_stream_parameters(|p| p.batch_limit(1).max_uncommitted_events(1000))
+        .connect_stream_timeout_secs(5);
+
+    builder.apply_defaults();
+
+    println!("{:#?}", builder);
+
+    let consumer =
+        builder.build_with(client, handler::MyHandlerFactory, StdOutLogger::default())?;
+
+    let (handle, task) = consumer.start();
+
+    let outcome = task.await;
+
+    if let Some(err) = outcome.error() {
+        println!("{}", err);
+    } else {
+        println!("{}", outcome.is_aborted());
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "reqwest"))]
+fn main() {
+    println!("Please enable the `reqwest` feature which is a default feature");
+}
+
+mod handler {
+    use futures::future::{BoxFuture, FutureExt};
+
+    use nakadion::event_handler::*;
+
+    pub struct MyHandler {
+        count: usize,
+    }
+
+    impl BatchHandler for MyHandler {
+        fn handle<'a>(
+            &'a mut self,
+            _events: Bytes,
+            meta: BatchMeta<'a>,
+        ) -> BoxFuture<'a, BatchPostAction> {
+            self.count += 1;
+
+            async move {
+                let batch_id = meta.batch_id;
+                println!("{}: {}", self.count, batch_id);
+                BatchPostAction::commit_no_hint()
+            }
+            .boxed()
+        }
+    }
+
+    pub struct MyHandlerFactory;
+
+    impl BatchHandlerFactory for MyHandlerFactory {
+        type Handler = MyHandler;
+
+        fn handler(
+            &self,
+            assignment: &HandlerAssignment,
+        ) -> BoxFuture<Result<Self::Handler, Error>> {
+            async { Ok(MyHandler { count: 0 }) }.boxed()
+        }
+    }
+}

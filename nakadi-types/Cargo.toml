@@ -1,0 +1,20 @@
+[package]
+name = "nakadi-types"
+version = "0.1.0-alpha.1"
+authors = ["Christian Douven <chridou@users.noreply.github.com>"]
+readme = "README.md"
+license = "Apache-2.0/MIT"
+description = "A connector for the Nakadi Event Broker"
+documentation = "https://docs.rs/nakadi-types"
+homepage = "https://github.com/chridou/nakadion"
+repository = "https://github.com/chridou/nakadion"
+keywords = ["event", "broker", "distributed", "message", "nakadi"]
+edition = "2018"
+
+[dependencies]
+uuid = {version = "0.8", features=["serde", "v4"] }
+url = { version = "2.1", features = ["serde"] }
+serde = {version = "1.0", features = ["serde_derive"]}
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1.0"
+
