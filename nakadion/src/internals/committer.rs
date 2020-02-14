@@ -51,7 +51,7 @@ struct PendingCursors {
     stream_commit_timeout: Duration,
     current_deadline: Option<Instant>,
     collected_events: usize,
-    collected_batches: usize,
+    collected_cursors: usize,
     commit_strategy: CommitStrategy,
     pending: HashMap<(PartitionId, EventTypeName), SubscriptionCursor>,
 }
@@ -70,7 +70,7 @@ impl PendingCursors {
             stream_commit_timeout,
             current_deadline: None,
             collected_events: 0,
-            collected_batches: 0,
+            collected_cursors: 0,
             commit_strategy,
             pending: HashMap::new(),
         }
@@ -82,7 +82,7 @@ impl PendingCursors {
             data.cursor.event_type.clone(),
         );
 
-        self.collected_batches += 1;
+        self.collected_cursors += 1;
         if let Some(events_hint) = data.events_hint {
             self.collected_events += events_hint
         }
@@ -146,10 +146,10 @@ impl PendingCursors {
             CommitStrategy::Immediately => true,
             CommitStrategy::LatestPossible => false,
             CommitStrategy::After {
-                batches, events, ..
+                cursors, events, ..
             } => {
-                if let Some(batches) = batches {
-                    if self.collected_batches >= batches as usize {
+                if let Some(cursors) = cursors {
+                    if self.collected_cursors >= cursors as usize {
                         return true;
                     }
                 }
@@ -166,7 +166,7 @@ impl PendingCursors {
     pub fn reset(&mut self) {
         self.current_deadline = None;
         self.collected_events = 0;
-        self.collected_batches = 0;
+        self.collected_cursors = 0;
         self.pending.clear();
     }
 

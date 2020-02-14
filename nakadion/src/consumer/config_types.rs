@@ -1,3 +1,5 @@
+use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,10 +14,18 @@ use crate::Error;
 use super::instrumentation::Instrumentation;
 use super::{Config, Consumer, Inner};
 
+/// Defines how to dispatch batches to handlers.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum DispatchStrategy {
+    /// Dispatch all batches to a single worker(handler)
+    ///
+    /// This means batches are processed sequentially.
     SingleWorker,
+}
+
+impl DispatchStrategy {
+    env_funs!("DISPATCH_STRATEGY");
 }
 
 impl Default for DispatchStrategy {
@@ -24,15 +34,83 @@ impl Default for DispatchStrategy {
     }
 }
 
+impl fmt::Display for DispatchStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DispatchStrategy::SingleWorker => write!(f, "single_worker")?,
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for DispatchStrategy {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "single_worker" => Ok(DispatchStrategy::SingleWorker),
+            _ => Err(Error::new(format!(
+                "'{}' is not a valid DispatchStrategy.",
+                s
+            ))),
+        }
+    }
+}
+
+/// Defines how to commit cursors
 #[derive(Debug, Clone, Copy)]
 pub enum CommitStrategy {
+    /// Commit cursors immediately
     Immediately,
+    /// Commit cursors as late as possible.
+    ///
+    /// This strategy is determined by the commit timeout defined
+    /// via `StreamParameters`
     LatestPossible,
+    /// Commit after on of the criteria was met:
+    ///
+    /// * `seconds`: After `seconds` seconds
+    /// * `cursors`: After `cursors` cursors have been received
+    /// * `events`: After `events` have been received. This requires the `BatchHandler` to give
+    /// a hint on the amount of events processed.
     After {
         seconds: Option<u32>,
-        batches: Option<u32>,
+        cursors: Option<u32>,
         events: Option<u32>,
     },
+}
+
+impl CommitStrategy {
+    env_funs!("COMMIT_STRATEGY");
+
+    pub fn validate(&self) -> Result<(), Error> {
+        match self {
+            CommitStrategy::After {
+                seconds: None,
+                cursors: None,
+                events: None,
+            } => Err(Error::new(
+                "'CommitStrategy::After' with all fields set to `None` is not valid",
+            )),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl FromStr for CommitStrategy {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "immediately" => Ok(CommitStrategy::Immediately),
+            "latest_possible" => Ok(CommitStrategy::LatestPossible),
+            _ => Err(Error::new(format!(
+                "'{}' is not a valid CommitStrategy or `Latest` which currently can not be parsed.",
+                s
+            ))),
+        }
+    }
 }
 
 new_type! {
@@ -543,6 +621,8 @@ impl Builder {
             self.guess_commit_strategy(&stream_parameters)
         };
 
+        commit_strategy.validate()?;
+
         let abort_connect_on_auth_error = self.abort_connect_on_auth_error.unwrap_or_default();
 
         let abort_connect_on_subscription_not_found = self
@@ -588,7 +668,7 @@ impl Builder {
         let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
         CommitStrategy::After {
             seconds: Some(commit_after),
-            batches: Some(effective_batches_limit),
+            cursors: Some(effective_batches_limit),
             events: Some(effective_events_limit),
         }
     }
