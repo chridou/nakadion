@@ -286,6 +286,49 @@ impl ApiClient {
     }
 }
 
+fn construct_authorization_bearer_value<T: AsRef<str>>(
+    token: T,
+) -> Result<HeaderValue, NakadiApiError> {
+    let value_string = format!("{} {}", SCHEME_BEARER, token.as_ref());
+    let value = HeaderValue::from_str(&value_string)?;
+    Ok(value)
+}
+
+async fn deserialize_stream<T: DeserializeOwned>(
+    mut stream: BytesStream,
+) -> Result<T, NakadiApiError> {
+    let mut bytes = Vec::new();
+    while let Some(next) = stream.try_next().await? {
+        bytes.extend(next);
+    }
+
+    let deserialized = serde_json::from_slice(&bytes)?;
+
+    Ok(deserialized)
+}
+
+async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> NakadiApiError {
+    let (parts, body) = response.into_parts();
+
+    let flow_id = match parts.headers.get("x-flow-id") {
+        Some(header_value) => {
+            let header_bytes = header_value.as_bytes();
+            let header_str = String::from_utf8_lossy(header_bytes);
+            Some(FlowId::new(header_str))
+        }
+        None => None,
+    };
+
+    let err = match deserialize_stream::<HttpApiProblem>(body).await {
+        Ok(problem) => NakadiApiError::http_problem(problem),
+        Err(err) => NakadiApiError::http(parts.status)
+            .with_context("There was an error parsing the response into a problem")
+            .caused_by(err),
+    };
+
+    err.with_maybe_flow_id(flow_id)
+}
+
 impl fmt::Debug for ApiClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ApiClient({:?})", self.inner)?;
@@ -718,49 +761,6 @@ impl SubscriptionStreamApi for ApiClient {
         }
         .boxed()
     }
-}
-
-fn construct_authorization_bearer_value<T: AsRef<str>>(
-    token: T,
-) -> Result<HeaderValue, NakadiApiError> {
-    let value_string = format!("{} {}", SCHEME_BEARER, token.as_ref());
-    let value = HeaderValue::from_str(&value_string)?;
-    Ok(value)
-}
-
-async fn deserialize_stream<T: DeserializeOwned>(
-    mut stream: BytesStream,
-) -> Result<T, NakadiApiError> {
-    let mut bytes = Vec::new();
-    while let Some(next) = stream.try_next().await? {
-        bytes.extend(next);
-    }
-
-    let deserialized = serde_json::from_slice(&bytes)?;
-
-    Ok(deserialized)
-}
-
-async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> NakadiApiError {
-    let (parts, body) = response.into_parts();
-
-    let flow_id = match parts.headers.get("x-flow-id") {
-        Some(header_value) => {
-            let header_bytes = header_value.as_bytes();
-            let header_str = String::from_utf8_lossy(header_bytes);
-            Some(FlowId::new(header_str))
-        }
-        None => None,
-    };
-
-    let err = match deserialize_stream::<HttpApiProblem>(body).await {
-        Ok(problem) => NakadiApiError::http_problem(problem),
-        Err(err) => NakadiApiError::http(parts.status)
-            .with_context("There was an error parsing the response into a problem")
-            .caused_by(err),
-    };
-
-    err.with_maybe_flow_id(flow_id)
 }
 
 struct Inner {
