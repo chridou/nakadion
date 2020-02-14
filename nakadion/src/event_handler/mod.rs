@@ -1,3 +1,6 @@
+//! Kit for creating a a handler for batches of events
+//!
+//! Start here if you want to implement a handler for processing of events
 use std::fmt;
 use std::time::{Duration, Instant};
 
