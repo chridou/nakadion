@@ -13,6 +13,7 @@ pub(crate) mod helpers;
 pub mod model;
 
 new_type! {
+    #[doc("The base URL to the Nakadi API.")]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct NakadiBaseUrl(Url, env="NAKADI_BASE_URL");
 }
@@ -86,7 +87,7 @@ impl From<String> for FlowId {
 
 impl From<&str> for FlowId {
     fn from(v: &str) -> Self {
-        Self::new(v.to_owned())
+        Self::new(v)
     }
 }
 

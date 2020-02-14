@@ -1,0 +1,233 @@
+//! Kit for creating a a handler for batches of events
+//!
+//! Start here if you want to implement a handler for processing of events
+use std::fmt;
+use std::time::{Duration, Instant};
+
+pub use bytes::Bytes;
+use futures::future::BoxFuture;
+
+use crate::nakadi_types::model::{
+    event_type::EventTypeName,
+    partition::PartitionId,
+    subscription::{EventTypePartition, EventTypePartitionLike as _, SubscriptionCursor},
+};
+
+pub use crate::nakadi_types::Error;
+
+pub struct BatchMeta<'a> {
+    pub cursor: &'a SubscriptionCursor,
+    pub received_at: Instant,
+    pub batch_id: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchPostAction {
+    /// Commit the batch
+    Commit { n_events: Option<usize> },
+    /// Do not commit the batch and continue
+    ///
+    /// Use if committed "manually" within the handler
+    DoNotCommit { n_events: Option<usize> },
+    /// Abort the current stream and reconnect
+    AbortStream,
+    /// Abort the consumption and shut down
+    ShutDown,
+}
+
+impl BatchPostAction {
+    pub fn commit_no_hint() -> Self {
+        BatchPostAction::Commit { n_events: None }
+    }
+
+    pub fn commit(n_events: usize) -> Self {
+        BatchPostAction::DoNotCommit {
+            n_events: Some(n_events),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InactivityAnswer {
+    KeepMeAlive,
+    KillMe,
+}
+
+impl InactivityAnswer {
+    pub fn should_kill(self) -> bool {
+        self == InactivityAnswer::KillMe
+    }
+
+    pub fn should_stay_alive(self) -> bool {
+        self == InactivityAnswer::KeepMeAlive
+    }
+}
+
+/// A handler that implemets batch processing logic.
+///
+/// This trait will be called by Nakadion when a batch has to
+/// be processed. The `BatchHandler` only receives an `EventType`
+/// and a slice of bytes that contains the batch.
+///
+/// The `events` slice always contains a JSON encoded array of events.
+///
+/// # Hint
+///
+/// The `handle` method gets called on `&mut self`.
+///
+/// # Example
+///
+/// ```rust
+/// use nakadion::{BatchHandler, EventType, ProcessingStatus};
+///
+/// // Use a struct to maintain state
+/// struct MyHandler {
+///     pub count: i32,
+/// }
+///
+/// // Implement the processing logic by implementing `BatchHandler`
+/// impl BatchHandler for MyHandler {
+///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///         self.count += 1;
+///         ProcessingStatus::processed_no_hint()
+///     }
+/// }
+///
+/// // Handler creation will be done by `HandlerFactory`
+/// let mut handler = MyHandler { count: 0 };
+///
+/// // This will be done by Nakadion
+/// let status = handler.handle(EventType::new("test_event"), &[]);
+///
+/// assert_eq!(handler.count, 1);
+/// assert_eq!(status, ProcessingStatus::Processed(None));
+/// ```
+pub trait BatchHandler: Send + 'static {
+    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BoxFuture<BatchPostAction>;
+    fn on_inactivity_detected(
+        &mut self,
+        _inactive_for: Duration,
+        _last_activity: Instant,
+    ) -> InactivityAnswer {
+        InactivityAnswer::KeepMeAlive
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum HandlerAssignment {
+    Unspecified,
+    EventType(EventTypeName),
+    EventTypePartition(EventTypePartition),
+}
+
+impl fmt::Display for HandlerAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HandlerAssignment::Unspecified => write!(f, "[unspecified]")?,
+            HandlerAssignment::EventType(ref event_type) => {
+                write!(f, "[event_type={}]", event_type)?
+            }
+            HandlerAssignment::EventTypePartition(ref event_type_partition) => write!(
+                f,
+                "[event_type={}, partition={}]",
+                event_type_partition.event_type(),
+                event_type_partition.partition()
+            )?,
+        }
+
+        Ok(())
+    }
+}
+
+impl HandlerAssignment {
+    pub fn event_type(&self) -> Option<&EventTypeName> {
+        self.event_type_and_partition().0
+    }
+
+    pub fn partition(&self) -> Option<&PartitionId> {
+        self.event_type_and_partition().1
+    }
+
+    pub fn event_type_and_partition(&self) -> (Option<&EventTypeName>, Option<&PartitionId>) {
+        match self {
+            HandlerAssignment::Unspecified => (None, None),
+            HandlerAssignment::EventType(event_type) => (Some(&event_type), None),
+            HandlerAssignment::EventTypePartition(ref etp) => {
+                (Some(etp.event_type()), Some(etp.partition()))
+            }
+        }
+    }
+}
+
+/// A factory that creates `BatchHandler`s.
+///
+/// # Usage
+///
+/// A `BatchHandlerFactory` can be used in two ways:
+///
+/// * It does not contain any state it shares with the created `BatchHandler`s.
+/// This is useful when incoming data is partitioned in a way that all
+/// `BatchHandler`s act only on data that never appears on another partition.
+///
+/// * It contains state that is shared with the `BatchHandler`s. E.g. a cache
+/// that conatins data that can appear on other partitions.
+/// # Example
+///
+/// ```rust
+/// use std::sync::{Arc, Mutex};
+///
+/// use nakadion::{
+///     BatchHandler, CreateHandlerError, EventType, BatchHandlerFactory, PartitionId, ProcessingStatus,
+/// };
+///
+/// // Use a struct to maintain state
+/// struct MyHandler(Arc<Mutex<i32>>);
+///
+/// // Implement the processing logic by implementing `BatchHandler`
+/// impl BatchHandler for MyHandler {
+///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///         *self.0.lock().unwrap() += 1;
+///         ProcessingStatus::processed_no_hint()
+///     }
+/// }
+///
+/// // We keep shared state for all handlers in the `BatchHandlerFactory`
+/// struct MyBatchHandlerFactory(Arc<Mutex<i32>>);
+///
+/// // Now we implement the trait `BatchHandlerFactory` to control how
+/// // our `BatchHandler`s are created
+/// impl BatchHandlerFactory for MyBatchHandlerFactory {
+///     type Handler = MyHandler;
+///     fn create_handler(
+///         &self,
+///         _partition: &PartitionId,
+///     ) -> Result<Self::Handler, CreateHandlerError> {
+///         Ok(MyHandler(self.0.clone()))
+///     }
+/// }
+///
+/// let count = Arc::new(Mutex::new(0));
+///
+/// let factory = MyBatchHandlerFactory(count.clone());
+///
+/// // Handler creation will be done by Nakadion
+/// let mut handler1 = factory.create_handler(&PartitionId::new("1")).unwrap();
+/// let mut handler2 = factory.create_handler(&PartitionId::new("2")).unwrap();
+///
+/// // This will be done by Nakadion
+/// let status1 = handler1.handle(EventType::new("test_event"), &[]);
+///
+/// assert_eq!(*count.lock().unwrap(), 1);
+/// assert_eq!(status1, ProcessingStatus::Processed(None));
+///
+/// // This will be done by Nakadion
+/// let status2 = handler2.handle(EventType::new("test_event"), &[]);
+///
+/// assert_eq!(*count.lock().unwrap(), 2);
+/// assert_eq!(status2, ProcessingStatus::Processed(None));
+/// ```
+pub trait BatchHandlerFactory: Send + Sync + 'static {
+    type Handler: BatchHandler;
+
+    fn handler(&self, assignment: &HandlerAssignment) -> BoxFuture<Result<Self::Handler, Error>>;
+}

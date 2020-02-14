@@ -13,8 +13,8 @@ use tokio::{
 
 use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
 use crate::consumer::{Config, ConsumerError, ConsumerErrorKind};
-use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::{BatchLine, BatchLineErrorKind, BatchLineStream, FramedStream};
+use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::internals::dispatcher::{
     ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher,
 };

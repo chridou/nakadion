@@ -61,6 +61,24 @@ impl EventTypePartitionLike for EventTypePartition {
     }
 }
 
+impl From<SubscriptionCursor> for EventTypePartition {
+    fn from(v: SubscriptionCursor) -> Self {
+        Self {
+            event_type: v.event_type,
+            partition: v.cursor.partition,
+        }
+    }
+}
+
+impl From<SubscriptionCursorWithoutToken> for EventTypePartition {
+    fn from(v: SubscriptionCursorWithoutToken) -> Self {
+        Self {
+            event_type: v.event_type,
+            partition: v.cursor.partition,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventTypeNames(Vec<EventTypeName>);
 
@@ -69,7 +87,7 @@ impl EventTypeNames {
         Self(event_types.into())
     }
 
-    pub fn into_event_type_names(self) -> Vec<EventTypeName> {
+    pub fn into_inner(self) -> Vec<EventTypeName> {
         self.0
     }
 

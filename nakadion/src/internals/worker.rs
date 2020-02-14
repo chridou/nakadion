@@ -4,8 +4,8 @@ use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
 use crate::consumer::{ConsumerError, InactivityTimeoutSecs};
-use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::event_stream::BatchLine;
+use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, StreamState};
 use crate::logging::Logs;
 
@@ -88,10 +88,10 @@ mod processor {
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
     use crate::consumer::{ConsumerError, ConsumerErrorKind, InactivityTimeoutSecs};
-    use crate::event_handler::{
+    use crate::event_stream::BatchLine;
+    use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, HandlerAssignment,
     };
-    use crate::event_stream::BatchLine;
     use crate::internals::{committer::CommitData, StreamState};
     use crate::logging::{Logger, Logs};
 
