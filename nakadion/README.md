@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/chridou/nakadion/workflows/CI/badge.svg)
 
-** THIS IS A PREVIEW VERSION **
+** THIS IS A PREVIEW VERSION, BREAKING CHANGES WITHOUT FURTHER NOTICE **
 
 A client for the [Nakadi](http://nakadi.io) Event Broker.
 
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 mod handler {
     use futures::future::{BoxFuture, FutureExt};
-    use nakadion::event_handler::*;
+    use nakadion::handler::*;
 
     pub struct MyHandler {
         count: usize,
