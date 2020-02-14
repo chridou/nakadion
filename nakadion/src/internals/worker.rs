@@ -196,16 +196,21 @@ mod processor {
                     Ok(true)
                 }
                 BatchPostAction::DoNotCommit { n_events } => Ok(true),
-                BatchPostAction::AbortStream => {
-                    self.stream_state
-                        .warn(format_args!("Stream cancellation requested by handler"));
+                BatchPostAction::AbortStream(reason) => {
+                    self.stream_state.warn(format_args!(
+                        "Stream cancellation requested by handler: {}",
+                        reason
+                    ));
                     self.stream_state.request_stream_cancellation();
                     Ok(false)
                 }
-                BatchPostAction::ShutDown => {
-                    self.stream_state
-                        .warn(format_args!("Consumer shut down requested by handler"));
-                    let err = ConsumerError::new(ConsumerErrorKind::HandlerAbort);
+                BatchPostAction::ShutDown(reason) => {
+                    self.stream_state.warn(format_args!(
+                        "Consumer shut down requested by handler: {}",
+                        reason
+                    ));
+                    let err =
+                        ConsumerError::new(ConsumerErrorKind::HandlerAbort).with_message(reason);
                     Err(err)
                 }
             }

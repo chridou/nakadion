@@ -1,9 +1,16 @@
+use serde::de::DeserializeOwned;
+
+use bytes::Bytes;
+use futures::future::{BoxFuture, FutureExt};
+
+use super::{BatchHandler, BatchMeta, BatchPostAction};
+
 /// This is basically the same as a `ProcessingStatus` but returned
 /// from a `EventsHandler`.
 ///
 /// It is not necessary to report the number of processed events since
 /// the `EventsHandler` itself keeps track of them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventsPostAction {
     /// Commit the batch
     Commit,
@@ -12,15 +19,28 @@ pub enum EventsPostAction {
     /// Use if committed "manually" within the handler
     DoNotCommit,
     /// Abort the current stream and reconnect
-    AbortStream,
+    AbortStream(String),
     /// Abort the consumption and shut down
-    ShutDown,
+    ShutDown(String),
 }
 
 impl EventsPostAction {
-    pub fn commit -> Self {
+    pub fn commit() -> Self {
         EventsPostAction::Commit
     }
+}
+
+impl From<tokio::task::JoinError> for BatchPostAction {
+    fn from(v: tokio::task::JoinError) -> Self {
+        BatchPostAction::ShutDown(v.to_string())
+    }
+}
+
+pub enum SpawnTarget {
+    /// Use the current executor
+    Executor,
+    /// Use/spawn a dedicated thread
+    Dedicated,
 }
 
 /// Basically the same a `BatchHandler` with the difference that
@@ -67,67 +87,124 @@ impl EventsPostAction {
 /// assert_eq!(handler.count, 3);
 /// ```
 pub trait EventsHandler {
-    type Event: DeserializeOwned;
+    type Event: DeserializeOwned + Send + 'static;
     /// Execute the processing logic with a deserialized batch of events.
-    fn handle(&mut self, events: Vec<Self::Event>, meta: BatchMetadata) -> TypedProcessingStatus;
+    fn handle<'a>(
+        &'a mut self,
+        events: Vec<Self::Event>,
+        meta: BatchMeta<'a>,
+    ) -> BoxFuture<'a, EventsPostAction>;
 
     // A handler which is invoked if deserialization of the
     // whole events batch at once failed.
-    fn handle_deserialization_errors(
-        &mut self,
+    fn handle_deserialization_errors<'a>(
+        &'a mut self,
         results: Vec<EventDeserializationResult<Self::Event>>,
-        meta: BatchMetadata,
-    ) -> TypedProcessingStatus {
+        _meta: BatchMeta<'a>,
+    ) -> BoxFuture<'a, EventsPostAction> {
         let num_events = results.len();
         let num_failed = results.iter().filter(|r| r.is_err()).count();
-        error!(
-            "Failed to deserialize {} out of {} events",
-            num_failed, num_events
-        );
-        TypedProcessingStatus::Failed
+        async move {
+            EventsPostAction::ShutDown(format!(
+                "{} out of {} events were not deserializable.",
+                num_failed, num_events
+            ))
+        }
+        .boxed()
+    }
+
+    fn deserialize_on(&mut self) -> SpawnTarget {
+        SpawnTarget::Executor
     }
 }
 
 pub type EventDeserializationResult<T> = Result<T, (serde_json::Value, serde_json::Error)>;
 
-impl<T, E> BatchHandler for T
+impl<T> BatchHandler for T
 where
-    T: EventsHandler<Event = E>,
-    E: DeserializeOwned,
+    T: EventsHandler + Send + 'static,
+    T::Event: DeserializeOwned + Send + 'static,
 {
-    fn handle(&mut self, events: &[u8], meta: BatchMetadata) -> ProcessingStatus {
-        match serde_json::from_slice::<Vec<E>>(events) {
-            Ok(events) => {
-                let n = events.len();
-
-                match EventsHandler::handle(self, events, meta) {
-                    TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
-                    TypedProcessingStatus::Failed => ProcessingStatus::Failed,
-                }
-            }
-            Err(_) => match try_deserialize_individually::<E>(events) {
-                Ok(results) => {
-                    let n = results.len();
-                    match self.handle_deserialization_errors(results, meta) {
-                        TypedProcessingStatus::Processed => ProcessingStatus::processed(n),
-                        TypedProcessingStatus::Failed => ProcessingStatus::Failed,
+    fn handle<'a>(
+        &'a mut self,
+        events: Bytes,
+        meta: BatchMeta<'a>,
+    ) -> BoxFuture<'a, BatchPostAction> {
+        async move {
+            let de_res = match self.deserialize_on() {
+                SpawnTarget::Executor => serde_json::from_slice::<Vec<T::Event>>(&events),
+                SpawnTarget::Dedicated => {
+                    match tokio::task::spawn_blocking({
+                        let events = events.clone();
+                        move || serde_json::from_slice::<Vec<T::Event>>(&events)
+                    })
+                    .await
+                    {
+                        Ok(e) => e,
+                        Err(err) => return err.into(),
                     }
                 }
-                Err(err) => {
-                    error!(
-                        "An error occured deserializing event for error handling: {}",
-                        err
-                    );
-                    ProcessingStatus::Failed
+            };
+            match de_res {
+                Ok(events) => {
+                    let n = events.len();
+
+                    match EventsHandler::handle(self, events, meta).await {
+                        EventsPostAction::Commit => BatchPostAction::commit(n),
+                        EventsPostAction::DoNotCommit => BatchPostAction::do_not_commit(n),
+                        EventsPostAction::AbortStream(reason) => {
+                            BatchPostAction::AbortStream(reason)
+                        }
+                        EventsPostAction::ShutDown(reason) => BatchPostAction::ShutDown(reason),
+                    }
                 }
-            },
+                Err(_) => {
+                    let de_res = match self.deserialize_on() {
+                        SpawnTarget::Executor => try_deserialize_individually::<T::Event>(&events),
+                        SpawnTarget::Dedicated => {
+                            match tokio::task::spawn_blocking({
+                                let events = events.clone();
+                                move || try_deserialize_individually::<T::Event>(&events)
+                            })
+                            .await
+                            {
+                                Ok(e) => e,
+                                Err(err) => return err.into(),
+                            }
+                        }
+                    };
+                    match de_res {
+                        Ok(results) => {
+                            let n = results.len();
+                            match self.handle_deserialization_errors(results, meta).await {
+                                EventsPostAction::Commit => BatchPostAction::commit(n),
+                                EventsPostAction::DoNotCommit => BatchPostAction::do_not_commit(n),
+                                EventsPostAction::AbortStream(reason) => {
+                                    BatchPostAction::AbortStream(reason)
+                                }
+                                EventsPostAction::ShutDown(reason) => {
+                                    BatchPostAction::ShutDown(reason)
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            let reason = format!(
+                                "An error occured deserializing event for error handling: {}",
+                                err
+                            );
+                            BatchPostAction::ShutDown(reason)
+                        }
+                    }
+                }
+            }
         }
+        .boxed()
     }
 }
 
 // This function clones the ast before deserializing... but we are in an
 // exceptional case anyways...
-fn try_deserialize_individually<T: DeserializeOwned>(
+fn try_deserialize_individually<T: DeserializeOwned + Send + 'static>(
     events: &[u8],
 ) -> Result<Vec<EventDeserializationResult<T>>, serde_json::Error> {
     let deserialized_json_asts: Vec<serde_json::Value> = serde_json::from_slice(events)?;

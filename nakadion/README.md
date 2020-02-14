@@ -108,13 +108,12 @@ To consume events with `Nakadion` one has to implement a `BatchHandler`. This `B
 provides the processing logic and is passed the bytes containing the events of a batch.
 
 `Nakadion` itself does not do any deserialization of events. The `BatchHandler` is responsible
-for deserializing events. Nevertheless there is a `TypedBatchHandler` for convinience
+for deserializing events. Nevertheless there is a `EventsHandler` for convinience
 that does the deserialization of events using `serde`.
 
 When `Nakadion` receives a batch it just extract the necessary data from
 the bytes received over the network and then delagates the batch
 to a dispatcher which spawns workers that are then passed the batch.
-
 This means `Nakadion` itself does not have any knowledge of the events contained in a batch.
 
 ### Buffering batches and maximizing throughput
@@ -138,9 +137,8 @@ happens roughly every full hour unless configured otherwise on Nakadi's side.
 `Nakadion` also logs a message each time a new worker is created and each time a worker is
 shut down.
 
-Otherwise `Nakadion` only logs problems and errors.
-
-So in the end your log files will not be flodded with messages from `Nakadion`.
+Otherwise `Nakadion` mostly only logs problems and errors.
+In the end your log files will not be flodded with messages from `Nakadion`.
 
 ### Metrics
 

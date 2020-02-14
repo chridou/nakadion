@@ -15,13 +15,16 @@ use crate::nakadi_types::model::{
 
 pub use crate::nakadi_types::Error;
 
+mod typed;
+pub use typed::*;
+
 pub struct BatchMeta<'a> {
     pub cursor: &'a SubscriptionCursor,
     pub received_at: Instant,
     pub batch_id: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BatchPostAction {
     /// Commit the batch
     Commit { n_events: Option<usize> },
@@ -30,9 +33,9 @@ pub enum BatchPostAction {
     /// Use if committed "manually" within the handler
     DoNotCommit { n_events: Option<usize> },
     /// Abort the current stream and reconnect
-    AbortStream,
+    AbortStream(String),
     /// Abort the consumption and shut down
-    ShutDown,
+    ShutDown(String),
 }
 
 impl BatchPostAction {
@@ -41,6 +44,16 @@ impl BatchPostAction {
     }
 
     pub fn commit(n_events: usize) -> Self {
+        BatchPostAction::DoNotCommit {
+            n_events: Some(n_events),
+        }
+    }
+
+    pub fn do_not_commit_no_hint() -> Self {
+        BatchPostAction::DoNotCommit { n_events: None }
+    }
+
+    pub fn do_not_commit(n_events: usize) -> Self {
         BatchPostAction::DoNotCommit {
             n_events: Some(n_events),
         }
@@ -78,7 +91,8 @@ impl InactivityAnswer {
 /// # Example
 ///
 /// ```rust
-/// use nakadion::{BatchHandler, EventType, ProcessingStatus};
+/// use nakadion::handler::{BatchHandler, BatchPostAction};
+/// use nakadion::nakadi_types::model::subscription::EventTypeName;
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler {
@@ -87,9 +101,9 @@ impl InactivityAnswer {
 ///
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
-///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> BatchPostAction {
 ///         self.count += 1;
-///         ProcessingStatus::processed_no_hint()
+///         BatchPostAction::commit_no_hint()
 ///     }
 /// }
 ///
@@ -97,10 +111,10 @@ impl InactivityAnswer {
 /// let mut handler = MyHandler { count: 0 };
 ///
 /// // This will be done by Nakadion
-/// let status = handler.handle(EventType::new("test_event"), &[]);
+/// let status = handler.handle(EventTypeName::new("test_event"), &[]);
 ///
 /// assert_eq!(handler.count, 1);
-/// assert_eq!(status, ProcessingStatus::Processed(None));
+/// assert_eq!(status, BatchPostAction::commit_no_hint());
 /// ```
 pub trait BatchHandler: Send + 'static {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BoxFuture<BatchPostAction>;
