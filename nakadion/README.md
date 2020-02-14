@@ -2,6 +2,8 @@
 
 ![CI](https://github.com/chridou/nakadion/workflows/CI/badge.svg)
 
+** THIS IS A PREVIEW VERSION **
+
 A client for the [Nakadi](http://nakadi.io) Event Broker.
 
 ## Summary
@@ -20,6 +22,12 @@ Currently `Nakadion` only works with the `tokio` runtime. Further execution
 environments might be added in the future.
 
 ## How to use
+
+To run this example the following environment variables need to be set:
+
+* `NAKADION_NAKADI_BASE_URL`
+* `NAKADION_SUBSCRIPTION_ID`
+* `NAKADION_ACCESS_TOKEN_FIXED` with a valid token or `NAKADION_ACCESS_TOKEN_ALLOW_NONE` set to `true`
 
 ```rust
 use nakadion::api::ApiClient;
