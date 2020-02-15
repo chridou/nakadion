@@ -3,7 +3,9 @@ use serde::de::DeserializeOwned;
 use bytes::Bytes;
 use futures::future::{BoxFuture, FutureExt};
 
-use super::{BatchHandler, BatchMeta, BatchPostAction};
+use super::{BatchHandler, BatchHandlerFuture, BatchMeta, BatchPostAction};
+
+pub type EventsHandlerFuture<'a> = BoxFuture<'a, EventsPostAction>;
 
 /// This is basically the same as a `ProcessingStatus` but returned
 /// from a `EventsHandler`.
@@ -70,7 +72,7 @@ pub enum SpawnTarget {
 /// impl EventsHandler for MyHandler {
 ///     type Event = MyEvent;
 ///
-///     fn handle(&mut self, events: Vec<MyEvent>) -> TypedProcessingStatus {
+///     fn handle(&mut self, events: Vec<MyEvent>) -> EventsHandlerFuture {
 ///         for MyEvent(amount) in events {
 ///             self.count += amount;
 ///         }
@@ -101,7 +103,7 @@ pub trait EventsHandler {
         &'a mut self,
         results: Vec<EventDeserializationResult<Self::Event>>,
         _meta: BatchMeta<'a>,
-    ) -> BoxFuture<'a, EventsPostAction> {
+    ) -> EventsHandlerFuture<'a> {
         let num_events = results.len();
         let num_failed = results.iter().filter(|r| r.is_err()).count();
         async move {
@@ -125,11 +127,7 @@ where
     T: EventsHandler + Send + 'static,
     T::Event: DeserializeOwned + Send + 'static,
 {
-    fn handle<'a>(
-        &'a mut self,
-        events: Bytes,
-        meta: BatchMeta<'a>,
-    ) -> BoxFuture<'a, BatchPostAction> {
+    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a> {
         async move {
             let de_res = match self.deserialize_on() {
                 SpawnTarget::Executor => serde_json::from_slice::<Vec<T::Event>>(&events),

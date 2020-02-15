@@ -5,12 +5,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::event_type::EventTypeName;
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{Cursor, PartitionId};
 use crate::Error;
 
 pub mod subscription_builder;
+pub use crate::model::event_type::EventTypeName;
 
 new_type! {
 /// Id of a subscription

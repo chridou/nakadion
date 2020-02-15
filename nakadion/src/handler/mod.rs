@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 pub use bytes::Bytes;
 use futures::future::BoxFuture;
 
+pub type BatchHandlerFuture<'a> = BoxFuture<'a, BatchPostAction>;
+
 use crate::nakadi_types::model::{
     event_type::EventTypeName,
     partition::PartitionId,
@@ -91,7 +93,9 @@ impl InactivityAnswer {
 /// # Example
 ///
 /// ```rust
-/// use nakadion::handler::{BatchHandler, BatchPostAction};
+/// use futures::FutureExt;
+///
+/// use nakadion::handler::{BatchHandler, BatchPostAction, BatchMeta, Bytes, BatchHandlerFuture};
 /// use nakadion::nakadi_types::model::subscription::EventTypeName;
 ///
 /// // Use a struct to maintain state
@@ -101,23 +105,16 @@ impl InactivityAnswer {
 ///
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
-///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> BatchPostAction {
-///         self.count += 1;
-///         BatchPostAction::commit_no_hint()
+///     fn handle(&mut self, _events: Bytes, _meta: BatchMeta) -> BatchHandlerFuture {
+///         async move {
+///             self.count += 1;
+///             BatchPostAction::commit_no_hint()
+///         }.boxed()
 ///     }
 /// }
-///
-/// // Handler creation will be done by `HandlerFactory`
-/// let mut handler = MyHandler { count: 0 };
-///
-/// // This will be done by Nakadion
-/// let status = handler.handle(EventTypeName::new("test_event"), &[]);
-///
-/// assert_eq!(handler.count, 1);
-/// assert_eq!(status, BatchPostAction::commit_no_hint());
 /// ```
 pub trait BatchHandler: Send + 'static {
-    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BoxFuture<BatchPostAction>;
+    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a>;
     fn on_inactivity_detected(
         &mut self,
         _inactive_for: Duration,
@@ -190,9 +187,7 @@ impl HandlerAssignment {
 /// ```rust
 /// use std::sync::{Arc, Mutex};
 ///
-/// use nakadion::{
-///     BatchHandler, CreateHandlerError, EventType, BatchHandlerFactory, PartitionId, ProcessingStatus,
-/// };
+/// use nakadion::handler::*;
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler(Arc<Mutex<i32>>);
