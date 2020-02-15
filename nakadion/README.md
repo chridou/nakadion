@@ -43,9 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DevNullLogger,
     )?;
 
-    let (_handle, task) = consumer.start();
+    let (_handle, consuming) = consumer.start();
 
-    task.await.into_result().map(|_| ())?;
+    // `consuming` will complete once the `Consumer` stopped 
+    // consuming events
+    consuming.await.into_result().map(|_| ())?;
 
     Ok(())
 }

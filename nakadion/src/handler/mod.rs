@@ -26,14 +26,14 @@ pub struct BatchMeta<'a> {
     pub batch_id: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum BatchPostAction {
     /// Commit the batch
-    Commit { n_events: Option<usize> },
+    Commit(BatchStats),
     /// Do not commit the batch and continue
     ///
     /// Use if committed "manually" within the handler
-    DoNotCommit { n_events: Option<usize> },
+    DoNotCommit(BatchStats),
     /// Abort the current stream and reconnect
     AbortStream(String),
     /// Abort the consumption and shut down
@@ -41,25 +41,36 @@ pub enum BatchPostAction {
 }
 
 impl BatchPostAction {
-    pub fn commit_no_hint() -> Self {
-        BatchPostAction::Commit { n_events: None }
+    pub fn commit_no_stats() -> Self {
+        BatchPostAction::Commit(BatchStats::default())
     }
 
-    pub fn commit(n_events: usize) -> Self {
-        BatchPostAction::DoNotCommit {
+    pub fn commit(n_events: usize, t_deserialize: Duration) -> Self {
+        BatchPostAction::Commit(BatchStats {
             n_events: Some(n_events),
-        }
+            t_deserialize: Some(t_deserialize),
+        })
     }
 
-    pub fn do_not_commit_no_hint() -> Self {
-        BatchPostAction::DoNotCommit { n_events: None }
+    pub fn do_not_commit_no_stats() -> Self {
+        BatchPostAction::DoNotCommit(BatchStats::default())
     }
 
-    pub fn do_not_commit(n_events: usize) -> Self {
-        BatchPostAction::DoNotCommit {
+    pub fn do_not_commit(n_events: usize, t_deserialize: Duration) -> Self {
+        BatchPostAction::DoNotCommit(BatchStats {
             n_events: Some(n_events),
-        }
+            t_deserialize: Some(t_deserialize),
+        })
     }
+}
+
+/// Statistics on the processed batch
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct BatchStats {
+    /// The number of events handled
+    pub n_events: Option<usize>,
+    /// The time it took to deserialize the batch
+    pub t_deserialize: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +119,7 @@ impl InactivityAnswer {
 ///     fn handle(&mut self, _events: Bytes, _meta: BatchMeta) -> BatchHandlerFuture {
 ///         async move {
 ///             self.count += 1;
-///             BatchPostAction::commit_no_hint()
+///             BatchPostAction::commit_no_stats()
 ///         }.boxed()
 ///     }
 /// }
@@ -198,7 +209,7 @@ impl HandlerAssignment {
 ///     fn handle(&mut self, _events: Bytes, _meta: BatchMeta) -> BatchHandlerFuture {
 ///         async move {
 ///             *self.0.lock().unwrap() += 1;
-///             BatchPostAction::commit_no_hint()
+///             BatchPostAction::commit_no_stats()
 ///         }.boxed()
 ///     }
 /// }

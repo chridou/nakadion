@@ -1,9 +1,10 @@
-use serde::de::DeserializeOwned;
+use std::time::Instant;
 
 use bytes::Bytes;
 use futures::future::{BoxFuture, FutureExt};
+use serde::de::DeserializeOwned;
 
-use super::{BatchHandler, BatchHandlerFuture, BatchMeta, BatchPostAction};
+use super::{BatchHandler, BatchHandlerFuture, BatchMeta, BatchPostAction, BatchStats};
 
 pub type EventsHandlerFuture<'a> = BoxFuture<'a, EventsPostAction>;
 
@@ -85,9 +86,13 @@ pub enum SpawnTarget {
 ///         }.boxed()
 ///     }
 ///
-///     fn deserialize_on(&mut self) -> SpawnTarget {
+///     fn deserialize_on(&mut self, n_bytes: usize) -> SpawnTarget {
 ///         // We expect costly deserialization...
-///         SpawnTarget::Dedicated
+///         if n_bytes > 10_000 {
+///             SpawnTarget::Dedicated
+///         } else {
+///             SpawnTarget::Executor
+///         }
 ///     }
 /// }
 ///
@@ -119,7 +124,10 @@ pub trait EventsHandler {
         .boxed()
     }
 
-    fn deserialize_on(&mut self) -> SpawnTarget {
+    /// Decide on how to execute deserialization.
+    ///
+    /// The number of bytes to be deserialized is passed.
+    fn deserialize_on(&mut self, _n_bytes: usize) -> SpawnTarget {
         SpawnTarget::Executor
     }
 }
@@ -133,7 +141,8 @@ where
 {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a> {
         async move {
-            let de_res = match self.deserialize_on() {
+            let t_deserialize = Instant::now();
+            let de_res = match self.deserialize_on(events.len()) {
                 SpawnTarget::Executor => serde_json::from_slice::<Vec<T::Event>>(&events),
                 SpawnTarget::Dedicated => {
                     match tokio::task::spawn_blocking({
@@ -147,13 +156,18 @@ where
                     }
                 }
             };
+            let t_deserialize = t_deserialize.elapsed();
             match de_res {
                 Ok(events) => {
-                    let n = events.len();
+                    let n_events = events.len();
 
                     match EventsHandler::handle(self, events, meta).await {
-                        EventsPostAction::Commit => BatchPostAction::commit(n),
-                        EventsPostAction::DoNotCommit => BatchPostAction::do_not_commit(n),
+                        EventsPostAction::Commit => {
+                            BatchPostAction::commit(n_events, t_deserialize)
+                        }
+                        EventsPostAction::DoNotCommit => {
+                            BatchPostAction::do_not_commit(n_events, t_deserialize)
+                        }
                         EventsPostAction::AbortStream(reason) => {
                             BatchPostAction::AbortStream(reason)
                         }
@@ -161,7 +175,7 @@ where
                     }
                 }
                 Err(_) => {
-                    let de_res = match self.deserialize_on() {
+                    let de_res = match self.deserialize_on(events.len()) {
                         SpawnTarget::Executor => try_deserialize_individually::<T::Event>(&events),
                         SpawnTarget::Dedicated => {
                             match tokio::task::spawn_blocking({
@@ -177,10 +191,18 @@ where
                     };
                     match de_res {
                         Ok(results) => {
-                            let n = results.len();
+                            let n_events = results.len();
                             match self.handle_deserialization_errors(results, meta).await {
-                                EventsPostAction::Commit => BatchPostAction::commit(n),
-                                EventsPostAction::DoNotCommit => BatchPostAction::do_not_commit(n),
+                                EventsPostAction::Commit => BatchPostAction::Commit(BatchStats {
+                                    n_events: Some(n_events),
+                                    t_deserialize: None,
+                                }),
+                                EventsPostAction::DoNotCommit => {
+                                    BatchPostAction::DoNotCommit(BatchStats {
+                                        n_events: Some(n_events),
+                                        t_deserialize: None,
+                                    })
+                                }
                                 EventsPostAction::AbortStream(reason) => {
                                     BatchPostAction::AbortStream(reason)
                                 }
