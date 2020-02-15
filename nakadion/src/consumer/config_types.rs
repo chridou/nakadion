@@ -21,7 +21,7 @@ pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
     /// This means batches are processed sequentially.
-    SingleWorker,
+    NoDispatching,
 }
 
 impl DispatchStrategy {
@@ -30,14 +30,14 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::SingleWorker
+        DispatchStrategy::NoDispatching
     }
 }
 
 impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DispatchStrategy::SingleWorker => write!(f, "single_worker")?,
+            DispatchStrategy::NoDispatching => write!(f, "no_dispatching")?,
         }
 
         Ok(())
@@ -49,7 +49,7 @@ impl FromStr for DispatchStrategy {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "single_worker" => Ok(DispatchStrategy::SingleWorker),
+            "no_dispatching" => Ok(DispatchStrategy::NoDispatching),
             _ => Err(Error::new(format!(
                 "'{}' is not a valid DispatchStrategy.",
                 s
