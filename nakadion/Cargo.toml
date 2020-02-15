@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.20.0-alpha.3"
+version = "0.20.0-alpha.4"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -12,10 +12,10 @@ keywords = [ "nakadi", "event", "broker", "distributed","messaging"]
 edition = "2018"
 
 [dependencies]
-nakadi-types = { path = "../nakadi-types", version="^0.1.0-alpha.2"}
+nakadi-types = { path = "../nakadi-types", version="^0.1.0-alpha.3"}
 futures = "0.3"
 pin-utils = "0.1.0-alpha.4"
-tokio = {version = "0.2", features = ["fs", "sync", "time", "stream", "rt-core"] }
+tokio = {version = "0.2", features = ["fs", "sync", "time", "stream", "rt-core", "blocking"] }
 bytes = "0.5"
 uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.1", features = ["serde"] }

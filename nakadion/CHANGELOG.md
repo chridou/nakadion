@@ -7,4 +7,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.20.0-alpha.X]
 
 ### Changed
+- Changes are not tracked during the alpha phase
 - EVERYTHING. This is a complete rewrite. No guaranteed compatibility to older versions!

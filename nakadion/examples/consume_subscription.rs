@@ -24,17 +24,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(30)
         .commit_timeout_millis(1500)
-        .update_stream_parameters(|p| p.batch_limit(10).max_uncommitted_events(1000))
+        .configure_stream_parameters(|p| p.batch_limit(10).max_uncommitted_events(1000))
         .connect_stream_timeout_secs(5);
 
+    // This is not necessary and just used
+    // to print the configured values
     builder.apply_defaults();
-
     println!("{:#?}", builder);
 
     let consumer =
         builder.build_with(client, handler::MyHandlerFactory, SlogLogger::new(logger))?;
 
-    let (handle, task) = consumer.start();
+    let (_handle, task) = consumer.start();
 
     let outcome = task.await;
 
@@ -55,18 +56,19 @@ fn main() {
 mod handler {
     use futures::future::{BoxFuture, FutureExt};
 
-    use nakadion::event_handler::*;
+    use nakadion::handler::*;
 
     pub struct MyHandler {
         count: usize,
     }
 
-    impl BatchHandler for MyHandler {
+    impl EventsHandler for MyHandler {
+        type Event = serde_json::Value;
         fn handle<'a>(
             &'a mut self,
-            events: Bytes,
+            events: Vec<Self::Event>,
             meta: BatchMeta<'a>,
-        ) -> BoxFuture<'a, BatchPostAction> {
+        ) -> EventsHandlerFuture {
             self.count += 1;
 
             async move {
@@ -77,7 +79,7 @@ mod handler {
                     batch_id,
                     events.len()
                 );
-                BatchPostAction::commit_no_hint()
+                EventsPostAction::Commit
             }
             .boxed()
         }
@@ -90,7 +92,7 @@ mod handler {
 
         fn handler(
             &self,
-            assignment: &HandlerAssignment,
+            _assignment: &HandlerAssignment,
         ) -> BoxFuture<Result<Self::Handler, Error>> {
             async { Ok(MyHandler { count: 0 }) }.boxed()
         }

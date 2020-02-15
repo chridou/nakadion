@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::api::NakadionEssentials;
-use crate::event_handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
 use crate::Error;
@@ -117,18 +117,25 @@ impl FromStr for CommitStrategy {
 }
 
 new_type! {
-    #[doc="The internal tick interval.\n"]
+    #[doc="The internal tick interval.\n\nThe applied value is always between [100..5_000] ms.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct TickIntervalSecs(u64, env="TICK_INTERVAL_SECS");
+    pub copy struct TickIntervalMillis(u64, env="TICK_INTERVAL_MILLIS");
 }
-impl TickIntervalSecs {
+impl TickIntervalMillis {
     pub fn duration(self) -> Duration {
-        Duration::from_secs(self.0)
+        Duration::from_millis(self.0)
+    }
+
+    /// Only 100ms up to 5_000ms allowed. We simply adjust the
+    /// values because there is no reason to crash if these have been set
+    /// to an out of range value.
+    pub fn adjust(self) -> TickIntervalMillis {
+        std::cmp::min(5_000, std::cmp::max(100, self.0)).into()
     }
 }
-impl Default for TickIntervalSecs {
+impl Default for TickIntervalMillis {
     fn default() -> Self {
-        1.into()
+        1000.into()
     }
 }
 
@@ -257,7 +264,7 @@ pub struct Builder {
     ///
     /// This triggers internal notification used to montitor the state
     /// of the currently consumed stream.
-    pub tick_interval_secs: Option<TickIntervalSecs>,
+    pub tick_interval_millis: Option<TickIntervalMillis>,
     /// The time after which a stream or partition is considered inactive.
     pub inactivity_timeout_secs: Option<InactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
@@ -325,8 +332,8 @@ impl Builder {
             self.instrumentation = Default::default();
         }
 
-        if self.tick_interval_secs.is_none() {
-            self.tick_interval_secs = TickIntervalSecs::try_from_env_prefixed(prefix.as_ref())?;
+        if self.tick_interval_millis.is_none() {
+            self.tick_interval_millis = TickIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.inactivity_timeout_secs.is_none() {
@@ -386,8 +393,8 @@ impl Builder {
     ///
     /// This triggers internal notification used to montitor the state
     /// of the currently consumed stream.
-    pub fn tick_interval_secs<T: Into<TickIntervalSecs>>(mut self, tick_interval: T) -> Self {
-        self.tick_interval_secs = Some(tick_interval.into());
+    pub fn tick_interval_millis<T: Into<TickIntervalMillis>>(mut self, tick_interval: T) -> Self {
+        self.tick_interval_millis = Some(tick_interval.into());
         self
     }
 
@@ -485,7 +492,7 @@ impl Builder {
     ///
     /// If these have not been set `StreamParameters::default()` will
     /// be passed into the closure.
-    pub fn update_stream_parameters<F>(mut self, mut f: F) -> Self
+    pub fn configure_stream_parameters<F>(mut self, mut f: F) -> Self
     where
         F: FnMut(StreamParameters) -> StreamParameters,
     {
@@ -500,7 +507,7 @@ impl Builder {
     /// be passed into the closure.
     ///
     /// If the closure fails, the whole `Builder` will fail.
-    pub fn try_update_stream_parameters<F>(mut self, mut f: F) -> Result<Self, Error>
+    pub fn try_configure_stream_parameters<F>(mut self, mut f: F) -> Result<Self, Error>
     where
         F: FnMut(StreamParameters) -> Result<StreamParameters, Error>,
     {
@@ -523,7 +530,7 @@ impl Builder {
             .clone()
             .unwrap_or_else(Instrumentation::default);
 
-        let tick_interval = self.tick_interval_secs.unwrap_or_default();
+        let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let inactivity_timeout = self.inactivity_timeout_secs;
 
@@ -552,7 +559,7 @@ impl Builder {
 
         self.stream_parameters = Some(stream_parameters);
         self.instrumentation = Some(instrumentation);
-        self.tick_interval_secs = Some(tick_interval);
+        self.tick_interval_millis = Some(tick_interval);
         self.inactivity_timeout_secs = inactivity_timeout;
         self.stream_dead_timeout_secs = stream_dead_timeout;
         self.dispatch_strategy = Some(dispatch_strategy);
@@ -610,7 +617,7 @@ impl Builder {
             .clone()
             .unwrap_or_else(Instrumentation::default);
 
-        let tick_interval = self.tick_interval_secs.unwrap_or_default();
+        let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let inactivity_timeout = self.inactivity_timeout_secs;
 

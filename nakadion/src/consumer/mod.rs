@@ -11,7 +11,7 @@ use std::task::{Context, Poll};
 use futures::future::{BoxFuture, FutureExt};
 
 use crate::api::NakadionEssentials;
-use crate::event_handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::internals::{
     controller::{Controller, ControllerParams},
     ConsumerState,
@@ -39,7 +39,7 @@ pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogg
 pub use config_types::{
     AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder, CommitRetryDelayMillis,
     CommitStrategy, CommitTimeoutMillis, ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs,
-    DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs, TickIntervalSecs,
+    DispatchStrategy, InactivityTimeoutSecs, StreamDeadTimeoutSecs, TickIntervalMillis,
 };
 pub use error::*;
 pub use instrumentation::*;
@@ -276,7 +276,7 @@ pub(crate) struct Config {
     pub subscription_id: SubscriptionId,
     pub stream_parameters: StreamParameters,
     pub instrumentation: Instrumentation,
-    pub tick_interval: TickIntervalSecs,
+    pub tick_interval: TickIntervalMillis,
     pub inactivity_timeout: Option<InactivityTimeoutSecs>,
     pub stream_dead_timeout: Option<StreamDeadTimeoutSecs>,
     pub dispatch_strategy: DispatchStrategy,

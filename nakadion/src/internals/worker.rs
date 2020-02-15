@@ -4,8 +4,8 @@ use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
 use crate::consumer::{ConsumerError, InactivityTimeoutSecs};
-use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::event_stream::BatchLine;
+use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, StreamState};
 use crate::logging::Logs;
 
@@ -88,10 +88,10 @@ mod processor {
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
     use crate::consumer::{ConsumerError, ConsumerErrorKind, InactivityTimeoutSecs};
-    use crate::event_handler::{
+    use crate::event_stream::BatchLine;
+    use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, HandlerAssignment,
     };
-    use crate::event_stream::BatchLine;
     use crate::internals::{committer::CommitData, StreamState};
     use crate::logging::{Logger, Logs};
 
@@ -196,16 +196,21 @@ mod processor {
                     Ok(true)
                 }
                 BatchPostAction::DoNotCommit { n_events } => Ok(true),
-                BatchPostAction::AbortStream => {
-                    self.stream_state
-                        .warn(format_args!("Stream cancellation requested by handler"));
+                BatchPostAction::AbortStream(reason) => {
+                    self.stream_state.warn(format_args!(
+                        "Stream cancellation requested by handler: {}",
+                        reason
+                    ));
                     self.stream_state.request_stream_cancellation();
                     Ok(false)
                 }
-                BatchPostAction::ShutDown => {
-                    self.stream_state
-                        .warn(format_args!("Consumer shut down requested by handler"));
-                    let err = ConsumerError::new(ConsumerErrorKind::HandlerAbort);
+                BatchPostAction::ShutDown(reason) => {
+                    self.stream_state.warn(format_args!(
+                        "Consumer shut down requested by handler: {}",
+                        reason
+                    ));
+                    let err =
+                        ConsumerError::new(ConsumerErrorKind::HandlerAbort).with_message(reason);
                     Err(err)
                 }
             }

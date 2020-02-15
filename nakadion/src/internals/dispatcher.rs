@@ -4,8 +4,8 @@ use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
 use crate::consumer::{Config, ConsumerError, DispatchStrategy};
-use crate::event_handler::{BatchHandler, BatchHandlerFactory};
 use crate::event_stream::BatchLine;
+use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::internals::StreamState;
 use crate::logging::Logs;
 
@@ -103,7 +103,7 @@ mod dispatch_single {
 
     use crate::api::SubscriptionCommitApi;
     use crate::consumer::{Config, ConsumerError};
-    use crate::event_handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
+    use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
     use crate::internals::{committer::*, worker::*, StreamState};
     use crate::logging::Logs;
 
