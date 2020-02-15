@@ -186,7 +186,7 @@ impl HandlerAssignment {
 ///
 /// ```rust
 /// use std::sync::{Arc, Mutex};
-/// use futures::FutureExt;
+/// use futures::{FutureExt, future::BoxFuture};
 ///
 /// use nakadion::handler::*;
 ///
@@ -196,8 +196,10 @@ impl HandlerAssignment {
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
 ///     fn handle(&mut self, _events: Bytes, _meta: BatchMeta) -> BatchHandlerFuture {
-///         *self.0.lock().unwrap() += 1;
-///         ProcessingStatus::processed_no_hint()
+///         async move {
+///             *self.0.lock().unwrap() += 1;
+///             BatchPostAction::commit_no_hint()
+///         }.boxed()
 ///     }
 /// }
 ///
@@ -208,33 +210,19 @@ impl HandlerAssignment {
 /// // our `BatchHandler`s are created
 /// impl BatchHandlerFactory for MyBatchHandlerFactory {
 ///     type Handler = MyHandler;
-///     fn create_handler(
+///     fn handler(
 ///         &self,
-///         _partition: &PartitionId,
-///     ) -> Result<Self::Handler, CreateHandlerError> {
-///         Ok(MyHandler(self.0.clone()))
+///         _assignment: &HandlerAssignment,
+///     ) ->  BoxFuture<Result<Self::Handler, Error>> {
+///         async move {
+///             Ok(MyHandler(self.0.clone()))
+///         }.boxed()
 ///     }
 /// }
 ///
 /// let count = Arc::new(Mutex::new(0));
 ///
 /// let factory = MyBatchHandlerFactory(count.clone());
-///
-/// // Handler creation will be done by Nakadion
-/// let mut handler1 = factory.create_handler(&PartitionId::new("1")).unwrap();
-/// let mut handler2 = factory.create_handler(&PartitionId::new("2")).unwrap();
-///
-/// // This will be done by Nakadion
-/// let status1 = handler1.handle(EventType::new("test_event"), &[]);
-///
-/// assert_eq!(*count.lock().unwrap(), 1);
-/// assert_eq!(status1, ProcessingStatus::Processed(None));
-///
-/// // This will be done by Nakadion
-/// let status2 = handler2.handle(EventType::new("test_event"), &[]);
-///
-/// assert_eq!(*count.lock().unwrap(), 2);
-/// assert_eq!(status2, ProcessingStatus::Processed(None));
 /// ```
 pub trait BatchHandlerFactory: Send + Sync + 'static {
     type Handler: BatchHandler;
