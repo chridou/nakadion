@@ -186,6 +186,7 @@ impl HandlerAssignment {
 ///
 /// ```rust
 /// use std::sync::{Arc, Mutex};
+/// use futures::FutureExt;
 ///
 /// use nakadion::handler::*;
 ///
@@ -194,7 +195,7 @@ impl HandlerAssignment {
 ///
 /// // Implement the processing logic by implementing `BatchHandler`
 /// impl BatchHandler for MyHandler {
-///     fn handle(&mut self, _event_type: EventType, _events: &[u8]) -> ProcessingStatus {
+///     fn handle(&mut self, _events: Bytes, _meta: BatchMeta) -> BatchHandlerFuture {
 ///         *self.0.lock().unwrap() += 1;
 ///         ProcessingStatus::processed_no_hint()
 ///     }
