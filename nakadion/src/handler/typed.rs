@@ -57,7 +57,7 @@ pub enum SpawnTarget {
 /// The `handle` method gets called on `&mut self`.
 /// # Example
 ///
-/// ```norun
+/// ```
 /// /// use nakadion::{EventType, EventsHandler, TypedProcessingStatus};
 ///
 /// // Use a struct to maintain state
