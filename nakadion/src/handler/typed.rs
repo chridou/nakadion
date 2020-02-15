@@ -58,7 +58,11 @@ pub enum SpawnTarget {
 /// # Example
 ///
 /// ```
-/// /// use nakadion::{EventType, EventsHandler, TypedProcessingStatus};
+/// use serde::Deserialize;
+/// use futures::FutureExt;
+///
+/// use nakadion::handler::*;
+///
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler {
@@ -72,21 +76,21 @@ pub enum SpawnTarget {
 /// impl EventsHandler for MyHandler {
 ///     type Event = MyEvent;
 ///
-///     fn handle(&mut self, events: Vec<MyEvent>) -> EventsHandlerFuture {
-///         for MyEvent(amount) in events {
-///             self.count += amount;
-///         }
-///         TypedProcessingStatus::Processed
+///     fn handle(&mut self, events: Vec<MyEvent>, _meta: BatchMeta) -> EventsHandlerFuture {
+///         async move {
+///             for MyEvent(amount) in events {
+///                 self.count += amount;
+///             }
+///             EventsPostAction::Commit
+///         }.boxed()
+///     }
+///
+///     fn deserialize_on(&mut self) -> SpawnTarget {
+///         // We expect costly deserialization...
+///         SpawnTarget::Dedicated
 ///     }
 /// }
 ///
-/// // Handler creation will be done by `HandlerFactory`
-/// let mut handler = MyHandler { count: 0 };
-///
-/// // This will be done by Nakadion
-/// handler.handle(vec![MyEvent(1), MyEvent(2)]);
-///
-/// assert_eq!(handler.count, 3);
 /// ```
 pub trait EventsHandler {
     type Event: DeserializeOwned + Send + 'static;
