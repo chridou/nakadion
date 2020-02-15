@@ -62,12 +62,13 @@ mod handler {
         count: usize,
     }
 
-    impl BatchHandler for MyHandler {
+    impl EventsHandler for MyHandler {
+        type Event = serde_json::Value;
         fn handle<'a>(
             &'a mut self,
-            events: Bytes,
+            events: Vec<Self::Event>,
             meta: BatchMeta<'a>,
-        ) -> BoxFuture<'a, BatchPostAction> {
+        ) -> EventsHandlerFuture {
             self.count += 1;
 
             async move {
@@ -78,7 +79,7 @@ mod handler {
                     batch_id,
                     events.len()
                 );
-                BatchPostAction::commit_no_hint()
+                EventsPostAction::Commit
             }
             .boxed()
         }
