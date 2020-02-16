@@ -210,7 +210,8 @@ impl fmt::Display for CommitStrategy {
 }
 
 new_type! {
-    #[doc="The internal tick interval.\n\nThe applied value is always between [100..5_000] ms.\n"]
+    #[doc="The internal tick interval.\n\nThe applied value is always between [100..5_000] ms. \
+    When set outside of its bounds it will be adjusted to fit within the bounds.\n\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct TickIntervalMillis(u64, env="TICK_INTERVAL_MILLIS");
 }

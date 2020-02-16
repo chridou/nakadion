@@ -127,6 +127,8 @@ pub trait EventsHandler {
     /// Decide on how to execute deserialization.
     ///
     /// The number of bytes to be deserialized is passed.
+    ///
+    /// If not overwritten the default is `SpawnTarget::Executor`.
     fn deserialize_on(&mut self, _n_bytes: usize) -> SpawnTarget {
         SpawnTarget::Executor
     }

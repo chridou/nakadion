@@ -1,5 +1,4 @@
-//! Optional OAUTH authorization for connecting to Nakadi
-//!
+//! OAUTH authorization for connecting to Nakadi
 use std::convert::AsRef;
 use std::error::Error as StdError;
 use std::fmt;
