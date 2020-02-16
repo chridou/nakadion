@@ -10,11 +10,7 @@ use tokio::{
 };
 
 use crate::nakadi_types::{
-    model::{
-        event_type::EventTypeName,
-        partition::PartitionId,
-        subscription::{StreamId, SubscriptionCursor, SubscriptionId},
-    },
+    model::subscription::{EventTypePartition, StreamId, SubscriptionCursor, SubscriptionId},
     Error, FlowId,
 };
 
@@ -28,6 +24,15 @@ pub struct CommitData {
     pub received_at: Instant,
     pub batch_id: usize,
     pub n_events: Option<usize>,
+}
+
+impl CommitData {
+    fn etp(&self) -> EventTypePartition {
+        EventTypePartition::new(
+            self.cursor.event_type.clone(),
+            self.cursor.cursor.partition.clone(),
+        )
+    }
 }
 
 pub(crate) struct Committer;
@@ -53,7 +58,7 @@ struct PendingCursors {
     collected_events: usize,
     collected_cursors: usize,
     commit_strategy: CommitStrategy,
-    pending: HashMap<(PartitionId, EventTypeName), SubscriptionCursor>,
+    pending: HashMap<EventTypePartition, SubscriptionCursor>,
 }
 
 impl PendingCursors {
@@ -77,10 +82,7 @@ impl PendingCursors {
     }
 
     pub fn add(&mut self, data: CommitData, now: Instant) {
-        let key = (
-            data.cursor.cursor.partition.clone(),
-            data.cursor.event_type.clone(),
-        );
+        let key = data.etp();
 
         self.collected_cursors += 1;
         if let Some(n_events) = data.n_events {

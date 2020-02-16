@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use crate::api::NakadionEssentials;
 use crate::handler::{BatchHandler, BatchHandlerFactory};
@@ -19,6 +18,7 @@ use super::{Config, Consumer, Inner};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "strategy")]
 pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
@@ -50,7 +50,10 @@ impl FromStr for DispatchStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(serde_json::from_str(s)?)
+        match s {
+            "no_dispatching" => Ok(DispatchStrategy::NoDispatching),
+            _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
+        }
     }
 }
 
@@ -60,6 +63,7 @@ impl FromStr for DispatchStrategy {
 /// a it will be guessed by `Nakadion` which might not result in best performance.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "strategy")]
 pub enum CommitStrategy {
     /// Commit cursors immediately
     Immediately,
@@ -105,9 +109,103 @@ impl FromStr for CommitStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let strategy: CommitStrategy = serde_json::from_str(s)?;
+        fn parse_after(s: &str) -> Result<CommitStrategy, Error> {
+            let parts: Vec<_> = s.split(' ').filter(|s| !s.is_empty()).collect();
+
+            let mut seconds: Option<u32> = None;
+            let mut cursors: Option<u32> = None;
+            let mut events: Option<u32> = None;
+
+            if parts.is_empty() {
+                return Err(Error::new("invalid"));
+            }
+
+            if parts[0] != "after" {
+                return Err(Error::new("must start with 'after'"));
+            }
+
+            for p in parts.into_iter().skip(1) {
+                let parts: Vec<_> = p.split(':').collect();
+                if parts.len() != 2 {
+                    return Err(Error::new(format!("not valid: {}", p)));
+                }
+                let v: u32 = parts[1]
+                    .parse()
+                    .map_err(|err| Error::new(format!("{} not an u32: {}", parts[0], err)))?;
+
+                match parts[0] {
+                    "seconds" => seconds = Some(v),
+                    "cursors" => cursors = Some(v),
+                    "events" => events = Some(v),
+                    _ => {
+                        return Err(Error::new(format!(
+                            "not a part of CommitStrategy: {}",
+                            parts[0]
+                        )))
+                    }
+                }
+            }
+
+            Ok(CommitStrategy::After {
+                seconds,
+                events,
+                cursors,
+            })
+        }
+
+        let strategy = match s {
+            "immediately" => CommitStrategy::Immediately,
+            "latest_possible" => CommitStrategy::LatestPossible,
+            _ => parse_after(s).map_err(|err| {
+                Error::new(format!(
+                    "could not parse CommitStrategy from {}: {}",
+                    s, err
+                ))
+            })?,
+        };
         strategy.validate()?;
         Ok(strategy)
+    }
+}
+
+impl fmt::Display for CommitStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommitStrategy::Immediately => write!(f, "immediately")?,
+            CommitStrategy::LatestPossible => write!(f, "latest_possible")?,
+            CommitStrategy::After {
+                seconds: None,
+                cursors: None,
+                events: None,
+            } => {
+                write!(f, "after")?;
+            }
+            CommitStrategy::After {
+                seconds,
+                cursors,
+                events,
+            } => {
+                write!(f, "after ")?;
+                if let Some(seconds) = seconds {
+                    write!(f, "seconds:{}", seconds)?;
+                    if cursors.is_some() || events.is_some() {
+                        write!(f, " ")?;
+                    }
+                }
+
+                if let Some(cursors) = cursors {
+                    write!(f, "cursors:{}", cursors)?;
+                    if events.is_some() {
+                        write!(f, " ")?;
+                    }
+                }
+                if let Some(events) = events {
+                    write!(f, "events:{}", events)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -244,7 +342,12 @@ impl Default for CommitRetryDelayMillis {
 /// The `Builder` can be created and updated from the environment. When updated
 /// from the environment only those values will be updated which were not set
 /// before.
-#[derive(Debug, Default, Clone)]
+///
+/// ## De-/Serialization
+///
+/// The `Builder` supports serialization but the instrumentation will never be
+/// part of any serialization and therefore default to `None`
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Builder {
     /// The `SubscriptionId` of the subscription to be consumed.
@@ -254,6 +357,7 @@ pub struct Builder {
     /// Parameters that configure the stream to be consumed.
     pub stream_parameters: Option<StreamParameters>,
     /// The instrumentation to be used to generate metrics
+    #[serde(skip)]
     pub instrumentation: Option<Instrumentation>,
     /// The internal tick interval.
     ///
