@@ -1,3 +1,4 @@
+//! Types for dealing with events
 use std::fmt;
 use std::str::FromStr;
 

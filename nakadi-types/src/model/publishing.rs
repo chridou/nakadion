@@ -1,4 +1,4 @@
-/// Types for publishing events
+/// Types for publishing events.
 ///
 /// Even though this is part of the event type resources this
 /// deserves special attention since publishing events involves

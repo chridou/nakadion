@@ -1,6 +1,6 @@
 //! Types defining a partition.
 //!
-//! This covers the partoitions of an `EventType`. Subscriptions, monitoring
+//! This covers the partitions of an `EventType`. Subscriptions, monitoring
 //! etc. might extend the types in here with more fields.
 use std::fmt;
 use std::str::FromStr;
