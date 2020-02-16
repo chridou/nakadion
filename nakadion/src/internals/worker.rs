@@ -176,6 +176,7 @@ mod processor {
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
+                stream_id: self.stream_state.stream_id(),
                 cursor: &cursor,
                 received_at,
                 batch_id,

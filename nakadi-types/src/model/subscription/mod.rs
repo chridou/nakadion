@@ -36,6 +36,9 @@ impl StreamId {
     }
 }
 
+/// Something that has an event type and a partition
+///
+/// Must only return event types and partitions that belong together.
 pub trait EventTypePartitionLike {
     fn event_type(&self) -> &EventTypeName;
 
@@ -138,8 +141,11 @@ pub struct SubscriptionEventTypeStatus {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionPartitionStatus {
+    /// The partition id
     pub partition: PartitionId,
+    /// The state of this partition in current subscription.
     pub state: PartitionState,
+    /// The id of the stream that consumes data from this partition
     pub stream_id: Option<StreamId>,
     pub assignment_type: Option<PartitionAssignmentType>,
 }
@@ -149,10 +155,13 @@ pub struct SubscriptionPartitionStatus {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PartitionState {
+    /// The partition is currently not assigned to any client
     #[serde(rename = "unassigned")]
     Unassigned,
+    /// The partition is currently reasssigning from one client to another
     #[serde(rename = "reassigned")]
     Reassigned,
+    /// The partition is assigned to a client.
     #[serde(rename = "assigned")]
     Assigned,
 }
@@ -162,8 +171,11 @@ pub enum PartitionState {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PartitionAssignmentType {
+    /// Partition can’t be transferred to another stream until the stream is closed
     #[serde(rename = "direct")]
     Direct,
+    /// Partition can be transferred to another stream in case of rebalance, or if another stream
+    /// requests to read from this partition.
     #[serde(rename = "auto")]
     Auto,
 }
@@ -274,6 +286,7 @@ pub enum ReadFrom {
 pub struct SubscriptionCursorWithoutToken {
     #[serde(flatten)]
     pub cursor: Cursor,
+    /// The name of the event type this partition’s events belong to.
     pub event_type: EventTypeName,
 }
 
@@ -684,30 +697,38 @@ impl StreamParameters {
 }
 
 new_type! {
+    #[doc="The maximum number of uncommitted events that Nakadi will stream before pausing the stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct MaxUncommittedEvents(u32, env="MAX_UNCOMMITTED_EVENTS");
 }
 new_type! {
+    #[doc="Maximum number of Events in each chunk (and therefore per partition) of the stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct BatchLimit(u32, env="BATCH_LIMIT");
 }
 new_type! {
+    #[doc="Maximum number of Events in this stream \
+    (over all partitions being streamed in this connection).\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamLimit(u32, env="STREAM_LIMIT");
 }
 new_type! {
+    #[doc="Maximum time in seconds to wait for the flushing of each chunk (per partition).\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct BatchFlushTimeoutSecs(u32, env="BATCH_FLUSH_TIMEOUT_SECS");
 }
 new_type! {
+    #[doc="Useful for batching events based on their received_at timestamp.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct BatchTimespanSecs(u32, env="BATCH_TIMESPAN_SECS");
 }
 new_type! {
+    #[doc="Maximum time in seconds to wait for the flushing of each chunk (per partition).\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamTimeoutSecs(u32, env="STREAM_TIMEOUT_SECS");
 }
 new_type! {
+    #[doc="Maximum amount of seconds that Nakadi will be waiting for commit after sending a batch to a client.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct CommitTimeoutSecs(u32, env="COMMIT_TIMEOUT_SECS");
 }

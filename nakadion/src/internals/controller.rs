@@ -332,6 +332,12 @@ mod connect_stream {
     use crate::internals::ConsumerState;
     use crate::logging::Logs;
 
+    /// Sequence of backoffs after failed commit attempts
+    const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 5, 5, 5, 10, 10, 10, 20, 20, 20, 30, 30, 30, 45,
+        45, 45, 60, 60, 60, 90, 90, 90,
+    ];
+
     pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi>(
         api_client: C,
         consumer_state: ConsumerState,

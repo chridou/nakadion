@@ -12,7 +12,7 @@ pub type BatchHandlerFuture<'a> = BoxFuture<'a, BatchPostAction>;
 use crate::nakadi_types::model::{
     event_type::EventTypeName,
     partition::PartitionId,
-    subscription::{EventTypePartition, EventTypePartitionLike as _, SubscriptionCursor},
+    subscription::{EventTypePartition, EventTypePartitionLike as _, StreamId, SubscriptionCursor},
 };
 
 pub use crate::nakadi_types::Error;
@@ -20,12 +20,21 @@ pub use crate::nakadi_types::Error;
 mod typed;
 pub use typed::*;
 
+/// Information on the current batch passed to a `BatchHandler`.
+///
+/// The batch_id is monotonically increasing for each `BatchHandler`
+/// within a stream(same `StreamId`)
+/// as long a s a dispatch strategy which keeps the ordering of
+/// events is chosen. There may be gaps between the ids.
 pub struct BatchMeta<'a> {
+    pub stream_id: StreamId,
     pub cursor: &'a SubscriptionCursor,
     pub received_at: Instant,
     pub batch_id: usize,
 }
 
+/// Returned by a `BatchHandler` and tell `Nakadion`
+/// how to continue.
 #[derive(Debug, Clone)]
 pub enum BatchPostAction {
     /// Commit the batch
@@ -73,6 +82,8 @@ pub struct BatchStats {
     pub t_deserialize: Option<Duration>,
 }
 
+/// Returned by a `BatchHandler` when queried
+/// on inactivity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InactivityAnswer {
     KeepMeAlive,
@@ -80,10 +91,12 @@ pub enum InactivityAnswer {
 }
 
 impl InactivityAnswer {
+    /// Returns `true` if the `BatchHandler` should be killed.
     pub fn should_kill(self) -> bool {
         self == InactivityAnswer::KillMe
     }
 
+    /// Returns `true` if the `BatchHandler` should stay alive.
     pub fn should_stay_alive(self) -> bool {
         self == InactivityAnswer::KeepMeAlive
     }
@@ -135,10 +148,22 @@ pub trait BatchHandler: Send + 'static {
     }
 }
 
+/// Defines what a `BatchHandler` will receive.
+///
+/// This value should the same for the whole lifetime of the
+/// `BatchHandler`. "Should" because in the end it is the
+/// `NandlerFactory` which returns `BatchHandler`s. But it
+/// is guaranteed that `Nakadion` will only pass events to a `BatchHandler`
+/// as defined by the `DispatchStrategy`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum HandlerAssignment {
+    /// Everything can be passed to the `BatchHandler`.
     Unspecified,
+    /// The `BatchHanndler` will only receive events
+    /// of the given event type but from any partition.
     EventType(EventTypeName),
+    /// The `BatchHanndler` will only receive events
+    /// of the given event type on the given partition.
     EventTypePartition(EventTypePartition),
 }
 
@@ -238,5 +263,14 @@ impl HandlerAssignment {
 pub trait BatchHandlerFactory: Send + Sync + 'static {
     type Handler: BatchHandler;
 
+    /// New `BatchHandler` was requested.
+    ///
+    /// `assignemt` defines for what event types and partitions the returned
+    /// `BatchHandler` will be used. `Nakadion` guarantees that this will stay true
+    /// over the whole lifetime of the `BatchHandler`.
+    ///
+    /// Returning an `Error` aborts the `Consumer`.
+    ///
+    /// It is up to the `BatchHandlerFactory` on whether it respects `assignment`.
     fn handler(&self, assignment: &HandlerAssignment) -> BoxFuture<Result<Self::Handler, Error>>;
 }
