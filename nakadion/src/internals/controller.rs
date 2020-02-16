@@ -15,9 +15,7 @@ use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
 use crate::consumer::{Config, ConsumerError, ConsumerErrorKind};
 use crate::event_stream::{BatchLine, BatchLineErrorKind, BatchLineStream, FramedStream};
 use crate::handler::{BatchHandler, BatchHandlerFactory};
-use crate::internals::dispatcher::{
-    ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher,
-};
+use crate::internals::dispatcher::{Dispatcher, DispatcherMessage, SleepingDispatcher};
 use crate::logging::Logs;
 
 use super::{ConsumerState, StreamState};
@@ -102,6 +100,9 @@ where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     H: BatchHandler,
 {
+    let now = Instant::now();
+    let stream_started_at = now;
+
     let frame_stream = FramedStream::new(bytes_stream);
     let batch_stream = BatchLineStream::new(frame_stream).map_ok(BatchLineMessage::BatchLine);
 
@@ -118,14 +119,14 @@ where
         .stream_dead_timeout
         .map(|t| t.duration());
 
-    let mut last_batch_received = Instant::now();
     pin_mut!(merged);
 
+    let mut last_batch_received = now;
     let (active_dispatcher, first_line) = loop {
         if let Some(next) = merged.next().await {
             match next {
                 Ok(BatchLineMessage::BatchLine(line)) => {
-                    stream_state.info(format_args!("Received first batch line from Nakadi."));
+                    stream_state.info(format_args!("Received first batch line."));
                     last_batch_received = Instant::now();
                     let sleeping_dispatcher = sleep_ticker.join().await?;
                     let active_dispatcher =
@@ -217,7 +218,10 @@ where
 
     let sleeping_dispatcher = active_dispatcher.join().await?;
 
-    stream_state.info(format_args!("Streaming stopped"));
+    stream_state.info(format_args!(
+        "Streaming stopped after {:?}.",
+        stream_started_at.elapsed()
+    ));
 
     Ok((params, sleeping_dispatcher))
 }

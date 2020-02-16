@@ -54,6 +54,15 @@ pub struct EventTypePartition {
     pub partition: PartitionId,
 }
 
+impl EventTypePartition {
+    pub fn new<E: Into<EventTypeName>, P: Into<PartitionId>>(event_type: E, partition: P) -> Self {
+        Self {
+            event_type: event_type.into(),
+            partition: partition.into(),
+        }
+    }
+}
+
 impl EventTypePartitionLike for EventTypePartition {
     fn event_type(&self) -> &EventTypeName {
         &self.event_type
@@ -541,7 +550,7 @@ mod test {
 /// Parameters for starting a new stream on a subscription
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct StreamParameters {
     /// List of partitions to read from in this stream. If absent or empty - then the partitions will be
     /// automatically assigned by Nakadi.
