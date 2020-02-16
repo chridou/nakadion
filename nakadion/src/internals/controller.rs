@@ -332,25 +332,15 @@ mod connect_stream {
     use crate::internals::ConsumerState;
     use crate::logging::Logs;
 
-    /// Sequence of backoffs after failed commit attempts
-    const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 5, 5, 5, 10, 10, 10, 20, 20, 20, 30, 30, 30, 45,
-        45, 45, 60, 60, 60, 90, 90, 90,
-    ];
-
     pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi>(
         api_client: C,
         consumer_state: ConsumerState,
     ) -> Result<SubscriptionStream, ConsumerError> {
         let config = consumer_state.config();
         let connect_stream_timeout = config.connect_stream_timeout.duration();
-        let max_retry_delay = config.connect_stream_retry_max_delay.into_inner();
-        let mut current_retry_delay = 0;
+        let mut backoff = Backoff::new(config.connect_stream_retry_max_delay.into_inner());
         let flow_id = FlowId::random();
         loop {
-            if current_retry_delay < max_retry_delay {
-                current_retry_delay += 1;
-            }
             if consumer_state.global_cancellation_requested() {
                 return Err(ConsumerError::new(ConsumerErrorKind::UserAbort));
             }
@@ -394,9 +384,8 @@ mod connect_stream {
                     } else {
                         consumer_state.warn(format_args!("Failed to connect to Nakadi: {}", err));
                     }
-                    if current_retry_delay != 0 {
-                        delay_for(Duration::from_secs(current_retry_delay)).await;
-                    }
+                    let delay = backoff.next();
+                    delay_for(delay).await;
                     continue;
                 }
             }
@@ -420,6 +409,40 @@ mod connect_stream {
                     started.elapsed()
                 ))
                 .caused_by(err)),
+        }
+    }
+
+    /// Sequence of backoffs after failed commit attempts
+    const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 5, 5, 5, 10, 10, 10, 20, 20, 20, 30, 30, 30, 45,
+        45, 45, 60, 60, 60, 90, 90, 90,
+    ];
+    const MAX_BACK_OFF_SECS: u64 = 90;
+
+    struct Backoff<I> {
+        max: u64,
+        iter: I,
+    }
+
+    impl<I> Backoff<I>
+    where
+        I: Iterator<Item = u64>,
+    {
+        pub fn new(max: u64) -> Self {
+            let iter = CONNECT_RETRY_BACKOFF_SECS.iter().copied();
+            Backoff { iter, max }
+        }
+
+        pub fn next(&mut self) -> Duration {
+            let d = if let Some(next) = self.iter.next() {
+                next
+            } else {
+                MAX_BACK_OFF_SECS
+            };
+
+            let d = std::cmp::min(d, self.max);
+
+            Duration::from_secs(d)
         }
     }
 }
