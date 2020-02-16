@@ -419,17 +419,14 @@ mod connect_stream {
     ];
     const MAX_BACK_OFF_SECS: u64 = 90;
 
-    struct Backoff<I> {
+    struct Backoff {
         max: u64,
-        iter: I,
+        iter: Box<dyn Iterator<Item = u64> + Send + 'static>,
     }
 
-    impl<I> Backoff<I>
-    where
-        I: Iterator<Item = u64>,
-    {
+    impl Backoff {
         pub fn new(max: u64) -> Self {
-            let iter = CONNECT_RETRY_BACKOFF_SECS.iter().copied();
+            let iter = Box::new(CONNECT_RETRY_BACKOFF_SECS.iter().copied());
             Backoff { iter, max }
         }
 
