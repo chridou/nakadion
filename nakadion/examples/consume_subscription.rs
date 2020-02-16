@@ -35,9 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let consumer =
         builder.build_with(client, handler::MyHandlerFactory, SlogLogger::new(logger))?;
 
-    let (_handle, task) = consumer.start();
+    let (_handle, consuming) = consumer.start();
 
-    let outcome = task.await;
+    let outcome = consuming.await;
 
     if let Some(err) = outcome.error() {
         println!("{}", err);

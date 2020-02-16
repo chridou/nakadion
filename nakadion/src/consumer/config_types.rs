@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use serde_json;
 
 use crate::api::NakadionEssentials;
 use crate::handler::{BatchHandler, BatchHandlerFactory};
@@ -15,13 +16,14 @@ use super::instrumentation::Instrumentation;
 use super::{Config, Consumer, Inner};
 
 /// Defines how to dispatch batches to handlers.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
+#[serde(rename_all = "snake_case")]
 pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
     /// This means batches are processed sequentially.
-    SingleWorker,
+    NoDispatching,
 }
 
 impl DispatchStrategy {
@@ -30,14 +32,14 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::SingleWorker
+        DispatchStrategy::NoDispatching
     }
 }
 
 impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DispatchStrategy::SingleWorker => write!(f, "single_worker")?,
+            DispatchStrategy::NoDispatching => write!(f, "no_dispatching")?,
         }
 
         Ok(())
@@ -48,13 +50,7 @@ impl FromStr for DispatchStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "single_worker" => Ok(DispatchStrategy::SingleWorker),
-            _ => Err(Error::new(format!(
-                "'{}' is not a valid DispatchStrategy.",
-                s
-            ))),
-        }
+        Ok(serde_json::from_str(s)?)
     }
 }
 
@@ -62,7 +58,8 @@ impl FromStr for DispatchStrategy {
 ///
 /// This value should always be set when creating a `Consumer` because otherwise
 /// a it will be guessed by `Nakadion` which might not result in best performance.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CommitStrategy {
     /// Commit cursors immediately
     Immediately,
@@ -78,8 +75,11 @@ pub enum CommitStrategy {
     /// * `events`: After `events` have been received. This requires the `BatchHandler` to give
     /// a hint on the amount of events processed.
     After {
+        #[serde(skip_serializing_if = "Option::is_none")]
         seconds: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         cursors: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         events: Option<u32>,
     },
 }
@@ -105,14 +105,9 @@ impl FromStr for CommitStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "immediately" => Ok(CommitStrategy::Immediately),
-            "latest_possible" => Ok(CommitStrategy::LatestPossible),
-            _ => Err(Error::new(format!(
-                "'{}' is not a valid CommitStrategy or `Latest` which currently can not be parsed.",
-                s
-            ))),
-        }
+        let strategy: CommitStrategy = serde_json::from_str(s)?;
+        strategy.validate()?;
+        Ok(strategy)
     }
 }
 

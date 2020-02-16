@@ -78,13 +78,16 @@ impl Consumer {
         Builder::try_from_env_prefixed(prefix)
     }
 
-    /// Consume self and start.
+    /// Start consuming events.
     ///
-    /// A 'ConsumerTask` and a `ConsumerHandle` will be returned. The `ConsumerTask`
-    /// must be spawned on an executor and will complete with a `ConsumptionOutcome`
-    /// once consumption has stopped. The `ConsumerHandle` can be used to check whether
+    /// A 'Consuming` and a `ConsumerHandle` will be returned. The `Consuming`
+    /// will complete with a `ConsumptionOutcome` once consumption has stopped.
+    /// `Consuming` can be dropped if ther is no interest in waiting the consumer
+    /// to finish.
+    ///
+    /// The `ConsumerHandle` can be used to check whether
     /// the `Consumer` is still running and to stop it.
-    pub fn start(self) -> (ConsumerHandle, ConsumerTask) {
+    pub fn start(self) -> (ConsumerHandle, Consuming) {
         let subscription_id = self.inner.config().subscription_id;
 
         let logger =
@@ -101,20 +104,24 @@ impl Consumer {
             consumer_state: consumer_state.clone(),
         };
 
-        let f = self.inner.start(consumer_state).map(move |r| {
+        let f = async move {
+            let inner = Arc::clone(&self.inner);
+
             let mut outcome = ConsumptionOutcome {
                 aborted: None,
                 consumer: self,
             };
-
-            if let Err(err) = r {
-                outcome.aborted = Some(err);
+            match tokio::spawn(inner.start(consumer_state)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => outcome.aborted = Some(err),
+                Err(err) => outcome.aborted = Some(err.into()),
             }
 
             outcome
-        });
-        let join = ConsumerTask { inner: f.boxed() };
-        (handle, join)
+        }
+        .boxed();
+
+        (handle, Consuming::new(f))
     }
 }
 
@@ -179,14 +186,16 @@ impl ConsumptionOutcome {
     }
 }
 
-/// A task returned when starting a `Consumer` which must be
-/// spawned on an executor.
-pub struct ConsumerTask {
+/// A Future that completes once the consumer stopped events consumption
+///
+/// This `Future` is just a proxy and does not drive the consumer. It can be
+/// dropped without stopping the consumer.
+pub struct Consuming {
     inner: Pin<Box<dyn Future<Output = ConsumptionOutcome> + Send>>,
 }
 
-impl ConsumerTask {
-    pub fn new<F>(f: F) -> Self
+impl Consuming {
+    fn new<F>(f: F) -> Self
     where
         F: Future<Output = ConsumptionOutcome> + Send + 'static,
     {
@@ -194,7 +203,7 @@ impl ConsumerTask {
     }
 }
 
-impl Future for ConsumerTask {
+impl Future for Consuming {
     type Output = ConsumptionOutcome;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {

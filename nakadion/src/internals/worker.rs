@@ -90,7 +90,8 @@ mod processor {
     use crate::consumer::{ConsumerError, ConsumerErrorKind, InactivityTimeoutSecs};
     use crate::event_stream::BatchLine;
     use crate::handler::{
-        BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, HandlerAssignment,
+        BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
+        HandlerAssignment,
     };
     use crate::internals::{committer::CommitData, StreamState};
     use crate::logging::{Logger, Logs};
@@ -175,18 +176,22 @@ mod processor {
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
+                stream_id: self.stream_state.stream_id(),
                 cursor: &cursor,
                 received_at,
                 batch_id,
             };
 
             match self.handler_slot.process_batch(events, meta).await? {
-                BatchPostAction::Commit { n_events } => {
+                BatchPostAction::Commit(BatchStats {
+                    n_events,
+                    t_deserialize,
+                }) => {
                     let commit_data = CommitData {
                         cursor,
                         received_at,
                         batch_id,
-                        events_hint: n_events,
+                        n_events,
                     };
                     if let Err(err) = self.try_commit(commit_data) {
                         self.stream_state
@@ -195,7 +200,10 @@ mod processor {
                     }
                     Ok(true)
                 }
-                BatchPostAction::DoNotCommit { n_events } => Ok(true),
+                BatchPostAction::DoNotCommit(BatchStats {
+                    n_events,
+                    t_deserialize,
+                }) => Ok(true),
                 BatchPostAction::AbortStream(reason) => {
                     self.stream_state.warn(format_args!(
                         "Stream cancellation requested by handler: {}",

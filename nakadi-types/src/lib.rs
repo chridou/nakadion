@@ -1,7 +1,8 @@
 //! # Nakadi-Types
 //!
 //! `nakadi-types` contains types for interacting with the [Nakadi](https://nakadi.io) Event Broker.
-
+//!
+//! This crate is used by [Nakadion](https://crates.io/crates/nakadion)
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;

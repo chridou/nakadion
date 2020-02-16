@@ -27,7 +27,7 @@ pub struct CommitData {
     pub cursor: SubscriptionCursor,
     pub received_at: Instant,
     pub batch_id: usize,
-    pub events_hint: Option<usize>,
+    pub n_events: Option<usize>,
 }
 
 pub(crate) struct Committer;
@@ -83,8 +83,8 @@ impl PendingCursors {
         );
 
         self.collected_cursors += 1;
-        if let Some(events_hint) = data.events_hint {
-            self.collected_events += events_hint
+        if let Some(n_events) = data.n_events {
+            self.collected_events += n_events
         }
 
         let deadline = match self.commit_strategy {
