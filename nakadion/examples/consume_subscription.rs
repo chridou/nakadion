@@ -24,8 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subscription_id(subscription_id)
         .inactivity_timeout_secs(30)
         .commit_attempt_timeout_millis(1500)
-        .configure_stream_parameters(|p| p.batch_limit(10).max_uncommitted_events(1000))
-        .connect_stream_timeout_secs(5);
+        .connect_stream_timeout_secs(5)
+        .warn_stream_stalled_secs(10)
+        .configure_stream_parameters(|p| {
+            p.batch_limit(10)
+                .max_uncommitted_events(1000)
+                .stream_timeout_secs(60)
+        });
 
     // This is not necessary and just used
     // to print the configured values
@@ -33,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:#?}", builder);
 
     let consumer =
-        builder.build_with(client, handler::MyHandlerFactory, SlogLogger::new(logger))?;
+        builder.build_with(client, handler::MyHandlerFactory, StdOutLogger::default())?;
 
     let (_handle, consuming) = consumer.start();
 
@@ -59,7 +64,7 @@ mod handler {
     use nakadion::handler::*;
 
     pub struct MyHandler {
-        count: usize,
+        events_received: usize,
     }
 
     impl EventsHandler for MyHandler {
@@ -69,16 +74,15 @@ mod handler {
             events: Vec<Self::Event>,
             meta: BatchMeta<'a>,
         ) -> EventsHandlerFuture {
-            self.count += 1;
+            self.events_received += events.len();
 
             async move {
-                let batch_id = meta.batch_id;
-                println!(
-                    "batches: {} - batch id: {} - bytes: {}",
-                    self.count,
-                    batch_id,
-                    events.len()
-                );
+                if meta.frame_id % 2_000 == 0 {
+                    println!(
+                        "events: {} - frame id: {}",
+                        self.events_received, meta.frame_id,
+                    );
+                }
                 EventsPostAction::Commit
             }
             .boxed()
@@ -94,7 +98,7 @@ mod handler {
             &self,
             _assignment: &HandlerAssignment,
         ) -> BoxFuture<Result<Self::Handler, Error>> {
-            async { Ok(MyHandler { count: 0 }) }.boxed()
+            async { Ok(MyHandler { events_received: 0 }) }.boxed()
         }
     }
 }

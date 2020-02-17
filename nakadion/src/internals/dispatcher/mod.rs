@@ -17,6 +17,7 @@ mod no_dispatch;
 pub enum DispatcherMessage {
     Batch(BatchLine),
     Tick,
+    StreamEnded,
 }
 
 pub(crate) struct Dispatcher;

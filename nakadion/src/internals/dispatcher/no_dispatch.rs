@@ -54,6 +54,7 @@ where
         let worker_stream = messages.map(|dm| match dm {
             DispatcherMessage::Batch(batch) => WorkerMessage::Batch(batch),
             DispatcherMessage::Tick => WorkerMessage::Tick,
+            DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });
 
         let active_worker = worker.start(stream_state.clone(), committer, worker_stream);
@@ -106,6 +107,8 @@ where
             join,
             stream_state,
         } = self;
+
+        stream_state.debug(format_args!("Waiting for worker to fall asleep"));
 
         let worker = join.await?;
 

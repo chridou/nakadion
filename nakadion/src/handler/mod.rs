@@ -22,7 +22,7 @@ pub use typed::*;
 
 /// Information on the current batch passed to a `BatchHandler`.
 ///
-/// The batch_id is monotonically increasing for each `BatchHandler`
+/// The `frame_id` is monotonically increasing for each `BatchHandler`
 /// within a stream(same `StreamId`)
 /// as long a s a dispatch strategy which keeps the ordering of
 /// events is chosen. There may be gaps between the ids.
@@ -30,7 +30,7 @@ pub struct BatchMeta<'a> {
     pub stream_id: StreamId,
     pub cursor: &'a SubscriptionCursor,
     pub received_at: Instant,
-    pub batch_id: usize,
+    pub frame_id: usize,
 }
 
 /// Returned by a `BatchHandler` and tell `Nakadion`
