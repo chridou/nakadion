@@ -27,7 +27,7 @@ pub use crate::nakadi_types::{
 
 mod config_types;
 mod error;
-mod instrumentation;
+pub mod instrumentation;
 
 #[cfg(feature = "log")]
 pub use crate::logging::log_adapter::LogLogger;
@@ -43,7 +43,7 @@ pub use config_types::{
     InactivityTimeoutSecs, StreamDeadTimeoutSecs, TickIntervalMillis,
 };
 pub use error::*;
-pub use instrumentation::*;
+pub use instrumentation::{Instrumentation, MetricsDetailLevel};
 
 /// Consumes an event stream
 ///

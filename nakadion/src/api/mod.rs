@@ -1,6 +1,6 @@
-/// Direct interaction with Nakadi through its REST API
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
+//! Direct interaction with Nakadi through its REST API
+//!
+//! See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/cursor-distances_post)
 use std::error::Error as StdError;
 use std::fmt;
 

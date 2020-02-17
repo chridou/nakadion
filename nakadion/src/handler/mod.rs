@@ -102,7 +102,7 @@ impl InactivityAnswer {
     }
 }
 
-/// A handler that implemets batch processing logic.
+/// A handler that implements batch processing logic.
 ///
 /// This trait will be called by Nakadion when a batch has to
 /// be processed. The `BatchHandler` only receives an `EventType`
@@ -152,17 +152,17 @@ pub trait BatchHandler: Send + 'static {
 ///
 /// This value should the same for the whole lifetime of the
 /// `BatchHandler`. "Should" because in the end it is the
-/// `NandlerFactory` which returns `BatchHandler`s. But it
+/// `BatchHandlerFactory` which returns `BatchHandler`s. But it
 /// is guaranteed that `Nakadion` will only pass events to a `BatchHandler`
 /// as defined by the `DispatchStrategy`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum HandlerAssignment {
     /// Everything can be passed to the `BatchHandler`.
     Unspecified,
-    /// The `BatchHanndler` will only receive events
+    /// The `BatchHandler` will only receive events
     /// of the given event type but from any partition.
     EventType(EventTypeName),
-    /// The `BatchHanndler` will only receive events
+    /// The `BatchHandler` will only receive events
     /// of the given event type on the given partition.
     EventTypePartition(EventTypePartition),
 }
@@ -217,7 +217,7 @@ impl HandlerAssignment {
 /// `BatchHandler`s act only on data that never appears on another partition.
 ///
 /// * It contains state that is shared with the `BatchHandler`s. E.g. a cache
-/// that conatins data that can appear on other partitions.
+/// that contains data that can appear on other partitions.
 /// # Example
 ///
 /// ```rust
@@ -265,7 +265,7 @@ pub trait BatchHandlerFactory: Send + Sync + 'static {
 
     /// New `BatchHandler` was requested.
     ///
-    /// `assignemt` defines for what event types and partitions the returned
+    /// `assignment` defines for what event types and partitions the returned
     /// `BatchHandler` will be used. `Nakadion` guarantees that this will stay true
     /// over the whole lifetime of the `BatchHandler`.
     ///

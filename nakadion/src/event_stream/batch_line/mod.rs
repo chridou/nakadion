@@ -3,7 +3,7 @@ use std::fmt;
 use std::pin::Pin;
 use std::str;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use bytes::Bytes;
 use futures::{ready, stream::Stream};
