@@ -447,7 +447,7 @@ impl Builder {
         let inactivity_timeout = self.inactivity_timeout_secs;
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
-        stream_dead_policy.validate();
+        stream_dead_policy.validate()?;
         let warn_stream_stalled = self.warn_stream_stalled_secs;
 
         let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
