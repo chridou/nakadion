@@ -15,7 +15,20 @@ use super::instrumentation::Instrumentation;
 use super::{Config, Consumer, Inner};
 
 /// Defines how to dispatch batches to handlers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// # FromStr
+///
+/// ```rust
+/// use nakadion::consumer::DispatchStrategy;
+///
+/// let strategy = "all_sequential".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::AllSequential);
+/// ```
+///
+/// # Environment variables
+///
+/// Fetching values from the environment uses `FromStr` for parsing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "strategy")]
@@ -23,7 +36,7 @@ pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
     /// This means batches are processed sequentially.
-    NoDispatching,
+    AllSequential,
 }
 
 impl DispatchStrategy {
@@ -32,14 +45,14 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::NoDispatching
+        DispatchStrategy::AllSequential
     }
 }
 
 impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DispatchStrategy::NoDispatching => write!(f, "no_dispatching")?,
+            DispatchStrategy::AllSequential => write!(f, "all_sequential")?,
         }
 
         Ok(())
@@ -51,7 +64,7 @@ impl FromStr for DispatchStrategy {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "no_dispatching" => Ok(DispatchStrategy::NoDispatching),
+            "all_sequential" => Ok(DispatchStrategy::AllSequential),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }
@@ -61,7 +74,45 @@ impl FromStr for DispatchStrategy {
 ///
 /// This value should always be set when creating a `Consumer` because otherwise
 /// a it will be guessed by `Nakadion` which might not result in best performance.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+///
+/// # FromStr
+///
+/// ```rust
+/// use nakadion::consumer::CommitStrategy;
+///
+/// let strategy = "immediately".parse::<CommitStrategy>().unwrap();
+/// assert_eq!(strategy, CommitStrategy::Immediately);
+///
+/// let strategy = "latest_possible".parse::<CommitStrategy>().unwrap();
+/// assert_eq!(strategy, CommitStrategy::LatestPossible);
+///
+/// let strategy = "after seconds:1 cursors:2 events:3".parse::<CommitStrategy>().unwrap();
+/// assert_eq!(
+///     strategy,
+///     CommitStrategy::After {
+///         seconds: Some(1),
+///         cursors: Some(2),
+///         events: Some(3),
+///     }
+/// );
+///
+/// let strategy = "after seconds:1 events:3".parse::<CommitStrategy>().unwrap();
+/// assert_eq!(
+///     strategy,
+///     CommitStrategy::After {
+///         seconds: Some(1),
+///         cursors: None,
+///         events: Some(3),
+///     }
+/// );
+///
+/// assert!("after".parse::<CommitStrategy>().is_err());
+/// ```
+///
+/// # Environment variables
+///
+/// Fetching values from the environment uses `FromStr` for parsing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "strategy")]
 pub enum CommitStrategy {
@@ -100,6 +151,26 @@ impl CommitStrategy {
             } => Err(Error::new(
                 "'CommitStrategy::After' with all fields set to `None` is not valid",
             )),
+            CommitStrategy::After {
+                seconds,
+                cursors,
+                events,
+            } => {
+                if let Some(seconds) = seconds {
+                    if *seconds == 0 {
+                        return Err(Error::new("'CommitStrategy::After::seconds' must not be 0"));
+                    }
+                } else if let Some(cursors) = cursors {
+                    if *cursors == 0 {
+                        return Err(Error::new("'CommitStrategy::After::cursors' must not be 0"));
+                    }
+                } else if let Some(events) = events {
+                    if *events == 0 {
+                        return Err(Error::new("'CommitStrategy::After::events' must not be 0"));
+                    }
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -216,7 +287,7 @@ new_type! {
     pub copy struct TickIntervalMillis(u64, env="TICK_INTERVAL_MILLIS");
 }
 impl TickIntervalMillis {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_millis(self.0)
     }
 
@@ -232,6 +303,11 @@ impl Default for TickIntervalMillis {
         1000.into()
     }
 }
+impl From<TickIntervalMillis> for Duration {
+    fn from(v: TickIntervalMillis) -> Self {
+        v.into_duration()
+    }
+}
 
 new_type! {
     #[doc="The time after which a stream or partition is considered inactive.\n"]
@@ -239,20 +315,32 @@ new_type! {
     pub copy struct InactivityTimeoutSecs(u64, env="INACTIVITY_TIMEOUT_SECS");
 }
 impl InactivityTimeoutSecs {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_secs(self.0)
     }
 }
+impl From<InactivityTimeoutSecs> for Duration {
+    fn from(v: InactivityTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="The time after which a stream is considered stuck and has to be aborted.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamDeadTimeoutSecs(u64, env="STREAM_DEAD_TIMEOUT_SECS");
 }
 impl StreamDeadTimeoutSecs {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_secs(self.0)
     }
 }
+impl From<StreamDeadTimeoutSecs> for Duration {
+    fn from(v: StreamDeadTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="If `true` abort the consumer when an auth error occurs while connecting to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,8 +373,13 @@ impl Default for ConnectStreamRetryMaxDelaySecs {
     }
 }
 impl ConnectStreamRetryMaxDelaySecs {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_secs(self.0)
+    }
+}
+impl From<ConnectStreamRetryMaxDelaySecs> for Duration {
+    fn from(v: ConnectStreamRetryMaxDelaySecs) -> Self {
+        v.into_duration()
     }
 }
 new_type! {
@@ -295,7 +388,7 @@ new_type! {
     pub copy struct ConnectStreamTimeoutSecs(u64, env="CONNECT_STREAM_TIMEOUT_SECS");
 }
 impl ConnectStreamTimeoutSecs {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_secs(self.0)
     }
 }
@@ -304,34 +397,51 @@ impl Default for ConnectStreamTimeoutSecs {
         10.into()
     }
 }
+impl From<ConnectStreamTimeoutSecs> for Duration {
+    fn from(v: ConnectStreamTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="The timeout for a request made to Nakadi to commit cursors.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct CommitTimeoutMillis(u64, env="COMMIT_TIMEOUT_MILLIS");
+    pub copy struct CommitAttemptTimeoutMillis(u64, env="COMMIT_ATTEMPT_TIMEOUT_MILLIS");
 }
-impl CommitTimeoutMillis {
-    pub fn duration(self) -> Duration {
+impl CommitAttemptTimeoutMillis {
+    pub fn into_duration(self) -> Duration {
         Duration::from_millis(self.0)
     }
 }
-impl Default for CommitTimeoutMillis {
+impl Default for CommitAttemptTimeoutMillis {
     fn default() -> Self {
         1000.into()
     }
 }
+impl From<CommitAttemptTimeoutMillis> for Duration {
+    fn from(v: CommitAttemptTimeoutMillis) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="The delay between failed attempts to commit cursors.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct CommitRetryDelayMillis(u64, env="COMMIT_RETRY_DELAY_MILLIS");
 }
 impl CommitRetryDelayMillis {
-    pub fn duration(self) -> Duration {
+    pub fn into_duration(self) -> Duration {
         Duration::from_millis(self.0)
     }
 }
 impl Default for CommitRetryDelayMillis {
     fn default() -> Self {
         500.into()
+    }
+}
+impl From<CommitRetryDelayMillis> for Duration {
+    fn from(v: CommitRetryDelayMillis) -> Self {
+        v.into_duration()
     }
 }
 
@@ -387,7 +497,7 @@ pub struct Builder {
     /// The timeout for a request made to Nakadi to connect to a stream.
     pub connect_stream_timeout_secs: Option<ConnectStreamTimeoutSecs>,
     /// The timeout for a request made to Nakadi to commit cursors.
-    pub commit_timeout_millis: Option<CommitTimeoutMillis>,
+    pub commit_attempt_timeout_millis: Option<CommitAttemptTimeoutMillis>,
     /// The delay between failed attempts to commit cursors.
     pub commit_retry_delay_millis: Option<CommitRetryDelayMillis>,
 }
@@ -571,11 +681,11 @@ impl Builder {
     }
 
     /// The timeout for a request made to Nakadi to commit cursors.
-    pub fn commit_timeout_millis<T: Into<CommitTimeoutMillis>>(
+    pub fn commit_attempt_timeout_millis<T: Into<CommitAttemptTimeoutMillis>>(
         mut self,
-        commit_timeout_millis: T,
+        commit_attempt_timeout_millis: T,
     ) -> Self {
-        self.commit_timeout_millis = Some(commit_timeout_millis.into());
+        self.commit_attempt_timeout_millis = Some(commit_attempt_timeout_millis.into());
         self
     }
 
@@ -654,7 +764,7 @@ impl Builder {
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
         let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
 
-        let commit_timeout = self.commit_timeout_millis.unwrap_or_default();
+        let commit_attempt_timeout = self.commit_attempt_timeout_millis.unwrap_or_default();
         let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
 
         self.stream_parameters = Some(stream_parameters);
@@ -669,7 +779,7 @@ impl Builder {
             Some(abort_connect_on_subscription_not_found);
         self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
         self.connect_stream_timeout_secs = Some(connect_stream_timeout);
-        self.commit_timeout_millis = Some(commit_timeout);
+        self.commit_attempt_timeout_millis = Some(commit_attempt_timeout);
         self.commit_retry_delay_millis = Some(commit_retry_delay);
     }
 
@@ -743,7 +853,7 @@ impl Builder {
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
         let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
 
-        let commit_timeout = self.commit_timeout_millis.unwrap_or_default();
+        let commit_attempt_timeout = self.commit_attempt_timeout_millis.unwrap_or_default();
         let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
 
         let config = Config {
@@ -759,7 +869,7 @@ impl Builder {
             abort_connect_on_subscription_not_found,
             connect_stream_retry_max_delay,
             connect_stream_timeout,
-            commit_timeout,
+            commit_attempt_timeout,
             commit_retry_delay,
         };
 

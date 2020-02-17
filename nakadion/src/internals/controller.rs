@@ -106,7 +106,7 @@ where
     let frame_stream = FramedStream::new(bytes_stream);
     let batch_stream = BatchLineStream::new(frame_stream).map_ok(BatchLineMessage::BatchLine);
 
-    let tick_interval = stream_state.config().tick_interval.duration();
+    let tick_interval = stream_state.config().tick_interval.into_duration();
     let ticker = interval_at((Instant::now() + tick_interval).into(), tick_interval)
         .map(|_| Ok(BatchLineMessage::Tick));
 
@@ -117,7 +117,7 @@ where
     let stream_dead_timeout = stream_state
         .config()
         .stream_dead_timeout
-        .map(|t| t.duration());
+        .map(|t| t.into_duration());
 
     pin_mut!(merged);
 
@@ -288,7 +288,7 @@ where
         H: BatchHandler,
         C: Send + 'static,
     {
-        let delay = consumer_state.config().tick_interval.duration();
+        let delay = consumer_state.config().tick_interval.into_duration();
 
         let mut last_wait_notification = Instant::now();
         consumer_state.info(format_args!("Waiting for connection"));
@@ -341,7 +341,7 @@ mod connect_stream {
         consumer_state: ConsumerState,
     ) -> Result<SubscriptionStream, ConsumerError> {
         let config = consumer_state.config();
-        let connect_stream_timeout = config.connect_stream_timeout.duration();
+        let connect_stream_timeout = config.connect_stream_timeout.into_duration();
         let mut backoff = Backoff::new(config.connect_stream_retry_max_delay.into_inner());
         let flow_id = FlowId::random();
         loop {
