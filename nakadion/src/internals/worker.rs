@@ -14,6 +14,7 @@ use processor::HandlerSlot;
 pub enum WorkerMessage {
     Batch(BatchLine),
     Tick,
+    StreamEnded,
 }
 
 pub struct Worker;
@@ -122,11 +123,12 @@ mod processor {
                 }
 
                 let batch = match msg {
+                    WorkerMessage::Batch(batch) => batch,
                     WorkerMessage::Tick => {
                         processing_compound.handler_slot.tick();
                         continue;
                     }
-                    WorkerMessage::Batch(batch) => batch,
+                    WorkerMessage::StreamEnded => break,
                 };
 
                 match processing_compound.process_batch_line(batch).await {

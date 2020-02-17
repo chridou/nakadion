@@ -340,6 +340,21 @@ impl From<StreamDeadTimeoutSecs> for Duration {
         v.into_duration()
     }
 }
+new_type! {
+    #[doc="Emits a warning when no lines were received from Nakadi.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct WarnStreamStalledSecs(u64, env="WARN_STREAM_STALLED_SECS");
+}
+impl WarnStreamStalledSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(self.0)
+    }
+}
+impl From<WarnStreamStalledSecs> for Duration {
+    fn from(v: WarnStreamStalledSecs) -> Self {
+        v.into_duration()
+    }
+}
 
 new_type! {
     #[doc="If `true` abort the consumer when an auth error occurs while connecting to a stream.\n"]
@@ -369,7 +384,7 @@ new_type! {
 }
 impl Default for ConnectStreamRetryMaxDelaySecs {
     fn default() -> Self {
-        60.into()
+        300.into()
     }
 }
 impl ConnectStreamRetryMaxDelaySecs {
@@ -471,6 +486,7 @@ impl From<CommitRetryDelayMillis> for Duration {
 /// * "TICK_INTERVAL_MILLIS"
 /// * "INACTIVITY_TIMEOUT_SECS"
 /// * "STREAM_DEAD_TIMEOUT_SECS"
+/// * "WARN_STREAM_STALLED_SECS"
 /// * "DISPATCH_STRATEGY"
 /// * "COMMIT_STRATEGY"
 /// * "ABORT_CONNECT_ON_AUTH_ERROR"
@@ -510,6 +526,8 @@ pub struct Builder {
     pub inactivity_timeout_secs: Option<InactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_timeout_secs: Option<StreamDeadTimeoutSecs>,
+    /// Emits a warning when no lines were received from Nakadi for the given time.
+    pub warn_stream_stalled_secs: Option<WarnStreamStalledSecs>,
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
@@ -657,6 +675,15 @@ impl Builder {
         self
     }
 
+    /// Emits a warning when no lines were received from Nakadi for the given time.
+    pub fn warn_stream_stalled_secs<T: Into<WarnStreamStalledSecs>>(
+        mut self,
+        warn_stream_stalled_secs: T,
+    ) -> Self {
+        self.warn_stream_stalled_secs = Some(warn_stream_stalled_secs.into());
+        self
+    }
+
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
@@ -776,6 +803,7 @@ impl Builder {
         let inactivity_timeout = self.inactivity_timeout_secs;
 
         let stream_dead_timeout = self.stream_dead_timeout_secs;
+        let warn_stream_stalled = self.warn_stream_stalled_secs;
 
         let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
 
@@ -803,6 +831,7 @@ impl Builder {
         self.tick_interval_millis = Some(tick_interval);
         self.inactivity_timeout_secs = inactivity_timeout;
         self.stream_dead_timeout_secs = stream_dead_timeout;
+        self.warn_stream_stalled_secs = warn_stream_stalled;
         self.dispatch_strategy = Some(dispatch_strategy);
         self.commit_strategy = Some(commit_strategy);
         self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
@@ -863,6 +892,7 @@ impl Builder {
         let inactivity_timeout = self.inactivity_timeout_secs;
 
         let stream_dead_timeout = self.stream_dead_timeout_secs;
+        let warn_stream_stalled = self.warn_stream_stalled_secs;
 
         let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
 
@@ -894,6 +924,7 @@ impl Builder {
             tick_interval,
             inactivity_timeout,
             stream_dead_timeout,
+            warn_stream_stalled,
             dispatch_strategy,
             commit_strategy,
             abort_connect_on_auth_error,
