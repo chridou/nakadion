@@ -7,7 +7,6 @@ use crate::consumer::{ConsumerError, InactivityTimeoutSecs};
 use crate::event_stream::BatchLine;
 use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, StreamState};
-use crate::logging::Logs;
 
 use processor::HandlerSlot;
 
@@ -299,7 +298,7 @@ mod processor {
             if let Some(inactivity_after) = self.inactivity_after {
                 if let Some(mut handler) = self.handler.take() {
                     let elapsed = self.last_event_processed.elapsed();
-                    if elapsed > inactivity_after.duration() && !self.notified_on_inactivity {
+                    if elapsed > inactivity_after.into_duration() && !self.notified_on_inactivity {
                         if handler
                             .on_inactivity_detected(elapsed, self.last_event_processed)
                             .should_stay_alive()

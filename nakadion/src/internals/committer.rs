@@ -250,7 +250,7 @@ where
             subscription_id,
             stream_id,
             &cursors,
-            config.commit_timeout.duration(),
+            config.commit_attempt_timeout.into_duration(),
             FlowId::random(),
         )
         .await
@@ -272,7 +272,7 @@ where
                     }
                     _ => {
                         next_commit_earliest_at =
-                            Instant::now() + config.commit_retry_delay.duration()
+                            Instant::now() + config.commit_retry_delay.into_duration()
                     }
                 }
             }
@@ -289,7 +289,7 @@ where
             stream_state.config().subscription_id,
             stream_state.stream_id(),
             &cursors,
-            config.commit_timeout.duration() * 2,
+            config.commit_attempt_timeout.into_duration() * 2,
             FlowId::random(),
         )
         .await

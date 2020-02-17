@@ -1,3 +1,4 @@
+//! Types for implementing custom instrumentation
 use std::fmt;
 use std::sync::Arc;
 

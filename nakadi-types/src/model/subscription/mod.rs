@@ -1,5 +1,6 @@
 //! Types for subscribing to an `EventType`
 use std::convert::AsRef;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -550,6 +551,19 @@ mod test {
 /// Parameters for starting a new stream on a subscription
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
+///
+/// # Environment
+///
+/// When initialized/updated from the environment the following environment variable
+/// are used which by are by default prefixed with "NAKADION_" or a custom prefix "<prefix>_":
+///
+/// * "MAX_UNCOMMITTED_EVENTS"
+/// * "BATCH_LIMIT"
+/// * "STREAM_LIMIT"
+/// * "BATCH_FLUSH_TIMEOUT_SECS"
+/// * "BATCH_TIMESPAN_SECS"
+/// * "STREAM_TIMEOUT_SECS"
+/// * "COMMIT_TIMEOUT_SECS"
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct StreamParameters {
     /// List of partitions to read from in this stream. If absent or empty - then the partitions will be
@@ -726,18 +740,61 @@ new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct BatchFlushTimeoutSecs(u32, env="BATCH_FLUSH_TIMEOUT_SECS");
 }
+impl BatchFlushTimeoutSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+impl From<BatchFlushTimeoutSecs> for Duration {
+    fn from(v: BatchFlushTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="Useful for batching events based on their received_at timestamp.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct BatchTimespanSecs(u32, env="BATCH_TIMESPAN_SECS");
 }
+impl BatchTimespanSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+impl From<BatchTimespanSecs> for Duration {
+    fn from(v: BatchTimespanSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="Maximum time in seconds to wait for the flushing of each chunk (per partition).\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamTimeoutSecs(u32, env="STREAM_TIMEOUT_SECS");
 }
+impl StreamTimeoutSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+impl From<StreamTimeoutSecs> for Duration {
+    fn from(v: StreamTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
 new_type! {
     #[doc="Maximum amount of seconds that Nakadi will be waiting for commit after sending a batch to a client.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct CommitTimeoutSecs(u32, env="COMMIT_TIMEOUT_SECS");
+}
+impl CommitTimeoutSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(u64::from(self.0))
+    }
+}
+impl From<CommitTimeoutSecs> for Duration {
+    fn from(v: CommitTimeoutSecs) -> Self {
+        v.into_duration()
+    }
 }

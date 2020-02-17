@@ -33,7 +33,7 @@ impl Dispatcher {
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match strategy {
-            DispatchStrategy::NoDispatching => SleepingDispatcher::SingleWorker(
+            DispatchStrategy::AllSequential => SleepingDispatcher::SingleWorker(
                 self::no_dispatch::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
             _ => SleepingDispatcher::SingleWorker(self::no_dispatch::Dispatcher::sleeping(
