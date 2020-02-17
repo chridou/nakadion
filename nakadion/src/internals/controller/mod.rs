@@ -45,9 +45,7 @@ where
     }
 }
 
-async fn create_background_task<H, C>(
-    mut params: ControllerParams<H, C>,
-) -> Result<(), ConsumerError>
+async fn create_background_task<H, C>(params: ControllerParams<H, C>) -> Result<(), ConsumerError>
 where
     C: NakadionEssentials + Clone,
     H: BatchHandler,
@@ -108,13 +106,13 @@ where
     let stream = make_ticked_batch_line_stream(bytes_stream, stream_state.config().tick_interval);
 
     let (active_dispatcher, stream, batch_lines_sink) =
-        match wait_for_first_batch_line(stream, sleep_ticker, stream_state.clone()).await? {
-            WaitForFirstBatchLineResult::GotTheBatch {
+        match wait_for_first_frame(stream, sleep_ticker, stream_state.clone()).await? {
+            WaitForFirstFrameResult::GotTheFrame {
                 active_dispatcher,
                 stream,
                 batch_lines_sink,
             } => (active_dispatcher, stream, batch_lines_sink),
-            WaitForFirstBatchLineResult::Aborted {
+            WaitForFirstFrameResult::Aborted {
                 sleeping_dispatcher,
             } => return Ok(sleeping_dispatcher),
         };
@@ -138,12 +136,10 @@ where
 {
     let now = Instant::now();
     let stream_started_at = now;
-    let mut last_batch_received_at = now;
+    let mut last_events_received_at = now;
+    let mut last_frame_received_at = now;
 
-    let stream_dead_timeout = stream_state
-        .config()
-        .stream_dead_timeout
-        .map(|t| t.into_duration());
+    let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_stream_stalled = stream_state
         .config()
         .warn_stream_stalled
@@ -170,19 +166,15 @@ where
                 break;
             }
             BatchLineMessage::Tick => {
-                if let Some(stream_dead_timeout) = stream_dead_timeout {
-                    let elapsed = last_batch_received_at.elapsed();
-                    if elapsed > stream_dead_timeout {
-                        stream_state.warn(format_args!(
-                            "The stream is dead boys... after {:?}",
-                            elapsed
-                        ));
-                        let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
-                        break;
-                    }
+                if stream_dead_policy
+                    .is_stream_dead(last_frame_received_at, last_events_received_at)
+                {
+                    stream_state.warn(format_args!("The stream is dead boys..."));
+                    let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
+                    break;
                 }
                 if let Some(warn_stream_stalled) = warn_stream_stalled {
-                    let elapsed = last_batch_received_at.elapsed();
+                    let elapsed = last_events_received_at.elapsed();
                     if elapsed >= warn_stream_stalled {
                         stream_state.warn(format_args!(
                             "The stream seems to have stalled (for {:?})",
@@ -194,7 +186,8 @@ where
                 DispatcherMessage::Tick
             }
             BatchLineMessage::BatchLine(batch) => {
-                last_batch_received_at = Instant::now();
+                let now = Instant::now();
+                last_frame_received_at = now;
 
                 if let Some(info_str) = batch.info_str() {
                     stream_state.info(format_args!("Received info line: {}", info_str));
@@ -204,6 +197,7 @@ where
                     stream_state.debug(format_args!("Keep alive line received."));
                     continue;
                 } else {
+                    last_events_received_at = Instant::now();
                     DispatcherMessage::Batch(batch)
                 }
             }
@@ -232,8 +226,8 @@ where
     Ok(sleeping_dispatcher)
 }
 
-enum WaitForFirstBatchLineResult<H, C, T> {
-    GotTheBatch {
+enum WaitForFirstFrameResult<H, C, T> {
+    GotTheFrame {
         active_dispatcher: ActiveDispatcher<'static, H, C>,
         stream: T,
         batch_lines_sink: UnboundedSender<DispatcherMessage>,
@@ -243,12 +237,12 @@ enum WaitForFirstBatchLineResult<H, C, T> {
     },
 }
 
-async fn wait_for_first_batch_line<H, C, S>(
+async fn wait_for_first_frame<H, C, S>(
     stream: S,
     sleep_ticker: SleepTicker<H, C>,
     stream_state: StreamState,
 ) -> Result<
-    WaitForFirstBatchLineResult<
+    WaitForFirstFrameResult<
         H,
         C,
         impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send,
@@ -260,18 +254,16 @@ where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
-    let no_batch_received_since = Instant::now();
-    let stream_dead_timeout = stream_state
-        .config()
-        .stream_dead_timeout
-        .map(|d| d.into_duration());
+    let now = Instant::now();
+    let nothing_received_since = now;
+    let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_stream_stalled = stream_state
         .config()
         .warn_stream_stalled
         .map(|d| d.into_duration());
 
     let mut stream = stream.boxed();
-    let (active_dispatcher, batch_lines_sink, first_batch_line) = {
+    let (active_dispatcher, batch_lines_sink, first_frame) = {
         loop {
             if let Some(next) = stream.next().await {
                 match next {
@@ -279,35 +271,32 @@ where
                         stream_state
                             .info(format_args!("Stream ended before receiving a batch line"));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
-                        return Ok(WaitForFirstBatchLineResult::Aborted {
+                        return Ok(WaitForFirstFrameResult::Aborted {
                             sleeping_dispatcher,
                         });
                     }
-                    Ok(BatchLineMessage::BatchLine(first_batch_line)) => {
-                        stream_state.info(format_args!("Received first batch line."));
+                    Ok(BatchLineMessage::BatchLine(first_frame)) => {
+                        stream_state.info(format_args!("Received first frame."));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         let (batch_lines_sink, batch_lines_receiver) =
                             unbounded_channel::<DispatcherMessage>();
                         let active_dispatcher =
                             sleeping_dispatcher.start(stream_state.clone(), batch_lines_receiver);
 
-                        break (active_dispatcher, batch_lines_sink, first_batch_line);
+                        break (active_dispatcher, batch_lines_sink, first_frame);
                     }
                     Ok(BatchLineMessage::Tick) => {
-                        let elapsed = no_batch_received_since.elapsed();
-                        if let Some(stream_dead_timeout) = stream_dead_timeout {
-                            if elapsed > stream_dead_timeout {
-                                stream_state.warn(format_args!(
-                                    "The stream is dead boys... after {:?}",
-                                    elapsed
-                                ));
-                                let sleeping_dispatcher = sleep_ticker.join().await?;
-                                return Ok(WaitForFirstBatchLineResult::Aborted {
-                                    sleeping_dispatcher,
-                                });
-                            }
+                        if stream_dead_policy
+                            .is_stream_dead(nothing_received_since, nothing_received_since)
+                        {
+                            stream_state.warn(format_args!("The stream is dead boys..."));
+                            let sleeping_dispatcher = sleep_ticker.join().await?;
+                            return Ok(WaitForFirstFrameResult::Aborted {
+                                sleeping_dispatcher,
+                            });
                         }
                         if let Some(warn_stream_stalled) = warn_stream_stalled {
+                            let elapsed = nothing_received_since.elapsed();
                             if elapsed >= warn_stream_stalled {
                                 stream_state.warn(format_args!(
                                     "The stream seems to have stalled (for {:?})",
@@ -322,7 +311,7 @@ where
                         }
                         BatchLineErrorKind::Io => {
                             let sleeping_dispatcher = sleep_ticker.join().await?;
-                            return Ok(WaitForFirstBatchLineResult::Aborted {
+                            return Ok(WaitForFirstFrameResult::Aborted {
                                 sleeping_dispatcher,
                             });
                         }
@@ -330,17 +319,16 @@ where
                 }
             } else {
                 let sleeping_dispatcher = sleep_ticker.join().await?;
-                return Ok(WaitForFirstBatchLineResult::Aborted {
+                return Ok(WaitForFirstFrameResult::Aborted {
                     sleeping_dispatcher,
                 });
             }
         }
     };
 
-    let stream =
-        stream::once(async { Ok(BatchLineMessage::BatchLine(first_batch_line)) }).chain(stream);
+    let stream = stream::once(async { Ok(BatchLineMessage::BatchLine(first_frame)) }).chain(stream);
 
-    Ok(WaitForFirstBatchLineResult::GotTheBatch {
+    Ok(WaitForFirstFrameResult::GotTheFrame {
         active_dispatcher,
         stream,
         batch_lines_sink,

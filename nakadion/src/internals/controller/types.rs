@@ -87,7 +87,7 @@ where
                 sleeping_dispatcher.tick();
                 delay_for(delay).await;
                 if last_wait_notification.elapsed() > Duration::from_secs(10) {
-                    consumer_state.info(format_args!("Waiting for incoming batches..."));
+                    consumer_state.info(format_args!("Waiting for incoming frames..."));
                     last_wait_notification = Instant::now();
                 }
             }

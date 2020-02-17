@@ -173,14 +173,14 @@ mod processor {
             };
 
             let received_at = batch.received_at();
-            let batch_id = batch.frame_id();
+            let frame_id = batch.frame_id();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
                 stream_id: self.stream_state.stream_id(),
                 cursor: &cursor,
                 received_at,
-                batch_id,
+                frame_id,
             };
 
             match self.handler_slot.process_batch(events, meta).await? {
@@ -191,7 +191,7 @@ mod processor {
                     let commit_data = CommitData {
                         cursor,
                         received_at,
-                        batch_id,
+                        frame_id,
                         n_events,
                     };
                     if let Err(err) = self.try_commit(commit_data) {

@@ -77,10 +77,10 @@ mod handler {
             self.events_received += events.len();
 
             async move {
-                if meta.batch_id % 2_000 == 0 {
+                if meta.frame_id % 2_000 == 0 {
                     println!(
-                        "events: {} - batch id: {}",
-                        self.events_received, meta.batch_id,
+                        "events: {} - frame id: {}",
+                        self.events_received, meta.frame_id,
                     );
                 }
                 EventsPostAction::Commit

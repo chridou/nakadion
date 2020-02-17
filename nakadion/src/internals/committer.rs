@@ -22,7 +22,7 @@ use crate::logging::Logs;
 pub struct CommitData {
     pub cursor: SubscriptionCursor,
     pub received_at: Instant,
-    pub batch_id: usize,
+    pub frame_id: usize,
     pub n_events: Option<usize>,
 }
 
