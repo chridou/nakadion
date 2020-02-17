@@ -551,6 +551,19 @@ mod test {
 /// Parameters for starting a new stream on a subscription
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_post)
+///
+/// # Environment
+///
+/// When initialized/updated from the environment the following environment variable
+/// are used which by are by default prefixed with "NAKADION_" or a custom prefix "<prefix>_":
+///
+/// * "MAX_UNCOMMITTED_EVENTS"
+/// * "BATCH_LIMIT"
+/// * "STREAM_LIMIT"
+/// * "BATCH_FLUSH_TIMEOUT_SECS"
+/// * "BATCH_TIMESPAN_SECS"
+/// * "STREAM_TIMEOUT_SECS"
+/// * "COMMIT_TIMEOUT_SECS"
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct StreamParameters {
     /// List of partitions to read from in this stream. If absent or empty - then the partitions will be

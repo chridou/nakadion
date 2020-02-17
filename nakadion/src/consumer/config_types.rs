@@ -458,6 +458,37 @@ impl From<CommitRetryDelayMillis> for Duration {
 ///
 /// The `Builder` supports serialization but the instrumentation will never be
 /// part of any serialization and therefore default to `None`
+///
+/// # Environment
+///
+///
+/// When initialized/updated from the environment the following environment variable
+/// are used which by are by default prefixed with "NAKADION_" or a custom prefix "<prefix>_":
+///
+/// For Nakadion itself:
+///
+/// * "SUBSCRIPTION_ID"
+/// * "TICK_INTERVAL_MILLIS"
+/// * "INACTIVITY_TIMEOUT_SECS"
+/// * "STREAM_DEAD_TIMEOUT_SECS"
+/// * "DISPATCH_STRATEGY"
+/// * "COMMIT_STRATEGY"
+/// * "ABORT_CONNECT_ON_AUTH_ERROR"
+/// * "ABORT_CONNECT_ON_SUBSCRIPTION_NOT_FOUND"
+/// * "CONNECT_STREAM_RETRY_MAX_DELAY_SECS"
+/// * "CONNECT_STREAM_TIMEOUT_SECS"
+/// * "COMMIT_ATTEMPT_TIMEOUT_MILLIS"
+/// * "COMMIT_RETRY_DELAY_MILLIS"
+///
+/// For `stream_parameters`:
+///
+/// * "MAX_UNCOMMITTED_EVENTS"
+/// * "BATCH_LIMIT"
+/// * "STREAM_LIMIT"
+/// * "BATCH_FLUSH_TIMEOUT_SECS"
+/// * "BATCH_TIMESPAN_SECS"
+/// * "STREAM_TIMEOUT_SECS"
+/// * "COMMIT_TIMEOUT_SECS"
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Builder {
