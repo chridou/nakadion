@@ -40,7 +40,7 @@ pub use config_types::{
     AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder,
     CommitAttemptTimeoutMillis, CommitRetryDelayMillis, CommitStrategy,
     ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs, DispatchStrategy,
-    InactivityTimeoutSecs, StreamDeadTimeoutSecs, TickIntervalMillis, WarnStreamStalledSecs,
+    InactivityTimeoutSecs, StreamDeadPolicy, TickIntervalMillis, WarnStreamStalledSecs,
 };
 pub use error::*;
 pub use instrumentation::{Instrumentation, MetricsDetailLevel};
@@ -288,7 +288,7 @@ pub(crate) struct Config {
     pub instrumentation: Instrumentation,
     pub tick_interval: TickIntervalMillis,
     pub inactivity_timeout: Option<InactivityTimeoutSecs>,
-    pub stream_dead_timeout: Option<StreamDeadTimeoutSecs>,
+    pub stream_dead_policy: StreamDeadPolicy,
     pub warn_stream_stalled: Option<WarnStreamStalledSecs>,
     pub dispatch_strategy: DispatchStrategy,
     pub commit_strategy: CommitStrategy,
