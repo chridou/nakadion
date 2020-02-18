@@ -5,7 +5,7 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use crate::api::SubscriptionCommitApi;
 use crate::consumer::{Config, ConsumerError};
 use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{committer::*, worker::*, StreamState};
+use crate::internals::{committer::*, worker::*, EnrichedErr, EnrichedResult, StreamState};
 use crate::logging::Logs;
 
 use super::DispatcherMessage;
@@ -67,7 +67,7 @@ where
                     stream_state.warn(format_args!("Committer exited with error: {}", err));
                 };
                 worker_result.map(|mut w| {
-                    w.tick();
+                    w.payload.tick();
                     w
                 })
             }
@@ -93,7 +93,7 @@ where
 pub(crate) struct Active<'a, H, C> {
     stream_state: StreamState,
     api_client: C,
-    join: BoxFuture<'a, Result<SleepingWorker<H>, ConsumerError>>,
+    join: BoxFuture<'a, EnrichedResult<SleepingWorker<H>>>,
 }
 
 impl<'a, H, C> Active<'a, H, C>
@@ -101,7 +101,7 @@ where
     H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> Result<Sleeping<H, C>, ConsumerError> {
+    pub async fn join(self) -> EnrichedResult<Sleeping<H, C>> {
         let Active {
             api_client,
             join,
@@ -110,10 +110,10 @@ where
 
         stream_state.debug(format_args!("Waiting for worker to fall asleep"));
 
-        let worker = join.await?;
+        let enriched_worker = join.await?;
 
         stream_state.debug(format_args!("Dispatcher going to sleep"));
 
-        Ok(Sleeping { worker, api_client })
+        Ok(enriched_worker.map(|worker| Sleeping { worker, api_client }))
     }
 }

@@ -1,8 +1,10 @@
 use std::fmt::Arguments;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Weak,
+};
 
-use crate::consumer::Config;
+use crate::consumer::{Config, ConsumerError, Instrumentation};
 use crate::logging::{Logger, Logs};
 use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
 
@@ -16,15 +18,18 @@ pub(crate) struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
     config: Arc<Config>,
     logger: Logger,
+    instrumentation: Instrumentation,
 }
 
 impl ConsumerState {
     pub fn new(config: Config, logger: Logger) -> Self {
         let subscription_id = config.subscription_id;
+        let instrumentation = config.instrumentation.clone();
         Self {
             is_globally_cancelled: Arc::new(AtomicBool::new(false)),
             config: Arc::new(config),
             logger: logger.with_subscription_id(subscription_id),
+            instrumentation,
         }
     }
 
@@ -34,6 +39,7 @@ impl ConsumerState {
             Arc::clone(&self.config),
             Arc::downgrade(&self.is_globally_cancelled),
             self.logger.with_stream_id(stream_id),
+            self.instrumentation.clone(),
         )
     }
 
@@ -57,8 +63,8 @@ impl ConsumerState {
         &self.config().stream_parameters
     }
 
-    pub fn logger(&self) -> &Logger {
-        &self.logger
+    pub fn instrumentation(&self) -> &Instrumentation {
+        &self.instrumentation
     }
 }
 
@@ -90,6 +96,7 @@ pub(crate) struct StreamState {
     is_cancelled: Arc<AtomicBool>,
     is_globally_cancelled: Weak<AtomicBool>,
     logger: Logger,
+    instrumentation: Instrumentation,
 }
 
 impl StreamState {
@@ -98,6 +105,7 @@ impl StreamState {
         config: Arc<Config>,
         is_globally_cancelled: Weak<AtomicBool>,
         logger: Logger,
+        instrumentation: Instrumentation,
     ) -> Self {
         Self {
             stream_id,
@@ -105,6 +113,7 @@ impl StreamState {
             is_cancelled: Arc::new(AtomicBool::new(false)),
             is_globally_cancelled,
             logger,
+            instrumentation,
         }
     }
 
@@ -128,6 +137,7 @@ impl StreamState {
         &self.config
     }
 
+    #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
         &self.config().stream_parameters
     }
@@ -142,6 +152,10 @@ impl StreamState {
 
     pub fn logger(&self) -> &Logger {
         &self.logger
+    }
+
+    pub fn instrumentation(&self) -> &Instrumentation {
+        &self.instrumentation
     }
 }
 
@@ -163,5 +177,51 @@ impl Logs for StreamState {
 
     fn error(&self, args: Arguments) {
         self.logger.error(args);
+    }
+}
+
+pub(crate) type EnrichedResult<T> = Result<EnrichedOk<T>, EnrichedErr>;
+
+pub(crate) struct EnrichedOk<T> {
+    pub processed_batches: usize,
+    pub payload: T,
+}
+impl<T> EnrichedOk<T> {
+    pub fn new(payload: T, processed_batches: usize) -> Self {
+        Self {
+            payload,
+            processed_batches,
+        }
+    }
+
+    pub fn map<F, O>(self, f: F) -> EnrichedOk<O>
+    where
+        F: FnOnce(T) -> O,
+    {
+        EnrichedOk {
+            payload: f(self.payload),
+            processed_batches: self.processed_batches,
+        }
+    }
+}
+
+pub(crate) struct EnrichedErr {
+    pub processed_batches: Option<usize>,
+    pub err: ConsumerError,
+}
+
+impl EnrichedErr {
+    pub fn new<E: Into<ConsumerError>>(err: E, processed_batches: usize) -> Self {
+        Self {
+            err: err.into(),
+            processed_batches: Some(processed_batches),
+        }
+    }
+
+    pub fn no_data<E: Into<ConsumerError>>(err: E) -> Self {
+        Self {
+            err: err.into(),
+            processed_batches: None,
+        }
     }
 }

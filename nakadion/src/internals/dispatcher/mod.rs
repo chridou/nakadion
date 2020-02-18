@@ -6,7 +6,7 @@ use crate::api::SubscriptionCommitApi;
 use crate::consumer::{Config, ConsumerError, DispatchStrategy};
 use crate::event_stream::BatchLine;
 use crate::handler::{BatchHandler, BatchHandlerFactory};
-use crate::internals::StreamState;
+use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
 
 mod dispatch_event_type;
@@ -18,6 +18,15 @@ pub enum DispatcherMessage {
     Batch(BatchLine),
     Tick,
     StreamEnded,
+}
+
+impl DispatcherMessage {
+    pub fn is_batch(&self) -> bool {
+        match self {
+            DispatcherMessage::Batch(_) => true,
+            _ => false,
+        }
+    }
 }
 
 pub(crate) struct Dispatcher;
@@ -88,12 +97,12 @@ where
     H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> Result<SleepingDispatcher<H, C>, ConsumerError> {
+    pub async fn join(self) -> EnrichedResult<SleepingDispatcher<H, C>> {
         match self {
             ActiveDispatcher::SingleWorker(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(SleepingDispatcher::SingleWorker)
+                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::SingleWorker))
                     .await
             }
             _ => panic!("not supported"),
