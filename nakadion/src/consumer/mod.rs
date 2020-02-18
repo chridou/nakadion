@@ -238,24 +238,23 @@ trait ConsumerInternal: fmt::Debug {
     fn logging_adapter(&self) -> Arc<dyn LoggingAdapter>;
 }
 
-struct Inner<C, H> {
+struct Inner<C> {
     config: Config,
     api_client: C,
-    handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    handler_factory: Arc<dyn BatchHandlerFactory>,
     logging_adapter: Arc<dyn LoggingAdapter>,
 }
 
-impl<C, H> fmt::Debug for Inner<C, H> {
+impl<C> fmt::Debug for Inner<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[]")?;
         Ok(())
     }
 }
 
-impl<C, H> ConsumerInternal for Inner<C, H>
+impl<C> ConsumerInternal for Inner<C>
 where
     C: NakadionEssentials + Send + Sync + 'static + Clone,
-    H: BatchHandler,
 {
     fn start(
         &self,

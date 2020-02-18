@@ -3,9 +3,9 @@ use std::sync::Arc;
 use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
-use crate::consumer::{Config, ConsumerError, DispatchStrategy};
+use crate::consumer::{Config, DispatchStrategy};
 use crate::event_stream::BatchLine;
-use crate::handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
 
@@ -32,14 +32,13 @@ impl DispatcherMessage {
 pub(crate) struct Dispatcher;
 
 impl Dispatcher {
-    pub fn sleeping<H, C>(
+    pub fn sleeping<C>(
         strategy: DispatchStrategy,
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+        handler_factory: Arc<dyn BatchHandlerFactory>,
         api_client: C,
         config: Config,
-    ) -> SleepingDispatcher<H, C>
+    ) -> SleepingDispatcher<C>
     where
-        H: BatchHandler,
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match strategy {
@@ -55,16 +54,15 @@ impl Dispatcher {
     }
 }
 
-pub(crate) enum SleepingDispatcher<H, C> {
-    SingleWorker(no_dispatch::Sleeping<H, C>),
+pub(crate) enum SleepingDispatcher<C> {
+    SingleWorker(no_dispatch::Sleeping<C>),
 }
 
-impl<H, C> SleepingDispatcher<H, C>
+impl<C> SleepingDispatcher<C>
 where
-    H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<'static, H, C>
+    pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<'static, C>
     where
         S: Stream<Item = DispatcherMessage> + Send + 'static,
     {
@@ -77,10 +75,7 @@ where
     }
 }
 
-impl<H, C> SleepingDispatcher<H, C>
-where
-    H: BatchHandler,
-{
+impl<C> SleepingDispatcher<C> {
     pub fn tick(&mut self) {
         match self {
             SleepingDispatcher::SingleWorker(ref mut dispatcher) => dispatcher.tick(),
@@ -88,16 +83,15 @@ where
     }
 }
 
-pub(crate) enum ActiveDispatcher<'a, H, C> {
-    SingleWorker(no_dispatch::Active<'a, H, C>),
+pub(crate) enum ActiveDispatcher<'a, C> {
+    SingleWorker(no_dispatch::Active<'a, C>),
 }
 
-impl<'a, H, C> ActiveDispatcher<'a, H, C>
+impl<'a, C> ActiveDispatcher<'a, C>
 where
-    H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> EnrichedResult<SleepingDispatcher<H, C>> {
+    pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
         match self {
             ActiveDispatcher::SingleWorker(dispatcher) => {
                 dispatcher

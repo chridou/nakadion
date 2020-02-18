@@ -106,8 +106,10 @@ pub trait EventsHandler {
         meta: BatchMeta<'a>,
     ) -> BoxFuture<'a, EventsPostAction>;
 
-    // A handler which is invoked if deserialization of the
-    // whole events batch at once failed.
+    /// A handler which is invoked if deserialization of the
+    /// whole events batch at once failed.
+    ///
+    /// The default implementation will shut down the consumer.
     fn handle_deserialization_errors<'a>(
         &'a mut self,
         results: Vec<EventDeserializationResult<Self::Event>>,
@@ -117,7 +119,8 @@ pub trait EventsHandler {
         let num_failed = results.iter().filter(|r| r.is_err()).count();
         async move {
             EventsPostAction::ShutDown(format!(
-                "{} out of {} events were not deserializable.",
+                "{} out of {} events were not deserializable. \
+                Default action is to shut down the consumer.",
                 num_failed, num_events
             ))
         }
@@ -215,7 +218,7 @@ where
                         }
                         Err(err) => {
                             let reason = format!(
-                                "An error occured deserializing event for error handling: {}",
+                                "An error occurred deserializing event for error handling: {}",
                                 err
                             );
                             BatchPostAction::ShutDown(reason)

@@ -1,5 +1,6 @@
-#[cfg(feature = "metrix")]
-extern crate metrix;
+//! # Nakadion
+//!
+//! *** Early release, not production ready **
 
 pub(crate) mod helpers;
 

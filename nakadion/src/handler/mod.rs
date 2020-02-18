@@ -261,8 +261,6 @@ impl HandlerAssignment {
 /// let factory = MyBatchHandlerFactory(count.clone());
 /// ```
 pub trait BatchHandlerFactory: Send + Sync + 'static {
-    type Handler: BatchHandler;
-
     /// New `BatchHandler` was requested.
     ///
     /// `assignment` defines for what event types and partitions the returned
@@ -272,5 +270,8 @@ pub trait BatchHandlerFactory: Send + Sync + 'static {
     /// Returning an `Error` aborts the `Consumer`.
     ///
     /// It is up to the `BatchHandlerFactory` on whether it respects `assignment`.
-    fn handler(&self, assignment: &HandlerAssignment) -> BoxFuture<Result<Self::Handler, Error>>;
+    fn handler(
+        &self,
+        assignment: &HandlerAssignment,
+    ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>>;
 }
