@@ -245,13 +245,12 @@ impl HandlerAssignment {
 /// // Now we implement the trait `BatchHandlerFactory` to control how
 /// // our `BatchHandler`s are created
 /// impl BatchHandlerFactory for MyBatchHandlerFactory {
-///     type Handler = MyHandler;
 ///     fn handler(
 ///         &self,
 ///         _assignment: &HandlerAssignment,
-///     ) ->  BoxFuture<Result<Self::Handler, Error>> {
+///     ) ->  BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
 ///         async move {
-///             Ok(MyHandler(self.0.clone()))
+///             Ok(Box::new(MyHandler(self.0.clone())) as Box<dyn BatchHandler>)
 ///         }.boxed()
 ///     }
 /// }
