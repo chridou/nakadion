@@ -220,7 +220,7 @@ where
             stream_state.request_stream_cancellation();
             break;
         } else if was_batch {
-            instrumentation.global_batches_in_flight_inc();
+            instrumentation.consumer_batches_in_flight_inc();
             batches_sent_to_dispatcher += 1;
         }
     }
@@ -261,7 +261,7 @@ where
                 "There were still {} unprocessed batches in flight",
                 unprocessed_batches,
             ));
-            instrumentation.global_batches_in_flight_dec_by(unprocessed_batches);
+            instrumentation.consumer_batches_in_flight_dec_by(unprocessed_batches);
         }
     }
 

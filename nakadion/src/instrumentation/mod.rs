@@ -3,13 +3,23 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "metrix")]
+mod metrix;
+
+#[cfg(feature = "metrix")]
+pub use self::metrix::{Metrix, MetrixConfig, MetrixTrackingSecs};
+
 pub trait Instruments {
-    // === GLOBAL ===
-    fn global_batches_in_flight_inc(&self);
-    fn global_batches_in_flight_dec(&self);
-    fn global_batches_in_flight_dec_by(&self, by: usize);
+    // === CONSUMER ===
+    fn consumer_batches_in_flight_inc(&self);
+    fn consumer_batches_in_flight_dec(&self);
+    fn consumer_batches_in_flight_dec_by(&self, by: usize);
 
     // === STREAM ===
+    fn stream_connect_attempt_success(&self, time: Duration);
+    fn stream_connect_attempt_failed(&self, time: Duration);
+    fn stream_connected(&self, time: Duration);
+    fn stream_not_connected(&self, time: Duration);
 
     fn stream_chunk_received(&self, n_bytes: usize);
     fn stream_frame_received(&self, n_bytes: usize);
@@ -89,13 +99,19 @@ impl fmt::Debug for Instrumentation {
 }
 
 impl Instruments for Instrumentation {
-    // === GLOBAL ===
+    // === CONSUMER ===
 
-    fn global_batches_in_flight_inc(&self) {}
-    fn global_batches_in_flight_dec(&self) {}
-    fn global_batches_in_flight_dec_by(&self, by: usize) {}
+    fn consumer_batches_in_flight_inc(&self) {}
+    fn consumer_batches_in_flight_dec(&self) {}
+    fn consumer_batches_in_flight_dec_by(&self, by: usize) {}
 
     // === STREAM ===
+    fn stream_connect_attempt_success(&self, time: Duration) {
+        if self.detail >= MetricsDetailLevel::Medium {}
+    }
+    fn stream_connect_attempt_failed(&self, time: Duration) {}
+    fn stream_connected(&self, time: Duration) {}
+    fn stream_not_connected(&self, time: Duration) {}
 
     fn stream_chunk_received(&self, n_bytes: usize) {
         if self.detail == MetricsDetailLevel::High {}

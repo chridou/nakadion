@@ -140,13 +140,13 @@ mod processor {
                     Ok(true) => {
                         stream_state
                             .instrumentation()
-                            .global_batches_in_flight_dec();
+                            .consumer_batches_in_flight_dec();
                         batches_processed += 1;
                     }
                     Ok(false) => {
                         stream_state
                             .instrumentation()
-                            .global_batches_in_flight_dec();
+                            .consumer_batches_in_flight_dec();
                         batches_processed += 1;
                         break;
                     }

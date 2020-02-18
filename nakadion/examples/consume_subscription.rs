@@ -1,8 +1,3 @@
-use slog::Drain;
-use slog::{o, Logger};
-use slog_async;
-use slog_term;
-
 use nakadi_types::model::subscription::*;
 
 use nakadion::api::ApiClient;
@@ -11,11 +6,6 @@ use nakadion::consumer::*;
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    let logger = Logger::root(drain, o!());
-
     let client = ApiClient::builder().finish_from_env()?;
 
     let subscription_id = SubscriptionId::from_env()?;
@@ -77,7 +67,7 @@ mod handler {
             self.events_received += events.len();
 
             async move {
-                if meta.frame_id % 5_000 == 0 {
+                if meta.frame_id % 2_000 == 0 {
                     println!(
                         "events: {} - frame id: {}",
                         self.events_received, meta.frame_id,
