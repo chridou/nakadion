@@ -64,9 +64,8 @@ mod handler {
             events: Vec<Self::Event>,
             meta: BatchMeta<'a>,
         ) -> EventsHandlerFuture {
-            self.events_received += events.len();
-
             async move {
+                self.events_received += events.len();
                 if meta.frame_id % 2_000 == 0 {
                     println!(
                         "events: {} - frame id: {}",
