@@ -82,13 +82,12 @@ mod handler {
     pub struct MyHandlerFactory;
 
     impl BatchHandlerFactory for MyHandlerFactory {
-        type Handler = MyHandler;
-
         fn handler(
             &self,
             _assignment: &HandlerAssignment,
-        ) -> BoxFuture<Result<Self::Handler, Error>> {
-            async { Ok(MyHandler { events_received: 0 }) }.boxed()
+        ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
+            async { Ok(Box::new(MyHandler { events_received: 0 }) as Box<dyn BatchHandler>) }
+                .boxed()
         }
     }
 }

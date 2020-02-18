@@ -11,19 +11,19 @@ use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::internals::{dispatcher::SleepingDispatcher, ConsumerState};
 use crate::logging::Logs;
 
-pub(crate) struct ControllerParams<H, C> {
+pub(crate) struct ControllerParams<C> {
     pub api_client: C,
     pub consumer_state: ConsumerState,
-    pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    pub handler_factory: Arc<dyn BatchHandlerFactory>,
 }
 
-impl<H, C> ControllerParams<H, C> {
+impl<C> ControllerParams<C> {
     pub fn config(&self) -> &Config {
         &self.consumer_state.config()
     }
 }
 
-impl<H, C> Clone for ControllerParams<H, C>
+impl<C> Clone for ControllerParams<C>
 where
     C: Clone,
 {
@@ -36,18 +36,17 @@ where
     }
 }
 
-pub(crate) struct SleepTicker<H, C> {
-    join_handle: Option<tokio::task::JoinHandle<SleepingDispatcher<H, C>>>,
+pub(crate) struct SleepTicker<C> {
+    join_handle: Option<tokio::task::JoinHandle<SleepingDispatcher<C>>>,
     wake_up: Arc<AtomicBool>,
 }
 
-impl<H, C> SleepTicker<H, C>
+impl<C> SleepTicker<C>
 where
-    H: BatchHandler,
     C: Send + 'static,
 {
     pub fn start(
-        sleeping_dispatcher: SleepingDispatcher<H, C>,
+        sleeping_dispatcher: SleepingDispatcher<C>,
         consumer_state: ConsumerState,
     ) -> Self {
         let wake_up = Arc::new(AtomicBool::new(false));
@@ -60,17 +59,16 @@ where
         }
     }
 
-    pub fn join(mut self) -> tokio::task::JoinHandle<SleepingDispatcher<H, C>> {
+    pub fn join(mut self) -> tokio::task::JoinHandle<SleepingDispatcher<C>> {
         self.join_handle.take().unwrap()
     }
 
     fn tick_sleeping(
         wake_up: Arc<AtomicBool>,
-        mut sleeping_dispatcher: SleepingDispatcher<H, C>,
+        mut sleeping_dispatcher: SleepingDispatcher<C>,
         consumer_state: ConsumerState,
-    ) -> tokio::task::JoinHandle<SleepingDispatcher<H, C>>
+    ) -> tokio::task::JoinHandle<SleepingDispatcher<C>>
     where
-        H: BatchHandler,
         C: Send + 'static,
     {
         let delay = consumer_state.config().tick_interval.into_duration();
@@ -99,7 +97,7 @@ where
     }
 }
 
-impl<H, C> Drop for SleepTicker<H, C> {
+impl<C> Drop for SleepTicker<C> {
     fn drop(&mut self) {
         self.wake_up.store(true, Ordering::SeqCst)
     }

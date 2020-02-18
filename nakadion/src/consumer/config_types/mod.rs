@@ -405,7 +405,6 @@ impl Builder {
     where
         C: NakadionEssentials + Send + Sync + 'static + Clone,
         HF: BatchHandlerFactory,
-        HF::Handler: BatchHandler,
         L: LoggingAdapter,
     {
         let config = self.config()?;

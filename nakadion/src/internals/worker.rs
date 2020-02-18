@@ -5,7 +5,7 @@ use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
 use crate::consumer::InactivityTimeoutSecs;
 use crate::event_stream::BatchLine;
-use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
+use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, EnrichedErr, EnrichedResult, StreamState};
 
 use processor::HandlerSlot;
@@ -19,31 +19,28 @@ pub enum WorkerMessage {
 
 pub struct Worker;
 impl Worker {
-    pub(crate) fn sleeping<H: BatchHandler>(
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    pub(crate) fn sleeping(
+        handler_factory: Arc<dyn BatchHandlerFactory>,
         assignment: HandlerAssignment,
         inactivity_after: Option<InactivityTimeoutSecs>,
-    ) -> SleepingWorker<H> {
+    ) -> SleepingWorker {
         SleepingWorker {
             handler_slot: HandlerSlot::new(handler_factory, assignment, inactivity_after),
         }
     }
 }
 
-pub(crate) struct SleepingWorker<H> {
-    handler_slot: HandlerSlot<H>,
+pub(crate) struct SleepingWorker {
+    handler_slot: HandlerSlot,
 }
 
-impl<H> SleepingWorker<H>
-where
-    H: BatchHandler,
-{
+impl SleepingWorker {
     pub fn start<S>(
         self,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
         batches: S,
-    ) -> ActiveWorker<H>
+    ) -> ActiveWorker
     where
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
@@ -61,12 +58,12 @@ where
     }
 }
 
-pub(crate) struct ActiveWorker<H> {
-    join_handle: JoinHandle<EnrichedResult<HandlerSlot<H>>>,
+pub(crate) struct ActiveWorker {
+    join_handle: JoinHandle<EnrichedResult<HandlerSlot>>,
 }
 
-impl<H: BatchHandler> ActiveWorker<H> {
-    pub async fn join(self) -> EnrichedResult<SleepingWorker<H>> {
+impl ActiveWorker {
+    pub async fn join(self) -> EnrichedResult<SleepingWorker> {
         let ActiveWorker { join_handle, .. } = self;
 
         let mut handler_slot_enriched = match join_handle.await {
@@ -102,14 +99,13 @@ mod processor {
 
     use super::WorkerMessage;
 
-    pub(crate) fn start<H, S>(
+    pub(crate) fn start<S>(
         batches: S,
-        mut handler_slot: HandlerSlot<H>,
+        mut handler_slot: HandlerSlot,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
-    ) -> JoinHandle<EnrichedResult<HandlerSlot<H>>>
+    ) -> JoinHandle<EnrichedResult<HandlerSlot>>
     where
-        H: BatchHandler,
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
         let mut batches_processed: usize = 0;
@@ -164,16 +160,13 @@ mod processor {
         tokio::spawn(processor_loop)
     }
 
-    pub struct ProcessingCompound<H> {
-        handler_slot: HandlerSlot<H>,
+    pub struct ProcessingCompound {
+        handler_slot: HandlerSlot,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
     }
 
-    impl<H> ProcessingCompound<H>
-    where
-        H: BatchHandler,
-    {
+    impl ProcessingCompound {
         /// If this function returns with an error, treat is as a critical
         /// error that aborts the whole consumption
         ///
@@ -280,9 +273,9 @@ mod processor {
         }
     }
 
-    pub(crate) struct HandlerSlot<H> {
-        pub handler: Option<H>,
-        pub handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    pub(crate) struct HandlerSlot {
+        pub handler: Option<Box<dyn BatchHandler>>,
+        pub handler_factory: Arc<dyn BatchHandlerFactory>,
         pub last_event_processed: Instant,
         pub assignment: HandlerAssignment,
         pub inactivity_after: Option<InactivityTimeoutSecs>,
@@ -290,9 +283,9 @@ mod processor {
         pub logger: Option<Logger>,
     }
 
-    impl<H: BatchHandler> HandlerSlot<H> {
+    impl HandlerSlot {
         pub fn new(
-            handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+            handler_factory: Arc<dyn BatchHandlerFactory>,
             assignment: HandlerAssignment,
             inactivity_after: Option<InactivityTimeoutSecs>,
         ) -> Self {
@@ -318,7 +311,7 @@ mod processor {
             Ok(handler.handle(events, meta).await)
         }
 
-        async fn get_handler(&mut self) -> Result<&mut H, ConsumerError> {
+        async fn get_handler(&mut self) -> Result<&mut dyn BatchHandler, ConsumerError> {
             if self.handler.is_none() {
                 let new_handler = self
                     .handler_factory
@@ -336,7 +329,14 @@ mod processor {
                 self.handler = Some(new_handler);
             }
 
-            Ok(self.handler.as_mut().unwrap())
+            Ok(self.unwrap_handler())
+        }
+
+        fn unwrap_handler(&mut self) -> &mut dyn BatchHandler {
+            self.handler
+                .as_mut()
+                .map(|h| h.as_mut() as &mut (dyn BatchHandler + 'static))
+                .unwrap()
         }
 
         pub fn tick(&mut self) {

@@ -13,13 +13,12 @@ use super::DispatcherMessage;
 pub struct Dispatcher;
 
 impl Dispatcher {
-    pub(crate) fn sleeping<H, C>(
-        handler_factory: Arc<dyn BatchHandlerFactory<Handler = H>>,
+    pub(crate) fn sleeping<C>(
+        handler_factory: Arc<dyn BatchHandlerFactory>,
         api_client: C,
         config: Config,
-    ) -> Sleeping<H, C>
+    ) -> Sleeping<C>
     where
-        H: BatchHandler,
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         let worker = Worker::sleeping(
@@ -32,17 +31,16 @@ impl Dispatcher {
     }
 }
 
-pub(crate) struct Sleeping<H, C> {
-    worker: SleepingWorker<H>,
+pub(crate) struct Sleeping<C> {
+    worker: SleepingWorker,
     api_client: C,
 }
 
-impl<H, C> Sleeping<H, C>
+impl<C> Sleeping<C>
 where
-    H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, H, C>
+    pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, C>
     where
         S: Stream<Item = DispatcherMessage> + Send + 'static,
     {
@@ -82,26 +80,22 @@ where
     }
 }
 
-impl<H, C> Sleeping<H, C>
-where
-    H: BatchHandler,
-{
+impl<C> Sleeping<C> {
     pub fn tick(&mut self) {
         self.worker.tick()
     }
 }
-pub(crate) struct Active<'a, H, C> {
+pub(crate) struct Active<'a, C> {
     stream_state: StreamState,
     api_client: C,
-    join: BoxFuture<'a, EnrichedResult<SleepingWorker<H>>>,
+    join: BoxFuture<'a, EnrichedResult<SleepingWorker>>,
 }
 
-impl<'a, H, C> Active<'a, H, C>
+impl<'a, C> Active<'a, C>
 where
-    H: BatchHandler,
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> EnrichedResult<Sleeping<H, C>> {
+    pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
         let Active {
             api_client,
             join,

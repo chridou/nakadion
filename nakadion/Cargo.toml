@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.20.0-alpha.7"
+version = "0.20.0-alpha.8"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"

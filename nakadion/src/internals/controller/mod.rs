@@ -27,16 +27,15 @@ pub(crate) mod types;
 use types::*;
 
 #[derive(Clone)]
-pub(crate) struct Controller<H, C> {
-    params: ControllerParams<H, C>,
+pub(crate) struct Controller<C> {
+    params: ControllerParams<C>,
 }
 
-impl<H, C> Controller<H, C>
+impl<C> Controller<C>
 where
     C: NakadionEssentials + Clone,
-    H: BatchHandler,
 {
-    pub(crate) fn new(params: ControllerParams<H, C>) -> Self {
+    pub(crate) fn new(params: ControllerParams<C>) -> Self {
         Self { params }
     }
 
@@ -45,10 +44,9 @@ where
     }
 }
 
-async fn create_background_task<H, C>(params: ControllerParams<H, C>) -> Result<(), ConsumerError>
+async fn create_background_task<C>(params: ControllerParams<C>) -> Result<(), ConsumerError>
 where
     C: NakadionEssentials + Clone,
-    H: BatchHandler,
 {
     let consumer_state = params.consumer_state.clone();
     let mut sleeping_dispatcher = Dispatcher::sleeping(
@@ -75,13 +73,12 @@ enum BatchLineMessage {
     StreamEnded,
 }
 
-async fn stream_lifecycle<H, C>(
-    params: ControllerParams<H, C>,
-    sleeping_dispatcher: SleepingDispatcher<H, C>,
-) -> Result<SleepingDispatcher<H, C>, ConsumerError>
+async fn stream_lifecycle<C>(
+    params: ControllerParams<C>,
+    sleeping_dispatcher: SleepingDispatcher<C>,
+) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: NakadionEssentials + Clone,
-    H: BatchHandler,
 {
     let consumer_state = params.consumer_state.clone();
     let sleep_ticker = SleepTicker::start(sleeping_dispatcher, consumer_state.clone());
@@ -127,15 +124,14 @@ where
     Ok(sleeping_dispatcher)
 }
 
-async fn consume_stream_to_end<H, C, S>(
+async fn consume_stream_to_end<C, S>(
     stream: S,
-    active_dispatcher: ActiveDispatcher<'static, H, C>,
+    active_dispatcher: ActiveDispatcher<'static, C>,
     batch_lines_sink: UnboundedSender<DispatcherMessage>,
     stream_state: StreamState,
-) -> Result<SleepingDispatcher<H, C>, ConsumerError>
+) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    H: BatchHandler,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let stream_dead_policy = stream_state.config().stream_dead_policy;
@@ -273,31 +269,26 @@ where
     result
 }
 
-enum WaitForFirstFrameResult<H, C, T> {
+enum WaitForFirstFrameResult<C, T> {
     GotTheFrame {
-        active_dispatcher: ActiveDispatcher<'static, H, C>,
+        active_dispatcher: ActiveDispatcher<'static, C>,
         stream: T,
         batch_lines_sink: UnboundedSender<DispatcherMessage>,
     },
     Aborted {
-        sleeping_dispatcher: SleepingDispatcher<H, C>,
+        sleeping_dispatcher: SleepingDispatcher<C>,
     },
 }
 
-async fn wait_for_first_frame<H, C, S>(
+async fn wait_for_first_frame<C, S>(
     stream: S,
-    sleep_ticker: SleepTicker<H, C>,
+    sleep_ticker: SleepTicker<C>,
     stream_state: StreamState,
 ) -> Result<
-    WaitForFirstFrameResult<
-        H,
-        C,
-        impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send,
-    >,
+    WaitForFirstFrameResult<C, impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send>,
     ConsumerError,
 >
 where
-    H: BatchHandler,
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
