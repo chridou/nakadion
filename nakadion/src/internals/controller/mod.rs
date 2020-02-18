@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use futures::{pin_mut, stream, Stream, StreamExt, TryStreamExt};
+use futures::{stream, Stream, StreamExt, TryStreamExt};
 use tokio::{
     self,
     sync::mpsc::{unbounded_channel, UnboundedSender},
@@ -14,12 +14,12 @@ use crate::event_stream::{
     BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream,
 };
 use crate::handler::BatchHandler;
-use crate::internals::dispatcher::{
-    ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher,
+use crate::instrumentation::{Instrumentation, Instruments};
+use crate::internals::{
+    dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},
+    EnrichedErr, EnrichedOk, StreamState,
 };
 use crate::logging::Logs;
-
-use super::StreamState;
 
 mod connect_stream;
 pub(crate) mod types;
@@ -103,7 +103,11 @@ where
         .logger()
         .info(format_args!("Connected to stream {}.", stream_id));
 
-    let stream = make_ticked_batch_line_stream(bytes_stream, stream_state.config().tick_interval);
+    let stream = make_ticked_batch_line_stream(
+        bytes_stream,
+        stream_state.config().tick_interval,
+        stream_state.instrumentation().clone(),
+    );
 
     let (active_dispatcher, stream, batch_lines_sink) =
         match wait_for_first_frame(stream, sleep_ticker, stream_state.clone()).await? {
@@ -134,16 +138,19 @@ where
     H: BatchHandler,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
-    let now = Instant::now();
-    let stream_started_at = now;
-    let mut last_events_received_at = now;
-    let mut last_frame_received_at = now;
-
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_stream_stalled = stream_state
         .config()
         .warn_stream_stalled
         .map(|t| t.into_duration());
+
+    let now = Instant::now();
+    let stream_started_at = now;
+    let mut last_events_received_at = now;
+    let mut last_frame_received_at = now;
+
+    let mut batches_sent_to_dispatcher = 0usize;
+    let instrumentation = stream_state.instrumentation();
 
     let mut stream = stream.boxed();
     while let Some(batch_line_message_or_err) = stream.next().await {
@@ -186,26 +193,35 @@ where
                 DispatcherMessage::Tick
             }
             BatchLineMessage::BatchLine(batch) => {
+                let frame_received_at = batch.received_at();
                 let now = Instant::now();
                 last_frame_received_at = now;
 
                 if let Some(info_str) = batch.info_str() {
+                    instrumentation.controller_info_received(frame_received_at);
                     stream_state.info(format_args!("Received info line: {}", info_str));
                 }
 
                 if batch.is_keep_alive_line() {
+                    instrumentation.controller_keep_alive_received(frame_received_at);
                     stream_state.debug(format_args!("Keep alive line received."));
                     continue;
                 } else {
                     last_events_received_at = Instant::now();
+                    let bytes = batch.bytes().len();
+                    instrumentation.controller_batch_received(frame_received_at, bytes);
                     DispatcherMessage::Batch(batch)
                 }
             }
         };
 
+        let was_batch = msg_for_dispatcher.is_batch();
         if batch_lines_sink.send(msg_for_dispatcher).is_err() {
             stream_state.request_stream_cancellation();
             break;
+        } else if was_batch {
+            instrumentation.global_batches_in_flight_inc();
+            batches_sent_to_dispatcher += 1;
         }
     }
 
@@ -216,14 +232,45 @@ where
         stream_started_at.elapsed()
     ));
 
-    let sleeping_dispatcher = active_dispatcher.join().await?;
+    let (result, unprocessed_batches) = match active_dispatcher.join().await {
+        Ok(EnrichedOk {
+            processed_batches,
+            payload: sleeping_dispatcher,
+        }) => (
+            Ok(sleeping_dispatcher),
+            Some(batches_sent_to_dispatcher - processed_batches),
+        ),
+        Err(EnrichedErr {
+            processed_batches,
+            err,
+        }) => {
+            if let Some(processed_batches) = processed_batches {
+                (
+                    Err(err),
+                    Some(batches_sent_to_dispatcher - processed_batches),
+                )
+            } else {
+                (Err(err), None)
+            }
+        }
+    };
+
+    if let Some(unprocessed_batches) = unprocessed_batches {
+        if unprocessed_batches > 0 {
+            stream_state.info(format_args!(
+                "There were still {} unprocessed batches in flight",
+                unprocessed_batches,
+            ));
+            instrumentation.global_batches_in_flight_dec_by(unprocessed_batches);
+        }
+    }
 
     stream_state.info(format_args!(
-        "Streaming stopped after {:?}.",
-        stream_started_at.elapsed()
+        "Streaming stopped after {:?}",
+        stream_started_at.elapsed(),
     ));
 
-    Ok(sleeping_dispatcher)
+    result
 }
 
 enum WaitForFirstFrameResult<H, C, T> {
@@ -338,16 +385,20 @@ where
 fn make_ticked_batch_line_stream(
     bytes_stream: BytesStream,
     tick_interval: TickIntervalMillis,
+    instrumentation: Instrumentation,
 ) -> impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send {
-    let frame_stream = FramedStream::new(bytes_stream);
+    let frame_stream = FramedStream::new(bytes_stream, instrumentation.clone());
 
-    let batch_stream = BatchLineStream::new(frame_stream)
+    let batch_stream = BatchLineStream::new(frame_stream, instrumentation.clone())
         .map_ok(BatchLineMessage::BatchLine)
         .chain(stream::once(async { Ok(BatchLineMessage::StreamEnded) }));
 
     let tick_interval = tick_interval.into_duration();
-    let ticker = interval_at((Instant::now() + tick_interval).into(), tick_interval)
-        .map(|_| Ok(BatchLineMessage::Tick));
+    let ticker =
+        interval_at((Instant::now() + tick_interval).into(), tick_interval).map(move |_| {
+            instrumentation.stream_tick_emitted();
+            Ok(BatchLineMessage::Tick)
+        });
 
     stream::select(batch_stream, ticker)
 }

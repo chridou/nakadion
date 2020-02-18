@@ -1,7 +1,4 @@
-use std::fmt;
-use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -11,8 +8,8 @@ use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
 use crate::Error;
 
-use super::instrumentation::Instrumentation;
 use super::{Config, Consumer, Inner};
+use crate::instrumentation::Instrumentation;
 
 mod new_types;
 pub use new_types::*;

@@ -3,10 +3,10 @@ use std::sync::Arc;
 use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-use crate::consumer::{ConsumerError, InactivityTimeoutSecs};
+use crate::consumer::InactivityTimeoutSecs;
 use crate::event_stream::BatchLine;
 use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{committer::CommitData, StreamState};
+use crate::internals::{committer::CommitData, EnrichedErr, EnrichedResult, StreamState};
 
 use processor::HandlerSlot;
 
@@ -62,18 +62,21 @@ where
 }
 
 pub(crate) struct ActiveWorker<H> {
-    join_handle: JoinHandle<Result<HandlerSlot<H>, ConsumerError>>,
+    join_handle: JoinHandle<EnrichedResult<HandlerSlot<H>>>,
 }
 
 impl<H: BatchHandler> ActiveWorker<H> {
-    pub async fn join(self) -> Result<SleepingWorker<H>, ConsumerError> {
+    pub async fn join(self) -> EnrichedResult<SleepingWorker<H>> {
         let ActiveWorker { join_handle, .. } = self;
 
-        let mut handler_slot = join_handle.await??;
+        let mut handler_slot_enriched = match join_handle.await {
+            Ok(r) => r?,
+            Err(join_err) => return Err(EnrichedErr::no_data(join_err)),
+        };
 
-        handler_slot.reset();
+        handler_slot_enriched.payload.reset();
 
-        Ok(SleepingWorker { handler_slot })
+        Ok(handler_slot_enriched.map(|handler_slot| SleepingWorker { handler_slot }))
     }
 }
 
@@ -93,7 +96,8 @@ mod processor {
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
         HandlerAssignment,
     };
-    use crate::internals::{committer::CommitData, StreamState};
+    use crate::instrumentation::Instruments;
+    use crate::internals::{committer::CommitData, EnrichedOk, EnrichedResult, StreamState};
     use crate::logging::{Logger, Logs};
 
     use super::WorkerMessage;
@@ -103,11 +107,12 @@ mod processor {
         mut handler_slot: HandlerSlot<H>,
         stream_state: StreamState,
         committer: UnboundedSender<CommitData>,
-    ) -> JoinHandle<Result<HandlerSlot<H>, ConsumerError>>
+    ) -> JoinHandle<EnrichedResult<HandlerSlot<H>>>
     where
         H: BatchHandler,
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
+        let mut batches_processed: usize = 0;
         handler_slot.set_logger(&stream_state.logger());
         let processor_loop = async move {
             let mut processing_compound = ProcessingCompound {
@@ -132,16 +137,28 @@ mod processor {
                 };
 
                 match processing_compound.process_batch_line(batch).await {
-                    Ok(true) => {}
+                    Ok(true) => {
+                        stream_state
+                            .instrumentation()
+                            .global_batches_in_flight_dec();
+                        batches_processed += 1;
+                    }
                     Ok(false) => {
+                        stream_state
+                            .instrumentation()
+                            .global_batches_in_flight_dec();
+                        batches_processed += 1;
                         break;
                     }
                     Err(err) => {
-                        return Err(err);
+                        return Err(err.enriched(batches_processed));
                     }
                 }
             }
-            Ok(processing_compound.handler_slot)
+            Ok(EnrichedOk::new(
+                processing_compound.handler_slot,
+                batches_processed,
+            ))
         };
 
         tokio::spawn(processor_loop)
@@ -183,11 +200,24 @@ mod processor {
                 frame_id,
             };
 
+            let n_events_bytes = events.len();
+            let batch_processing_started_at = Instant::now();
             match self.handler_slot.process_batch(events, meta).await? {
                 BatchPostAction::Commit(BatchStats {
                     n_events,
                     t_deserialize,
                 }) => {
+                    self.stream_state.instrumentation.worker_batch_processed(
+                        n_events_bytes,
+                        n_events,
+                        batch_processing_started_at.elapsed(),
+                    );
+                    if let Some(t_deserialize) = t_deserialize {
+                        self.stream_state
+                            .instrumentation
+                            .worker_deserialization_time(n_events_bytes, t_deserialize);
+                    }
+
                     let commit_data = CommitData {
                         cursor,
                         received_at,
@@ -204,7 +234,20 @@ mod processor {
                 BatchPostAction::DoNotCommit(BatchStats {
                     n_events,
                     t_deserialize,
-                }) => Ok(true),
+                }) => {
+                    self.stream_state.instrumentation.worker_batch_processed(
+                        n_events_bytes,
+                        n_events,
+                        batch_processing_started_at.elapsed(),
+                    );
+                    if let Some(t_deserialize) = t_deserialize {
+                        self.stream_state
+                            .instrumentation
+                            .worker_deserialization_time(n_events_bytes, t_deserialize);
+                    }
+
+                    Ok(true)
+                }
                 BatchPostAction::AbortStream(reason) => {
                     self.stream_state.warn(format_args!(
                         "Stream cancellation requested by handler: {}",

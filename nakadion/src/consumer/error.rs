@@ -48,6 +48,14 @@ impl ConsumerError {
     pub fn message(&self) -> Option<&str> {
         self.message.as_ref().map(|m| &**m)
     }
+
+    pub(crate) fn enriched(self, batches_processed: usize) -> crate::internals::EnrichedErr {
+        crate::internals::EnrichedErr::new(self, batches_processed)
+    }
+
+    pub(crate) fn not_enriched(self) -> crate::internals::EnrichedErr {
+        crate::internals::EnrichedErr::no_data(self)
+    }
 }
 
 impl StdError for ConsumerError {

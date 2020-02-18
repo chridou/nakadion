@@ -9,6 +9,7 @@ use futures::stream::Stream;
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 
 use crate::api::IoError;
+use crate::instrumentation::{Instrumentation, Instruments};
 
 #[derive(Clone)]
 pub struct NakadiFrame {
@@ -53,6 +54,7 @@ where
 {
     bytes_stream: St,
     state: State,
+    instrumentation: Instrumentation,
 }
 
 struct State {
@@ -71,10 +73,11 @@ where
     unsafe_pinned!(bytes_stream: St);
     unsafe_unpinned!(state: State);
 
-    pub fn new(bytes_stream: St) -> Self {
+    pub fn new(bytes_stream: St, instrumentation: Instrumentation) -> Self {
         let now = Instant::now();
         Self {
             bytes_stream,
+            instrumentation,
             state: State {
                 frame_id: 0,
                 frames: VecDeque::new(),
@@ -112,6 +115,8 @@ where
                         if bytes.is_empty() {
                             continue;
                         }
+
+                        self.instrumentation.stream_chunk_received(bytes.len());
 
                         let state = self.as_mut().state();
                         if state.unfinished_frame.is_empty() {
@@ -194,6 +199,7 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::instrumentation::Instrumentation;
     use bytes::Bytes;
     use futures::stream::{self, BoxStream, Stream, StreamExt, TryStreamExt};
 
@@ -212,7 +218,7 @@ mod test {
             .map(Ok)
             .collect();
         let stream = stream::iter(iter).boxed();
-        FramedStream::new(stream)
+        FramedStream::new(stream, Instrumentation::default())
     }
 
     fn stream_from_results<I, It>(
@@ -227,7 +233,7 @@ mod test {
             .map(|x| x.map(|x| Bytes::copy_from_slice(x.as_ref())))
             .collect();
         let stream = stream::iter(iter).boxed();
-        FramedStream::new(stream)
+        FramedStream::new(stream, Instrumentation::default())
     }
 
     async fn poll_all<St>(mut stream: FramedStream<St>) -> Result<Vec<NakadiFrame>, IoError>

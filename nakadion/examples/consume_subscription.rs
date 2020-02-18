@@ -77,7 +77,7 @@ mod handler {
             self.events_received += events.len();
 
             async move {
-                if meta.frame_id % 2_000 == 0 {
+                if meta.frame_id % 5_000 == 0 {
                     println!(
                         "events: {} - frame id: {}",
                         self.events_received, meta.frame_id,

@@ -16,6 +16,7 @@ use crate::nakadi_types::{
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::consumer::CommitStrategy;
+use crate::instrumentation::Instruments;
 use crate::internals::StreamState;
 use crate::logging::Logs;
 
@@ -243,7 +244,7 @@ where
         stream_state
             .logger()
             .debug(format_args!("Committing {} cursor(s)", pending.len()));
-
+        let commit_started = now;
         let cursors: Vec<_> = pending.cursors().collect();
         match commit(
             &api_client,
@@ -256,12 +257,18 @@ where
         .await
         {
             Ok(()) => {
+                stream_state
+                    .instrumentation()
+                    .committer_cursors_committed(cursors.len(), commit_started.elapsed());
                 pending.reset();
             }
             Err(err) => {
                 stream_state
                     .logger()
                     .warn(format_args!("Failed to commit cursors: {}", err));
+                stream_state
+                    .instrumentation()
+                    .committer_cursors_not_committed(cursors.len(), commit_started.elapsed());
                 match err.status() {
                     Some(StatusCode::UNAUTHORIZED)
                     | Some(StatusCode::FORBIDDEN)
@@ -329,7 +336,7 @@ where
     )
     .await
     {
-        Ok(Ok(results)) => Ok(()),
+        Ok(Ok(_results)) => Ok(()),
         Ok(Err(err)) => Err(err),
         Err(err) => Err(NakadiApiError::io()
             .with_context(format!(
