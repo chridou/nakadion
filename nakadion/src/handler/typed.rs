@@ -1,10 +1,12 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures::future::{BoxFuture, FutureExt};
 use serde::de::DeserializeOwned;
 
-use super::{BatchHandler, BatchHandlerFuture, BatchMeta, BatchPostAction, BatchStats};
+use super::{
+    BatchHandler, BatchHandlerFuture, BatchMeta, BatchPostAction, BatchStats, InactivityAnswer,
+};
 
 pub type EventsHandlerFuture<'a> = BoxFuture<'a, EventsPostAction>;
 
@@ -49,7 +51,7 @@ pub enum SpawnTarget {
 /// Basically the same a `BatchHandler` with the difference that
 /// deserialized events are passed to the processing logic.
 ///
-/// This is basically a convinience handler.
+/// This is basically a convenience handler.
 ///
 /// The events must implement `serde`s `DeserializeOwned`.
 ///
@@ -134,6 +136,14 @@ pub trait EventsHandler {
     /// If not overwritten the default is `SpawnTarget::Executor`.
     fn deserialize_on(&mut self, _n_bytes: usize) -> SpawnTarget {
         SpawnTarget::Executor
+    }
+
+    fn on_inactive(
+        &mut self,
+        _inactive_for: Duration,
+        _last_activity: Instant,
+    ) -> InactivityAnswer {
+        InactivityAnswer::KeepMeAlive
     }
 }
 
@@ -228,6 +238,10 @@ where
             }
         }
         .boxed()
+    }
+
+    fn on_inactive(&mut self, inactive_for: Duration, last_activity: Instant) -> InactivityAnswer {
+        EventsHandler::on_inactive(self, inactive_for, last_activity)
     }
 }
 

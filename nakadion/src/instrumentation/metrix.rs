@@ -11,12 +11,9 @@ use serde::{Deserialize, Serialize};
 use super::Instruments;
 
 /// Instrumentation with Metrix
+#[derive(Clone)]
 pub struct Metrix {
-    consumer_tx: TelemetryTransmitter<ConsumerMetric>,
-    stream_tx: TelemetryTransmitter<StreamMetric>,
-    controller_tx: TelemetryTransmitter<ControllerMetric>,
-    handler_tx: TelemetryTransmitter<HandlerMetric>,
-    committer_tx: TelemetryTransmitter<CommitterMetric>,
+    tx: TelemetryTransmitter<Metric>,
 }
 
 impl Metrix {
@@ -24,23 +21,9 @@ impl Metrix {
     ///
     /// Adds them directly into the given `processor` without creating an additional group.
     pub fn new<A: AggregatesProcessors>(config: &MetrixConfig, processor: &mut A) -> Self {
-        let (consumer_tx, global_proc) = consumer::create(&config);
+        let (tx, global_proc) = instr::create(&config);
         processor.add_processor(global_proc);
-        let (stream_tx, stream_proc) = stream::create(&config);
-        processor.add_processor(stream_proc);
-        let (controller_tx, controller_proc) = controller::create(&config);
-        processor.add_processor(controller_proc);
-        let (handler_tx, worker_proc) = handlers::create(&config);
-        processor.add_processor(worker_proc);
-        let (committer_tx, committer_proc) = committer::create(&config);
-        processor.add_processor(committer_proc);
-        Metrix {
-            consumer_tx,
-            stream_tx,
-            controller_tx,
-            handler_tx,
-            committer_tx,
-        }
+        Metrix { tx }
     }
 
     pub fn new_mountable(config: &MetrixConfig, name: Option<&str>) -> (Metrix, ProcessorMount) {
@@ -76,79 +59,72 @@ impl Instruments for Metrix {
     // === GLOBAL ===
 
     fn consumer_batches_in_flight_inc(&self) {
-        self.consumer_tx
-            .observed_one_value_now(ConsumerMetric::ConsumerInFlightChanged, Increment);
+        self.tx
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, Increment);
     }
     fn consumer_batches_in_flight_dec(&self) {
-        self.consumer_tx
-            .observed_one_value_now(ConsumerMetric::ConsumerInFlightChanged, Decrement);
+        self.tx
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, Decrement);
     }
     fn consumer_batches_in_flight_dec_by(&self, by: usize) {
-        self.consumer_tx.observed_one_value_now(
-            ConsumerMetric::ConsumerInFlightChanged,
-            DecrementBy(by as u32),
-        );
+        self.tx
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, DecrementBy(by as u32));
     }
 
     // === STREAM ===
     fn stream_connect_attempt_success(&self, time: Duration) {
-        self.stream_tx.observed_one_value_now(
-            StreamMetric::StreamConnectAttemptSuccessTime,
+        self.tx.observed_one_value_now(
+            Metric::StreamConnectAttemptSuccessTime,
             (time, TimeUnit::Milliseconds),
         );
     }
     fn stream_connect_attempt_failed(&self, time: Duration) {
-        self.stream_tx.observed_one_value_now(
-            StreamMetric::StreamConnectAttemptFailedTime,
+        self.tx.observed_one_value_now(
+            Metric::StreamConnectAttemptFailedTime,
             (time, TimeUnit::Milliseconds),
         );
     }
     fn stream_connected(&self, time: Duration) {
-        self.stream_tx.observed_one_value_now(
-            StreamMetric::StreamConnectedTime,
-            (time, TimeUnit::Milliseconds),
-        );
+        self.tx
+            .observed_one_value_now(Metric::StreamConnectedTime, (time, TimeUnit::Milliseconds));
     }
     fn stream_not_connected(&self, time: Duration) {
-        self.stream_tx.observed_one_value_now(
-            StreamMetric::StreamNotConnectedTime,
+        self.tx.observed_one_value_now(
+            Metric::StreamNotConnectedTime,
             (time, TimeUnit::Milliseconds),
         );
-        self.consumer_tx
-            .observed_one_now(ConsumerMetric::StreamConnectFailed);
     }
 
     fn stream_chunk_received(&self, n_bytes: usize) {
-        self.stream_tx
-            .observed_one_value_now(StreamMetric::StreamChunkReceivedBytes, n_bytes);
+        self.tx
+            .observed_one_value_now(Metric::StreamChunkReceivedBytes, n_bytes);
     }
     fn stream_frame_received(&self, n_bytes: usize) {
-        self.stream_tx
-            .observed_one_value_now(StreamMetric::StreamFrameReceivedBytes, n_bytes);
+        self.tx
+            .observed_one_value_now(Metric::StreamFrameReceivedBytes, n_bytes);
     }
     fn stream_tick_emitted(&self) {
-        self.consumer_tx
-            .observed_one_now(ConsumerMetric::StreamTickEmitted);
+        self.tx.observed_one_now(Metric::StreamTickEmitted);
     }
 
     // === CONTROLLER ===
     fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize) {
-        self.consumer_tx
-            .observed_one_value_now(ConsumerMetric::ControllerBatchReceivedBytes, events_bytes);
-        self.controller_tx.observed_one_value_now(
-            ControllerMetric::ControllerBatchReceivedElapsed,
+        self.tx
+            .observed_one_value_now(Metric::ControllerBatchReceivedBytes, events_bytes);
+        self.tx.observed_one_value_now(
+            Metric::ControllerBatchReceivedLag,
             (frame_received_at.elapsed(), TimeUnit::Microseconds),
         );
     }
     fn controller_info_received(&self, frame_received_at: Instant) {
-        self.controller_tx.observed_one_value_now(
-            ControllerMetric::ControllerInfoReceivedElapsed,
+        self.tx.observed_one_value_now(
+            Metric::ControllerInfoReceivedElapsed,
             (frame_received_at.elapsed(), TimeUnit::Microseconds),
         );
     }
     fn controller_keep_alive_received(&self, frame_received_at: Instant) {
-        self.controller_tx.observed_one_value_now(
-            ControllerMetric::ControllerKeepAliveReceivedElapsed,
+        self.tx.observed_one_value_now(
+            Metric::ControllerKeepAliveReceivedElapsed,
             (frame_received_at.elapsed(), TimeUnit::Microseconds),
         );
     }
@@ -157,161 +133,135 @@ impl Instruments for Metrix {
 
     // === HANDLERS ===
 
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {}
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {}
-    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {}
+    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
+        if let Some(n_events) = n_events {
+            self.tx
+                .observed_one_value_now(Metric::HandlerProcessedEvents, n_events);
+        }
+        self.tx.observed_one_value_now(
+            Metric::HandlerBatchProcessedTime,
+            (time, TimeUnit::Microseconds),
+        );
+    }
+    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+        self.tx
+            .observed_one_value_now(Metric::HandlerBatchProcessedBytes, n_bytes);
+    }
+    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {
+        self.tx
+            .observed_one_value_now(Metric::HandlerBatchDeserializationBytes, n_bytes)
+            .observed_one_value_now(
+                Metric::HandlerBatchDeserializationTime,
+                (time, TimeUnit::Microseconds),
+            );
+    }
 
     // === HANDLERS ===
 
     // === COMMITTER ===
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {}
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {}
+    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+        self.tx
+            .observed_one_value_now(Metric::CommitterCursorsCommittedCount, n_cursors)
+            .observed_one_value_now(
+                Metric::CommitterCursorsCommittedTime,
+                (time, TimeUnit::Milliseconds),
+            );
+    }
+    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {
+        self.tx.observed_one_now(Metric::CommitterCommitFailed);
+        self.tx
+            .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
+            .observed_one_value_now(
+                Metric::CommitterCursorsNotCommittedTime,
+                (time, TimeUnit::Milliseconds),
+            );
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum ConsumerMetric {
+pub enum Metric {
     ConsumerInFlightChanged,
-    HandlerProcessedEvents,
-    HandlerBatchProcessedTime,
-    ControllerBatchReceivedBytes,
-    StreamConnectFailed,
-    CommitterCommitFailed,
     StreamTickEmitted,
-}
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum StreamMetric {
     StreamConnectedTime,
     StreamNotConnectedTime,
     StreamConnectAttemptSuccessTime,
     StreamConnectAttemptFailedTime,
     StreamChunkReceivedBytes,
     StreamFrameReceivedBytes,
-}
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum ControllerMetric {
-    ControllerBatchReceivedElapsed,
+    ControllerBatchReceivedBytes,
+    ControllerBatchReceivedLag,
     ControllerInfoReceivedElapsed,
     ControllerKeepAliveReceivedElapsed,
-}
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum HandlerMetric {
     HandlerBatchProcessedBytes,
     HandlerBatchDeserializationBytes,
     HandlerBatchDeserializationTime,
-}
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum CommitterMetric {
+    HandlerProcessedEvents,
+    HandlerBatchProcessedTime,
     CommitterCursorsCommittedTime,
     CommitterCursorsCommittedCount,
+    CommitterCommitFailed,
     CommitterCursorsNotCommittedTime,
     CommitterCursorsNotCommittedCount,
 }
 
-mod consumer {
+mod instr {
     use metrix::instruments::*;
     use metrix::processor::TelemetryProcessor;
     use metrix::TelemetryTransmitter;
+    use metrix::TimeUnit;
 
     use super::create_gauge;
-    use super::{ConsumerMetric, MetrixConfig};
+    use super::{Metric, MetrixConfig};
 
     pub fn create(
         config: &MetrixConfig,
-    ) -> (
-        TelemetryTransmitter<ConsumerMetric>,
-        TelemetryProcessor<ConsumerMetric>,
-    ) {
+    ) -> (TelemetryTransmitter<Metric>, TelemetryProcessor<Metric>) {
         let (tx, rx) = TelemetryProcessor::new_pair_without_name();
 
         let rx = rx.cockpit(
-            Cockpit::without_name().panel(
-                Panel::new(AcceptAllLabels).gauge(
-                    create_gauge("in_flight_batches", config)
-                        .deltas_only(ConsumerMetric::ConsumerInFlightChanged),
+            Cockpit::without_name()
+                .panel(
+                    Panel::named(AcceptAllLabels, "batches")
+                        .gauge(
+                            create_gauge("in_flight", config)
+                                .deltas_only(Metric::ConsumerInFlightChanged),
+                        )
+                        .meter(
+                            Meter::new_with_defaults("per_second")
+                                .for_label(Metric::HandlerBatchProcessedTime),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("processing_time_us")
+                                .display_time_unit(TimeUnit::Microseconds)
+                                .for_label(Metric::HandlerBatchProcessedTime),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("bytes_per_second")
+                                .for_label(Metric::HandlerBatchProcessedBytes),
+                        ),
+                )
+                .panel(
+                    Panel::named(AcceptAllLabels, "events")
+                        .handler(
+                            ValueMeter::new_with_defaults("per_second")
+                                .for_label(Metric::HandlerProcessedEvents),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("per_batch")
+                                .for_label(Metric::HandlerProcessedEvents),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("batch_deserialization_us")
+                                .display_time_unit(TimeUnit::Microseconds)
+                                .for_label(Metric::HandlerBatchDeserializationTime),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("batch_deserialization_bytes_per_second")
+                                .for_label(Metric::HandlerBatchDeserializationBytes),
+                        ),
                 ),
-            ),
         );
-
-        (tx, rx)
-    }
-}
-
-mod stream {
-    use metrix::instruments::*;
-    use metrix::processor::TelemetryProcessor;
-    use metrix::TelemetryTransmitter;
-
-    use super::create_gauge;
-    use super::{MetrixConfig, StreamMetric};
-
-    pub fn create(
-        config: &MetrixConfig,
-    ) -> (
-        TelemetryTransmitter<StreamMetric>,
-        TelemetryProcessor<StreamMetric>,
-    ) {
-        let (tx, rx) = TelemetryProcessor::new_pair("stream");
-
-        (tx, rx)
-    }
-}
-
-mod controller {
-    use metrix::instruments::*;
-    use metrix::processor::TelemetryProcessor;
-    use metrix::TelemetryTransmitter;
-
-    use super::create_gauge;
-    use super::{ControllerMetric, MetrixConfig};
-
-    pub fn create(
-        config: &MetrixConfig,
-    ) -> (
-        TelemetryTransmitter<ControllerMetric>,
-        TelemetryProcessor<ControllerMetric>,
-    ) {
-        let (tx, rx) = TelemetryProcessor::new_pair("consumer");
-
-        (tx, rx)
-    }
-}
-
-mod handlers {
-    use metrix::instruments::*;
-    use metrix::processor::TelemetryProcessor;
-    use metrix::TelemetryTransmitter;
-
-    use super::create_gauge;
-    use super::{HandlerMetric, MetrixConfig};
-
-    pub fn create(
-        config: &MetrixConfig,
-    ) -> (
-        TelemetryTransmitter<HandlerMetric>,
-        TelemetryProcessor<HandlerMetric>,
-    ) {
-        let (tx, rx) = TelemetryProcessor::new_pair("handlers");
-
-        (tx, rx)
-    }
-}
-
-mod committer {
-    use metrix::instruments::*;
-    use metrix::processor::TelemetryProcessor;
-    use metrix::TelemetryTransmitter;
-
-    use super::create_gauge;
-    use super::{CommitterMetric, MetrixConfig};
-
-    pub fn create(
-        config: &MetrixConfig,
-    ) -> (
-        TelemetryTransmitter<CommitterMetric>,
-        TelemetryProcessor<CommitterMetric>,
-    ) {
-        let (tx, rx) = TelemetryProcessor::new_pair("stream");
 
         (tx, rx)
     }

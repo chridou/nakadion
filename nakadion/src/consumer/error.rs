@@ -22,6 +22,10 @@ impl ConsumerError {
         Self::new(ConsumerErrorKind::Internal)
     }
 
+    pub fn other() -> Self {
+        Self::new(ConsumerErrorKind::Other)
+    }
+
     pub fn new_with_message<M: fmt::Display>(kind: ConsumerErrorKind, message: M) -> Self {
         Self {
             message: Some(message.to_string()),

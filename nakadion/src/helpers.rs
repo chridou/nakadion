@@ -232,6 +232,12 @@ macro_rules! __new_type_base_string_ext {
             }
         }
 
+        impl From<&str> for $Name {
+            fn from(v: &str) -> $Name {
+                $Name::new(v)
+            }
+        }
+
         impl AsRef<str> for $Name {
             fn as_ref(&self) -> &str {
                 self.as_str()

@@ -1,5 +1,6 @@
 //! Types for subscribing to an `EventType`
 use std::convert::AsRef;
+use std::fmt;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -64,6 +65,16 @@ impl EventTypePartition {
     }
 }
 
+impl fmt::Display for EventTypePartition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[event_type={};partition={}]",
+            self.event_type, self.partition
+        )?;
+        Ok(())
+    }
+}
 impl EventTypePartitionLike for EventTypePartition {
     fn event_type(&self) -> &EventTypeName {
         &self.event_type

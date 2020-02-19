@@ -139,7 +139,7 @@ impl InactivityAnswer {
 /// ```
 pub trait BatchHandler: Send {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a>;
-    fn on_inactivity_detected(
+    fn on_inactive(
         &mut self,
         _inactive_for: Duration,
         _last_activity: Instant,

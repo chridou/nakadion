@@ -365,7 +365,7 @@ mod processor {
                     let elapsed = self.last_event_processed.elapsed();
                     if elapsed > inactivity_after.into_duration() && !self.notified_on_inactivity {
                         if handler
-                            .on_inactivity_detected(elapsed, self.last_event_processed)
+                            .on_inactive(elapsed, self.last_event_processed)
                             .should_stay_alive()
                         {
                             self.notified_on_inactivity = true;

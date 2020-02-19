@@ -13,8 +13,14 @@ use crate::Error;
 /// ```rust
 /// use nakadion::consumer::DispatchStrategy;
 ///
-/// let strategy = "all_sequential".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::AllSequential);
+/// let strategy = "all_seq".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::AllSeq);
+///
+/// let strategy = "event_type_seq".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypeSeq);
+///
+/// let strategy = "event_type_partition_seq".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
 /// ```
 ///
 /// JSON is also valid:
@@ -22,8 +28,14 @@ use crate::Error;
 /// ```rust
 /// use nakadion::consumer::DispatchStrategy;
 ///
-/// let strategy = "{\"strategy\": \"all_sequential\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::AllSequential);
+/// let strategy = "{\"strategy\": \"all_seq\"}".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::AllSeq);
+///
+/// let strategy = "{\"strategy\": \"event_type_seq\"}".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypeSeq);
+///
+/// let strategy = "{\"strategy\": \"event_type_partition_seq\"}".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
 /// ```
 ///
 /// # Environment variables
@@ -42,9 +54,12 @@ pub enum DispatchStrategy {
     /// from the `BatchHandlerFactory`.
     /// This means that if multiple event types are consumed, the handler is responsible
     /// for determining the event type to be processed from `BatchMeta`.
-    AllSequential,
+    ///
+    /// It is suggested to not use this strategy if multiple event types
+    /// are expected.
+    AllSeq,
     /// Dispatch all batches to a dedicated worker for an
-    /// EventType.
+    /// event type.
     ///
     /// This means batches are processed sequentially for each event type.
     ///
@@ -52,7 +67,17 @@ pub enum DispatchStrategy {
     /// from the `BatchHandlerFactory`.
     ///
     /// This is the default `DispatchStrategy`.
-    EventTypeSequential,
+    EventTypeSeq,
+    /// Dispatch all batches to a dedicated worker for an
+    /// partition on each event type.
+    ///
+    /// This means batches are processed sequentially for each individual partition
+    /// of an event type.
+    ///
+    /// This will always request a handler with
+    /// `HandlerAssignment::EventTypePartition(EventTypePartitionName)`
+    /// from the `BatchHandlerFactory`.
+    EventTypePartitionSeq,
 }
 
 impl DispatchStrategy {
@@ -61,15 +86,16 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::EventTypeSequential
+        DispatchStrategy::EventTypeSeq
     }
 }
 
 impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DispatchStrategy::AllSequential => write!(f, "all_sequential")?,
-            DispatchStrategy::EventTypeSequential => write!(f, "event_type_sequential")?,
+            DispatchStrategy::AllSeq => write!(f, "all_seq")?,
+            DispatchStrategy::EventTypeSeq => write!(f, "event_type_seq")?,
+            DispatchStrategy::EventTypePartitionSeq => write!(f, "event_type_partition_seq")?,
         }
 
         Ok(())
@@ -87,8 +113,9 @@ impl FromStr for DispatchStrategy {
         }
 
         match s {
-            "all_sequential" => Ok(DispatchStrategy::AllSequential),
-            "event_type_sequential" => Ok(DispatchStrategy::EventTypeSequential),
+            "all_seq" => Ok(DispatchStrategy::AllSeq),
+            "event_type_seq" => Ok(DispatchStrategy::EventTypeSeq),
+            "event_type_partition_seq" => Ok(DispatchStrategy::EventTypePartitionSeq),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }

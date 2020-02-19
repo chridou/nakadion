@@ -9,7 +9,7 @@ use std::future::Future;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use crate::api::SubscriptionCommitApi;
-use crate::consumer::{Config, ConsumerError};
+use crate::consumer::ConsumerError;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{
     committer::*, worker::*, EnrichedErr, EnrichedOk, EnrichedResult, StreamState,
@@ -141,7 +141,7 @@ where
                 worker
             } else {
                 stream_state.info(format_args!(
-                    "Discovered new event type: {}",
+                    "Encountered new event type: {}",
                     event_type_str
                 ));
                 let assignment = HandlerAssignment::EventType(EventTypeName::new(event_type_str));
