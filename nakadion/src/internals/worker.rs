@@ -99,6 +99,9 @@ mod processor {
 
     use super::WorkerMessage;
 
+    /// Starts this worker.
+    ///
+    /// The worker will run as a task which has to be joined.
     pub(crate) fn start<S>(
         batches: S,
         mut handler_slot: HandlerSlot,
@@ -182,14 +185,14 @@ mod processor {
                 return Ok(true);
             };
 
-            let received_at = batch.received_at();
+            let frame_received_at = batch.received_at();
             let frame_id = batch.frame_id();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
                 stream_id: self.stream_state.stream_id(),
                 cursor: &cursor,
-                received_at,
+                received_at: frame_received_at,
                 frame_id,
             };
 
@@ -200,20 +203,21 @@ mod processor {
                     n_events,
                     t_deserialize,
                 }) => {
-                    self.stream_state.instrumentation.worker_batch_processed(
+                    self.report_processed_stats(
                         n_events_bytes,
                         n_events,
-                        batch_processing_started_at.elapsed(),
+                        batch_processing_started_at,
+                        frame_received_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .worker_deserialization_time(n_events_bytes, t_deserialize);
+                            .handler_deserialization_time(n_events_bytes, t_deserialize);
                     }
 
                     let commit_data = CommitData {
                         cursor,
-                        received_at,
+                        received_at: frame_received_at,
                         frame_id,
                         n_events,
                     };
@@ -228,15 +232,16 @@ mod processor {
                     n_events,
                     t_deserialize,
                 }) => {
-                    self.stream_state.instrumentation.worker_batch_processed(
+                    self.report_processed_stats(
                         n_events_bytes,
                         n_events,
-                        batch_processing_started_at.elapsed(),
+                        batch_processing_started_at,
+                        frame_received_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .worker_deserialization_time(n_events_bytes, t_deserialize);
+                            .handler_deserialization_time(n_events_bytes, t_deserialize);
                     }
 
                     Ok(true)
@@ -270,6 +275,21 @@ mod processor {
             }
 
             Ok(())
+        }
+
+        fn report_processed_stats(
+            &self,
+            n_events_bytes: usize,
+            n_events: Option<usize>,
+            batch_processing_started_at: Instant,
+            frame_received_at: Instant,
+        ) {
+            self.stream_state
+                .instrumentation
+                .handler_batch_processed_1(n_events, batch_processing_started_at.elapsed());
+            self.stream_state
+                .instrumentation
+                .handler_batch_processed_2(frame_received_at, n_events_bytes);
         }
     }
 

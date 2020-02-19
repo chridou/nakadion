@@ -137,7 +137,7 @@ impl InactivityAnswer {
 ///     }
 /// }
 /// ```
-pub trait BatchHandler: Send + 'static {
+pub trait BatchHandler: Send {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a>;
     fn on_inactivity_detected(
         &mut self,
@@ -147,6 +147,17 @@ pub trait BatchHandler: Send + 'static {
         InactivityAnswer::KeepMeAlive
     }
 }
+
+/*
+impl<T> BatchHandler for T
+where
+    T: Fn(Bytes, BatchMeta) -> BatchHandlerFuture + Send,
+{
+    fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a> {
+        self(events, meta)
+    }
+}
+*/
 
 /// Defines what a `BatchHandler` will receive.
 ///
@@ -250,7 +261,7 @@ impl HandlerAssignment {
 ///         _assignment: &HandlerAssignment,
 ///     ) ->  BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
 ///         async move {
-///             Ok(Box::new(MyHandler(self.0.clone())) as Box<dyn BatchHandler>)
+///             Ok(Box::new(MyHandler(self.0.clone())) as Box<_>)
 ///         }.boxed()
 ///     }
 /// }
@@ -274,3 +285,19 @@ pub trait BatchHandlerFactory: Send + Sync + 'static {
         assignment: &HandlerAssignment,
     ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>>;
 }
+
+/*
+impl<T> BatchHandlerFactory for T
+where
+    T: Fn(&HandlerAssignment) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>>
+        + Send
+        + Sync
+        + 'static,
+{
+    fn handler<'a>(
+        &self,
+        assignment: &'a HandlerAssignment,
+    ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
+        self(assignment)
+    }
+}*/

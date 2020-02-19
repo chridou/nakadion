@@ -16,6 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .commit_attempt_timeout_millis(1500)
         .connect_stream_timeout_secs(5)
         .warn_stream_stalled_secs(10)
+        //.dispatch_strategy(DispatchStrategy::AllSequential)
         .configure_stream_parameters(|p| {
             p.batch_limit(10)
                 .max_uncommitted_events(1000)
@@ -64,9 +65,8 @@ mod handler {
             events: Vec<Self::Event>,
             meta: BatchMeta<'a>,
         ) -> EventsHandlerFuture {
-            self.events_received += events.len();
-
             async move {
+                self.events_received += events.len();
                 if meta.frame_id % 2_000 == 0 {
                     println!(
                         "events: {} - frame id: {}",
@@ -86,8 +86,7 @@ mod handler {
             &self,
             _assignment: &HandlerAssignment,
         ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
-            async { Ok(Box::new(MyHandler { events_received: 0 }) as Box<dyn BatchHandler>) }
-                .boxed()
+            async { Ok(Box::new(MyHandler { events_received: 0 }) as Box<_>) }.boxed()
         }
     }
 }

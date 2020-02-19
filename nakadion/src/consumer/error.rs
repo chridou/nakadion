@@ -18,6 +18,10 @@ impl ConsumerError {
         }
     }
 
+    pub fn internal() -> Self {
+        Self::new(ConsumerErrorKind::Internal)
+    }
+
     pub fn new_with_message<M: fmt::Display>(kind: ConsumerErrorKind, message: M) -> Self {
         Self {
             message: Some(message.to_string()),

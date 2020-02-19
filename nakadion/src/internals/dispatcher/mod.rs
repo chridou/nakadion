@@ -9,9 +9,9 @@ use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
 
+mod dispatch_all_sequential;
 mod dispatch_event_type;
 mod dispatch_event_type_partition;
-mod no_dispatch;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
@@ -42,20 +42,30 @@ impl Dispatcher {
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match strategy {
-            DispatchStrategy::AllSequential => SleepingDispatcher::SingleWorker(
-                self::no_dispatch::Dispatcher::sleeping(handler_factory, api_client, config),
+            DispatchStrategy::AllSequential => SleepingDispatcher::AllSequential(
+                self::dispatch_all_sequential::Dispatcher::sleeping(
+                    handler_factory,
+                    api_client,
+                    config,
+                ),
             ),
-            _ => SleepingDispatcher::SingleWorker(self::no_dispatch::Dispatcher::sleeping(
-                handler_factory,
-                api_client,
-                config,
-            )),
+            DispatchStrategy::EventTypeSequential => SleepingDispatcher::EventTypeSequential(
+                self::dispatch_event_type::Dispatcher::sleeping(handler_factory, api_client),
+            ),
+            _ => SleepingDispatcher::AllSequential(
+                self::dispatch_all_sequential::Dispatcher::sleeping(
+                    handler_factory,
+                    api_client,
+                    config,
+                ),
+            ),
         }
     }
 }
 
 pub(crate) enum SleepingDispatcher<C> {
-    SingleWorker(no_dispatch::Sleeping<C>),
+    AllSequential(dispatch_all_sequential::Sleeping<C>),
+    EventTypeSequential(dispatch_event_type::Sleeping<C>),
 }
 
 impl<C> SleepingDispatcher<C>
@@ -68,8 +78,11 @@ where
     {
         stream_state.debug(format_args!("Dispatcher starting"));
         match self {
-            SleepingDispatcher::SingleWorker(dispatcher) => {
-                ActiveDispatcher::SingleWorker(dispatcher.start(stream_state, messages))
+            SleepingDispatcher::AllSequential(dispatcher) => {
+                ActiveDispatcher::AllSequential(dispatcher.start(stream_state, messages))
+            }
+            SleepingDispatcher::EventTypeSequential(dispatcher) => {
+                ActiveDispatcher::EventTypeSequential(dispatcher.start(stream_state, messages))
             }
         }
     }
@@ -78,13 +91,15 @@ where
 impl<C> SleepingDispatcher<C> {
     pub fn tick(&mut self) {
         match self {
-            SleepingDispatcher::SingleWorker(ref mut dispatcher) => dispatcher.tick(),
+            SleepingDispatcher::AllSequential(ref mut dispatcher) => dispatcher.tick(),
+            SleepingDispatcher::EventTypeSequential(ref mut dispatcher) => dispatcher.tick(),
         }
     }
 }
 
 pub(crate) enum ActiveDispatcher<'a, C> {
-    SingleWorker(no_dispatch::Active<'a, C>),
+    AllSequential(dispatch_all_sequential::Active<'a, C>),
+    EventTypeSequential(dispatch_event_type::Active<'a, C>),
 }
 
 impl<'a, C> ActiveDispatcher<'a, C>
@@ -93,13 +108,20 @@ where
 {
     pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
         match self {
-            ActiveDispatcher::SingleWorker(dispatcher) => {
+            ActiveDispatcher::AllSequential(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::SingleWorker))
+                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::AllSequential))
                     .await
             }
-            _ => panic!("not supported"),
+            ActiveDispatcher::EventTypeSequential(dispatcher) => {
+                dispatcher
+                    .join()
+                    .map_ok(|enr_dispatcher| {
+                        enr_dispatcher.map(SleepingDispatcher::EventTypeSequential)
+                    })
+                    .await
+            }
         }
     }
 }

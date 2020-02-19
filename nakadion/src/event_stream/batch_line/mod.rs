@@ -194,7 +194,6 @@ impl BatchLine {
         self.items.cursor().event_type_bytes(&self.bytes)
     }
 
-    #[allow(dead_code)]
     pub fn event_type_str(&self) -> &str {
         self.items.cursor().event_type_str(self.bytes.as_ref())
     }

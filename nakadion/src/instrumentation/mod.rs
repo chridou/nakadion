@@ -34,8 +34,9 @@ pub trait Instruments {
 
     // === WORKERS ===
 
-    fn worker_batch_processed(&self, n_bytes: usize, n_events: Option<usize>, time: Duration);
-    fn worker_deserialization_time(&self, n_bytes: usize, time: Duration);
+    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration);
+    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize);
+    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration);
 
     // === HANDLERS ===
 
@@ -132,8 +133,11 @@ impl Instruments for Instrumentation {
 
     // === WORKERS ===
 
-    fn worker_batch_processed(&self, n_bytes: usize, n_events: Option<usize>, time: Duration) {}
-    fn worker_deserialization_time(&self, n_bytes: usize, time: Duration) {
+    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {}
+    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+        if self.detail >= MetricsDetailLevel::Medium {}
+    }
+    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {
         if self.detail >= MetricsDetailLevel::Medium {}
     }
 

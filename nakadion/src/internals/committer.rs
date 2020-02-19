@@ -241,9 +241,6 @@ where
             continue;
         }
 
-        stream_state
-            .logger()
-            .debug(format_args!("Committing {} cursor(s)", pending.len()));
         let commit_started = now;
         let cursors: Vec<_> = pending.cursors().collect();
         match commit(
