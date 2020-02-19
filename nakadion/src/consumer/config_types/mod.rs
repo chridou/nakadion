@@ -160,6 +160,15 @@ impl Builder {
             self.stream_dead_policy = StreamDeadPolicy::try_from_env_prefixed(prefix.as_ref())?;
         }
 
+        if self.warn_stream_stalled_secs.is_none() {
+            self.warn_stream_stalled_secs =
+                WarnStreamStalledSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
+        if self.dispatch_strategy.is_none() {
+            self.dispatch_strategy = DispatchStrategy::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
         if self.abort_connect_on_auth_error.is_none() {
             self.abort_connect_on_auth_error =
                 AbortConnectOnAuthError::try_from_env_prefixed(prefix.as_ref())?;

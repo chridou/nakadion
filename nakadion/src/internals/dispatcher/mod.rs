@@ -42,17 +42,17 @@ impl Dispatcher {
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match strategy {
-            DispatchStrategy::AllSequential => SleepingDispatcher::AllSequential(
+            DispatchStrategy::AllSeq => SleepingDispatcher::AllSequential(
                 self::dispatch_all_sequential::Dispatcher::sleeping(
                     handler_factory,
                     api_client,
                     config,
                 ),
             ),
-            DispatchStrategy::EventTypeSequential => SleepingDispatcher::EventTypeSequential(
+            DispatchStrategy::EventTypeSeq => SleepingDispatcher::EventTypeSequential(
                 self::dispatch_event_type::Dispatcher::sleeping(handler_factory, api_client),
             ),
-            DispatchStrategy::EventTypePartitionSequential => {
+            DispatchStrategy::EventTypePartitionSeq => {
                 SleepingDispatcher::EventTypePartitionSequential(
                     self::dispatch_event_type_partition::Dispatcher::sleeping(
                         handler_factory,
