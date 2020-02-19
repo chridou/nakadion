@@ -44,7 +44,7 @@ pub enum DispatchStrategy {
     /// for determining the event type to be processed from `BatchMeta`.
     AllSequential,
     /// Dispatch all batches to a dedicated worker for an
-    /// EventType.
+    /// event type.
     ///
     /// This means batches are processed sequentially for each event type.
     ///
@@ -53,6 +53,16 @@ pub enum DispatchStrategy {
     ///
     /// This is the default `DispatchStrategy`.
     EventTypeSequential,
+    /// Dispatch all batches to a dedicated worker for an
+    /// partition on each event type.
+    ///
+    /// This means batches are processed sequentially for each individual partition
+    /// of an event type.
+    ///
+    /// This will always request a handler with
+    /// `HandlerAssignment::EventTypePartition(EventTypePartitionName)`
+    /// from the `BatchHandlerFactory`.
+    EventTypePartitionSequential,
 }
 
 impl DispatchStrategy {
@@ -70,6 +80,9 @@ impl fmt::Display for DispatchStrategy {
         match self {
             DispatchStrategy::AllSequential => write!(f, "all_sequential")?,
             DispatchStrategy::EventTypeSequential => write!(f, "event_type_sequential")?,
+            DispatchStrategy::EventTypePartitionSequential => {
+                write!(f, "event_type_partition_sequential")?
+            }
         }
 
         Ok(())
@@ -89,6 +102,7 @@ impl FromStr for DispatchStrategy {
         match s {
             "all_sequential" => Ok(DispatchStrategy::AllSequential),
             "event_type_sequential" => Ok(DispatchStrategy::EventTypeSequential),
+            "event_type_partition_sequential" => Ok(DispatchStrategy::EventTypeSequential),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }

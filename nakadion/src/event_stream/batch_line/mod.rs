@@ -18,6 +18,7 @@ mod line_parser;
 use crate::api::IoError;
 use crate::event_stream::NakadiFrame;
 use crate::instrumentation::{Instrumentation, Instruments};
+use crate::nakadi_types::model::subscription::EventTypePartition;
 
 use line_parser::{parse_line, LineItems, ParseLineError};
 
@@ -196,6 +197,10 @@ impl BatchLine {
 
     pub fn event_type_str(&self) -> &str {
         self.items.cursor().event_type_str(self.bytes.as_ref())
+    }
+
+    pub fn to_event_type_partition(&self) -> EventTypePartition {
+        EventTypePartition::new(self.event_type_str(), self.partition_str())
     }
 
     #[allow(dead_code)]

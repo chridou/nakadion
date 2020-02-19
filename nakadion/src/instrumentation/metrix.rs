@@ -157,16 +157,54 @@ impl Instruments for Metrix {
 
     // === HANDLERS ===
 
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {}
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {}
-    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {}
+    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
+        if let Some(n_events) = n_events {
+            self.consumer_tx
+                .observed_one_value_now(ConsumerMetric::HandlerProcessedEvents, n_events);
+        }
+        self.consumer_tx.observed_one_value_now(
+            ConsumerMetric::HandlerBatchProcessedTime,
+            (time, TimeUnit::Microseconds),
+        );
+    }
+    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+        self.handler_tx
+            .observed_one_value_now(HandlerMetric::HandlerBatchProcessedBytes, n_bytes);
+    }
+    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {
+        self.handler_tx
+            .observed_one_value_now(HandlerMetric::HandlerBatchDeserializationBytes, n_bytes)
+            .observed_one_value_now(
+                HandlerMetric::HandlerBatchDeserializationTime,
+                (time, TimeUnit::Microseconds),
+            );
+    }
 
     // === HANDLERS ===
 
     // === COMMITTER ===
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {}
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {}
+    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+        self.committer_tx
+            .observed_one_value_now(CommitterMetric::CommitterCursorsCommittedCount, n_cursors)
+            .observed_one_value_now(
+                CommitterMetric::CommitterCursorsCommittedTime,
+                (time, TimeUnit::Milliseconds),
+            );
+    }
+    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {
+        self.consumer_tx
+            .observed_one_now(ConsumerMetric::CommitterCommitFailed);
+        self.committer_tx
+            .observed_one_value_now(
+                CommitterMetric::CommitterCursorsNotCommittedCount,
+                n_cursors,
+            )
+            .observed_one_value_now(
+                CommitterMetric::CommitterCursorsNotCommittedTime,
+                (time, TimeUnit::Milliseconds),
+            );
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
