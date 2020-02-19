@@ -1,8 +1,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use futures::{future::BoxFuture, pin_mut, FutureExt, Stream, StreamExt};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use futures::{
+    future::{BoxFuture, TryFutureExt},
+    pin_mut, FutureExt, Stream, StreamExt,
+};
+use std::future::Future;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use crate::api::SubscriptionCommitApi;
 use crate::consumer::{Config, ConsumerError};
@@ -22,7 +26,6 @@ impl Dispatcher {
     pub(crate) fn sleeping<C>(
         handler_factory: Arc<dyn BatchHandlerFactory>,
         api_client: C,
-        config: Config,
     ) -> Sleeping<C>
     where
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
@@ -94,18 +97,17 @@ impl<C> Sleeping<C> {
     }
 }
 
-async fn run<S>(
+fn run<S>(
     assignments: BTreeMap<String, SleepingWorker>,
     stream: S,
     stream_state: StreamState,
     committer: UnboundedSender<CommitData>,
     handler_factory: Arc<dyn BatchHandlerFactory>,
-) -> EnrichedResult<BTreeMap<String, SleepingWorker>>
+) -> impl Future<Output = EnrichedResult<BTreeMap<String, SleepingWorker>>>
 where
     S: Stream<Item = DispatcherMessage> + Send + 'static,
 {
     let task = async move {
-        stream_state.debug(format_args!("running dispatch by event type dispatcher"));
         let mut activated: BTreeMap<_, _> = assignments
             .into_iter()
             .map(|(event_type, sleeping_worker)| {
@@ -198,10 +200,9 @@ where
         }
     };
 
-    match tokio::spawn(task).await {
-        Ok(r) => r,
-        Err(join_err) => Err(EnrichedErr::no_data(join_err)),
-    }
+    let join_handle = tokio::spawn(task);
+
+    async { join_handle.map_err(EnrichedErr::no_data).await? }
 }
 
 type WorkerJoin<'a> = BoxFuture<'a, EnrichedResult<SleepingWorker>>;
