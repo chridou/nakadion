@@ -54,6 +54,9 @@ pub enum DispatchStrategy {
     /// from the `BatchHandlerFactory`.
     /// This means that if multiple event types are consumed, the handler is responsible
     /// for determining the event type to be processed from `BatchMeta`.
+    ///
+    /// It is suggested to not use this strategy if multiple event types
+    /// are expected.
     AllSeq,
     /// Dispatch all batches to a dedicated worker for an
     /// event type.
