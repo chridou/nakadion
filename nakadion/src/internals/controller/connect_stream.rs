@@ -25,11 +25,18 @@ pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi>(
     let mut backoff = Backoff::new(config.connect_stream_retry_max_delay.into_inner());
     let flow_id = FlowId::random();
 
+    let mut attempts_left = config.max_connect_attempts.unwrap_or_default().into_inner();
+
     let connect_started_at = Instant::now();
     loop {
         if consumer_state.global_cancellation_requested() {
             return Err(ConsumerError::new(ConsumerErrorKind::UserAbort));
         }
+
+        if attempts_left == 0 {
+            return Err(ConsumerError::other().with_message("No connect attempts left. Aborting"));
+        }
+        attempts_left -= 1;
 
         match connect(
             &api_client,

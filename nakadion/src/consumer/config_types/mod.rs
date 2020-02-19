@@ -97,6 +97,10 @@ pub struct Builder {
     pub abort_connect_on_auth_error: Option<AbortConnectOnAuthError>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
+    /// The maximum number of attempts to be made to connect to a stream.
+    ///
+    /// If `None`: No limit.
+    pub max_connect_attempts: Option<MaxConnectAttempts>,
     /// The maximum retry delay between failed attempts to connect to a stream.
     pub connect_stream_retry_max_delay_secs: Option<ConnectStreamRetryMaxDelaySecs>,
     /// The timeout for a request made to Nakadi to connect to a stream.
@@ -177,6 +181,10 @@ impl Builder {
         if self.abort_connect_on_subscription_not_found.is_none() {
             self.abort_connect_on_subscription_not_found =
                 AbortConnectOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
+        if self.max_connect_attempts.is_none() {
+            self.max_connect_attempts = MaxConnectAttempts::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.connect_stream_retry_max_delay_secs.is_none() {
@@ -281,6 +289,17 @@ impl Builder {
         self
     }
 
+    /// The maximum number of attempts to be made to connect to a stream.
+    ///
+    /// If `None`: No limit.
+    pub fn max_connect_attempts<T: Into<MaxConnectAttempts>>(
+        mut self,
+        max_connect_attempts: T,
+    ) -> Self {
+        self.max_connect_attempts = Some(max_connect_attempts.into());
+        self
+    }
+
     /// The maximum retry delay between failed attempts to connect to a stream.
     pub fn connect_stream_retry_max_delay_secs<T: Into<ConnectStreamRetryMaxDelaySecs>>(
         mut self,
@@ -380,6 +399,8 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_default();
 
+        let max_connect_attempts = self.max_connect_attempts;
+
         let connect_stream_retry_max_delay =
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
         let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
@@ -398,6 +419,7 @@ impl Builder {
         self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
         self.abort_connect_on_subscription_not_found =
             Some(abort_connect_on_subscription_not_found);
+        self.max_connect_attempts = max_connect_attempts;
         self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
         self.connect_stream_timeout_secs = Some(connect_stream_timeout);
         self.commit_attempt_timeout_millis = Some(commit_attempt_timeout);
@@ -471,6 +493,8 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_default();
 
+        let max_connect_attempts = self.max_connect_attempts;
+
         let connect_stream_retry_max_delay =
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
         let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
@@ -490,6 +514,7 @@ impl Builder {
             commit_strategy,
             abort_connect_on_auth_error,
             abort_connect_on_subscription_not_found,
+            max_connect_attempts,
             connect_stream_retry_max_delay,
             connect_stream_timeout,
             commit_attempt_timeout,
