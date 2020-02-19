@@ -16,6 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .commit_attempt_timeout_millis(1500)
         .connect_stream_timeout_secs(5)
         .warn_stream_stalled_secs(10)
+        //.dispatch_strategy(DispatchStrategy::AllSequential)
         .configure_stream_parameters(|p| {
             p.batch_limit(10)
                 .max_uncommitted_events(1000)

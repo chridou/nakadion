@@ -99,6 +99,9 @@ mod processor {
 
     use super::WorkerMessage;
 
+    /// Starts this worker.
+    ///
+    /// The worker will run as a task which has to be joined.
     pub(crate) fn start<S>(
         batches: S,
         mut handler_slot: HandlerSlot,

@@ -49,6 +49,13 @@ impl Dispatcher {
                     config,
                 ),
             ),
+            DispatchStrategy::EventTypeSequential => SleepingDispatcher::EventTypeSequential(
+                self::dispatch_event_type::Dispatcher::sleeping(
+                    handler_factory,
+                    api_client,
+                    config,
+                ),
+            ),
             _ => SleepingDispatcher::AllSequential(
                 self::dispatch_all_sequential::Dispatcher::sleeping(
                     handler_factory,
