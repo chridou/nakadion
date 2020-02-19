@@ -20,7 +20,7 @@ use crate::Error;
 /// assert_eq!(strategy, DispatchStrategy::EventTypePar);
 ///
 /// let strategy = "event_type_partition_par".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
+/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionPar);
 /// ```
 ///
 /// JSON is also valid:
@@ -35,7 +35,7 @@ use crate::Error;
 /// assert_eq!(strategy, DispatchStrategy::EventTypePar);
 ///
 /// let strategy = "{\"strategy\": \"event_type_partition_par\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
+/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionPar);
 /// ```
 ///
 /// # Environment variables

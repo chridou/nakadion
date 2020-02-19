@@ -25,15 +25,15 @@ pub use crate::nakadi_types::{
     Error,
 };
 
-mod config_types;
-mod error;
+pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
+#[cfg(feature = "metrix")]
+pub use crate::instrumentation::{Metrix, MetrixConfig};
 
 #[cfg(feature = "log")]
 pub use crate::logging::log_adapter::LogLogger;
 #[cfg(feature = "slog")]
 pub use crate::logging::slog_adapter::SlogLogger;
 
-pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 use crate::logging::Logger;
 pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogger};
 pub use config_types::{
@@ -44,6 +44,9 @@ pub use config_types::{
     WarnStreamStalledSecs,
 };
 pub use error::*;
+
+mod config_types;
+mod error;
 
 /// Consumes an event stream
 ///
