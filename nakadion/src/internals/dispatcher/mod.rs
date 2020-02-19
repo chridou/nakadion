@@ -9,9 +9,9 @@ use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
 
-mod dispatch_all_sequential;
-mod dispatch_event_type;
-mod dispatch_event_type_partition;
+mod disp_all_seq;
+mod disp_et_par;
+mod disp_etp_par;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
@@ -42,35 +42,27 @@ impl Dispatcher {
         C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match strategy {
-            DispatchStrategy::AllSeq => SleepingDispatcher::AllSequential(
-                self::dispatch_all_sequential::Dispatcher::sleeping(
-                    handler_factory,
-                    api_client,
-                    config,
-                ),
+            DispatchStrategy::AllSeq => SleepingDispatcher::AllSeq(
+                self::disp_all_seq::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
-            DispatchStrategy::EventTypeSeq => SleepingDispatcher::EventTypeSequential(
-                self::dispatch_event_type::Dispatcher::sleeping(handler_factory, api_client),
+            DispatchStrategy::EventTypePar => SleepingDispatcher::EventTypePar(
+                self::disp_et_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
-            DispatchStrategy::EventTypePartitionSeq => {
-                SleepingDispatcher::EventTypePartitionSequential(
-                    self::dispatch_event_type_partition::Dispatcher::sleeping(
-                        handler_factory,
-                        api_client,
-                    ),
-                )
-            }
-            _ => SleepingDispatcher::EventTypeSequential(
-                self::dispatch_event_type::Dispatcher::sleeping(handler_factory, api_client),
+            DispatchStrategy::EventTypePartitionPar => SleepingDispatcher::EventTypePartitionPar(
+                self::disp_etp_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
+            _ => SleepingDispatcher::EventTypePar(self::disp_et_par::Dispatcher::sleeping(
+                handler_factory,
+                api_client,
+            )),
         }
     }
 }
 
 pub(crate) enum SleepingDispatcher<C> {
-    AllSequential(dispatch_all_sequential::Sleeping<C>),
-    EventTypeSequential(dispatch_event_type::Sleeping<C>),
-    EventTypePartitionSequential(dispatch_event_type_partition::Sleeping<C>),
+    AllSeq(disp_all_seq::Sleeping<C>),
+    EventTypePar(disp_et_par::Sleeping<C>),
+    EventTypePartitionPar(disp_etp_par::Sleeping<C>),
 }
 
 impl<C> SleepingDispatcher<C>
@@ -83,16 +75,14 @@ where
     {
         stream_state.debug(format_args!("Dispatcher starting"));
         match self {
-            SleepingDispatcher::AllSequential(dispatcher) => {
-                ActiveDispatcher::AllSequential(dispatcher.start(stream_state, messages))
+            SleepingDispatcher::AllSeq(dispatcher) => {
+                ActiveDispatcher::AllSeq(dispatcher.start(stream_state, messages))
             }
-            SleepingDispatcher::EventTypeSequential(dispatcher) => {
-                ActiveDispatcher::EventTypeSequential(dispatcher.start(stream_state, messages))
+            SleepingDispatcher::EventTypePar(dispatcher) => {
+                ActiveDispatcher::EventTypePar(dispatcher.start(stream_state, messages))
             }
-            SleepingDispatcher::EventTypePartitionSequential(dispatcher) => {
-                ActiveDispatcher::EventTypePartitionSequential(
-                    dispatcher.start(stream_state, messages),
-                )
+            SleepingDispatcher::EventTypePartitionPar(dispatcher) => {
+                ActiveDispatcher::EventTypePartitionPar(dispatcher.start(stream_state, messages))
             }
         }
     }
@@ -101,19 +91,17 @@ where
 impl<C> SleepingDispatcher<C> {
     pub fn tick(&mut self) {
         match self {
-            SleepingDispatcher::AllSequential(ref mut dispatcher) => dispatcher.tick(),
-            SleepingDispatcher::EventTypeSequential(ref mut dispatcher) => dispatcher.tick(),
-            SleepingDispatcher::EventTypePartitionSequential(ref mut dispatcher) => {
-                dispatcher.tick()
-            }
+            SleepingDispatcher::AllSeq(ref mut dispatcher) => dispatcher.tick(),
+            SleepingDispatcher::EventTypePar(ref mut dispatcher) => dispatcher.tick(),
+            SleepingDispatcher::EventTypePartitionPar(ref mut dispatcher) => dispatcher.tick(),
         }
     }
 }
 
 pub(crate) enum ActiveDispatcher<'a, C> {
-    AllSequential(dispatch_all_sequential::Active<'a, C>),
-    EventTypeSequential(dispatch_event_type::Active<'a, C>),
-    EventTypePartitionSequential(dispatch_event_type_partition::Active<'a, C>),
+    AllSeq(disp_all_seq::Active<'a, C>),
+    EventTypePar(disp_et_par::Active<'a, C>),
+    EventTypePartitionPar(disp_etp_par::Active<'a, C>),
 }
 
 impl<'a, C> ActiveDispatcher<'a, C>
@@ -122,25 +110,23 @@ where
 {
     pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
         match self {
-            ActiveDispatcher::AllSequential(dispatcher) => {
+            ActiveDispatcher::AllSeq(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::AllSequential))
+                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::AllSeq))
                     .await
             }
-            ActiveDispatcher::EventTypeSequential(dispatcher) => {
+            ActiveDispatcher::EventTypePar(dispatcher) => {
+                dispatcher
+                    .join()
+                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::EventTypePar))
+                    .await
+            }
+            ActiveDispatcher::EventTypePartitionPar(dispatcher) => {
                 dispatcher
                     .join()
                     .map_ok(|enr_dispatcher| {
-                        enr_dispatcher.map(SleepingDispatcher::EventTypeSequential)
-                    })
-                    .await
-            }
-            ActiveDispatcher::EventTypePartitionSequential(dispatcher) => {
-                dispatcher
-                    .join()
-                    .map_ok(|enr_dispatcher| {
-                        enr_dispatcher.map(SleepingDispatcher::EventTypePartitionSequential)
+                        enr_dispatcher.map(SleepingDispatcher::EventTypePartitionPar)
                     })
                     .await
             }

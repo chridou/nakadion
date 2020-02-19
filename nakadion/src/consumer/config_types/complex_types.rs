@@ -16,10 +16,10 @@ use crate::Error;
 /// let strategy = "all_seq".parse::<DispatchStrategy>().unwrap();
 /// assert_eq!(strategy, DispatchStrategy::AllSeq);
 ///
-/// let strategy = "event_type_seq".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypeSeq);
+/// let strategy = "event_type_par".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypePar);
 ///
-/// let strategy = "event_type_partition_seq".parse::<DispatchStrategy>().unwrap();
+/// let strategy = "event_type_partition_par".parse::<DispatchStrategy>().unwrap();
 /// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
 /// ```
 ///
@@ -31,10 +31,10 @@ use crate::Error;
 /// let strategy = "{\"strategy\": \"all_seq\"}".parse::<DispatchStrategy>().unwrap();
 /// assert_eq!(strategy, DispatchStrategy::AllSeq);
 ///
-/// let strategy = "{\"strategy\": \"event_type_seq\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypeSeq);
+/// let strategy = "{\"strategy\": \"event_type_par\"}".parse::<DispatchStrategy>().unwrap();
+/// assert_eq!(strategy, DispatchStrategy::EventTypePar);
 ///
-/// let strategy = "{\"strategy\": \"event_type_partition_seq\"}".parse::<DispatchStrategy>().unwrap();
+/// let strategy = "{\"strategy\": \"event_type_partition_par\"}".parse::<DispatchStrategy>().unwrap();
 /// assert_eq!(strategy, DispatchStrategy::EventTypePartitionSeq);
 /// ```
 ///
@@ -48,7 +48,7 @@ use crate::Error;
 pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
-    /// This means batches are processed sequentially.
+    /// This means batches all are processed sequentially by a single handler.
     ///
     /// This will always request a handler with `HandlerAssignment::Unspecified`
     /// from the `BatchHandlerFactory`.
@@ -61,23 +61,25 @@ pub enum DispatchStrategy {
     /// Dispatch all batches to a dedicated worker for an
     /// event type.
     ///
-    /// This means batches are processed sequentially for each event type.
+    /// This means batches are processed sequentially for each event type but
+    /// the maximum parallelism is the number of event types.
     ///
     /// This will always request a handler with `HandlerAssignment::EventType(EventTypeName)`
     /// from the `BatchHandlerFactory`.
     ///
     /// This is the default `DispatchStrategy`.
-    EventTypeSeq,
+    EventTypePar,
     /// Dispatch all batches to a dedicated worker for an
     /// partition on each event type.
     ///
     /// This means batches are processed sequentially for each individual partition
-    /// of an event type.
+    /// of an event type. The maximum parallelism is the sum of each event type multiplied by
+    /// its number of partitions.
     ///
     /// This will always request a handler with
     /// `HandlerAssignment::EventTypePartition(EventTypePartitionName)`
     /// from the `BatchHandlerFactory`.
-    EventTypePartitionSeq,
+    EventTypePartitionPar,
 }
 
 impl DispatchStrategy {
@@ -86,7 +88,7 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::EventTypeSeq
+        DispatchStrategy::EventTypePar
     }
 }
 
@@ -94,8 +96,8 @@ impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DispatchStrategy::AllSeq => write!(f, "all_seq")?,
-            DispatchStrategy::EventTypeSeq => write!(f, "event_type_seq")?,
-            DispatchStrategy::EventTypePartitionSeq => write!(f, "event_type_partition_seq")?,
+            DispatchStrategy::EventTypePar => write!(f, "event_type_par")?,
+            DispatchStrategy::EventTypePartitionPar => write!(f, "event_type_partition_par")?,
         }
 
         Ok(())
@@ -114,8 +116,8 @@ impl FromStr for DispatchStrategy {
 
         match s {
             "all_seq" => Ok(DispatchStrategy::AllSeq),
-            "event_type_seq" => Ok(DispatchStrategy::EventTypeSeq),
-            "event_type_partition_seq" => Ok(DispatchStrategy::EventTypePartitionSeq),
+            "event_type_par" => Ok(DispatchStrategy::EventTypePar),
+            "event_type_partition_par" => Ok(DispatchStrategy::EventTypePartitionPar),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }
