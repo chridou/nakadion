@@ -261,7 +261,7 @@ impl HandlerAssignment {
 ///         _assignment: &HandlerAssignment,
 ///     ) ->  BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
 ///         async move {
-///             Ok(Box::new(MyHandler(self.0.clone())) as Box<dyn BatchHandler>)
+///             Ok(Box::new(MyHandler(self.0.clone())) as Box<_>)
 ///         }.boxed()
 ///     }
 /// }

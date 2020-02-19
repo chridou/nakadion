@@ -3,9 +3,9 @@ use std::sync::Arc;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 
 use crate::api::SubscriptionCommitApi;
-use crate::consumer::{Config, ConsumerError};
-use crate::handler::{BatchHandler, BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{committer::*, worker::*, EnrichedErr, EnrichedResult, StreamState};
+use crate::consumer::Config;
+use crate::handler::{BatchHandlerFactory, HandlerAssignment};
+use crate::internals::{committer::*, worker::*, EnrichedResult, StreamState};
 use crate::logging::Logs;
 
 use super::DispatcherMessage;

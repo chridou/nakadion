@@ -37,7 +37,22 @@ pub enum DispatchStrategy {
     /// Dispatch all batches to a single worker(handler)
     ///
     /// This means batches are processed sequentially.
+    ///
+    /// This will always request a handler with `HandlerAssignment::Unspecified`
+    /// from the `BatchHandlerFactory`.
+    /// This means that if multiple event types are consumed, the handler is responsible
+    /// for determining the event type to be processed from `BatchMeta`.
     AllSequential,
+    /// Dispatch all batches to a dedicated worker for an
+    /// EventType.
+    ///
+    /// This means batches are processed sequentially for each event type.
+    ///
+    /// This will always request a handler with `HandlerAssignment::EventType(EventTypeName)`
+    /// from the `BatchHandlerFactory`.
+    ///
+    /// This is the default `DispatchStrategy`.
+    EventTypeSequential,
 }
 
 impl DispatchStrategy {
@@ -46,7 +61,7 @@ impl DispatchStrategy {
 
 impl Default for DispatchStrategy {
     fn default() -> Self {
-        DispatchStrategy::AllSequential
+        DispatchStrategy::EventTypeSequential
     }
 }
 
@@ -54,6 +69,7 @@ impl fmt::Display for DispatchStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DispatchStrategy::AllSequential => write!(f, "all_sequential")?,
+            DispatchStrategy::EventTypeSequential => write!(f, "event_type_sequential")?,
         }
 
         Ok(())
@@ -72,6 +88,7 @@ impl FromStr for DispatchStrategy {
 
         match s {
             "all_sequential" => Ok(DispatchStrategy::AllSequential),
+            "event_type_sequential" => Ok(DispatchStrategy::EventTypeSequential),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }

@@ -128,7 +128,7 @@ impl Instruments for Metrix {
     }
     fn stream_tick_emitted(&self) {
         self.consumer_tx
-            .observed_one_now(ConsumerMetric::StreamTickEmmitted);
+            .observed_one_now(ConsumerMetric::StreamTickEmitted);
     }
 
     // === CONTROLLER ===
@@ -177,7 +177,7 @@ pub enum ConsumerMetric {
     ControllerBatchReceivedBytes,
     StreamConnectFailed,
     CommitterCommitFailed,
-    StreamTickEmmitted,
+    StreamTickEmitted,
 }
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum StreamMetric {

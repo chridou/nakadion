@@ -85,8 +85,7 @@ mod handler {
             &self,
             _assignment: &HandlerAssignment,
         ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
-            async { Ok(Box::new(MyHandler { events_received: 0 }) as Box<dyn BatchHandler>) }
-                .boxed()
+            async { Ok(Box::new(MyHandler { events_received: 0 }) as Box<_>) }.boxed()
         }
     }
 }
