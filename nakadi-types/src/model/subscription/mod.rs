@@ -360,6 +360,7 @@ impl EventTypePartitionLike for SubscriptionCursor {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_CursorCommitResult)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CursorCommitResults {
+    #[serde(rename = "items")]
     pub commit_results: Vec<CursorCommitResult>,
 }
 

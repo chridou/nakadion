@@ -696,7 +696,7 @@ impl SubscriptionCommitApi for ApiClient {
                 StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
                 StatusCode::OK => {
                     let commit_results = deserialize_stream(response.into_body()).await?;
-                    Ok(CursorCommitResults { commit_results })
+                    Ok(commit_results)
                 }
                 _ => evaluate_error_for_problem(response).map(Err).await,
             }
