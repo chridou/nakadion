@@ -9,10 +9,10 @@ use tokio::{
 };
 
 use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
-use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
-use crate::event_stream::{
+use crate::components::streams::{
     BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream,
 };
+use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::internals::{
     dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},

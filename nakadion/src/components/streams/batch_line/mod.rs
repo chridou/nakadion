@@ -16,7 +16,7 @@ use crate::Error;
 mod line_parser;
 
 use crate::api::IoError;
-use crate::event_stream::NakadiFrame;
+use crate::components::streams::NakadiFrame;
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::nakadi_types::model::subscription::EventTypePartition;
 

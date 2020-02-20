@@ -4,8 +4,8 @@ use std::time::Instant;
 use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
+use crate::components::streams::BatchLine;
 use crate::consumer::{Config, DispatchStrategy};
-use crate::event_stream::BatchLine;
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;

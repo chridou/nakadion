@@ -153,16 +153,17 @@ pub trait BatchHandler: Send {
     }
 }
 
-/*
-impl<T> BatchHandler for T
+/// Simple wrapper for `BatchHandlers` from closures
+pub struct HandlerFn<F>(pub F);
+
+impl<F> BatchHandler for HandlerFn<F>
 where
-    T: Fn(Bytes, BatchMeta) -> BatchHandlerFuture + Send,
+    F: for<'a> Fn(Bytes, BatchMeta<'a>) -> BatchHandlerFuture<'a> + Send,
 {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a> {
-        self(events, meta)
+        (self.0)(events, meta)
     }
 }
-*/
 
 /// Defines what a `BatchHandler` will receive.
 ///

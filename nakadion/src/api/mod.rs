@@ -18,6 +18,7 @@ use dispatch_http_request::RemoteCallError;
 
 pub use self::client::ApiClient;
 pub use self::error::*;
+pub use crate::components::IoError;
 
 mod client;
 pub mod dispatch_http_request;
@@ -311,18 +312,18 @@ pub trait SubscriptionStreamApi {
         subscription_id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: T,
-    ) -> ApiFuture<SubscriptionStream>;
+    ) -> ApiFuture<SubscriptionStreamChunks>;
 }
 
-/// A stream of event type partitions from Nakadi
-pub struct SubscriptionStream {
+/// A stream of of chunks directly from Nakadi
+pub struct SubscriptionStreamChunks {
     pub stream_id: StreamId,
-    pub stream: BytesStream,
+    pub chunks: BytesStream,
 }
 
-impl SubscriptionStream {
+impl<'a> SubscriptionStreamChunks {
     pub fn parts(self) -> (StreamId, BytesStream) {
-        (self.stream_id, self.stream)
+        (self.stream_id, self.chunks)
     }
 }
 

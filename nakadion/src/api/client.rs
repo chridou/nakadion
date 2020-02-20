@@ -163,25 +163,23 @@ impl ApiClient {
         self.inner.dispatch_http_request.dispatch(req)
     }
 
-    fn send_receive_payload<'a, R: DeserializeOwned>(
-        &'a self,
+    async fn send_receive_payload<R: DeserializeOwned + 'static>(
+        &self,
         url: Url,
         method: Method,
         payload: Vec<u8>,
         flow_id: FlowId,
-    ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
-        async move {
-            let mut request = self.create_request(&url, payload, flow_id).await?;
-            *request.method_mut() = method;
+    ) -> Result<R, NakadiApiError> {
+        let mut request = self.create_request(&url, payload, flow_id).await?;
+        *request.method_mut() = method;
 
-            let response = self.dispatch(request).await?;
+        let response = self.dispatch(request).await?;
 
-            if response.status().is_success() {
-                let deserialized = deserialize_stream(response.into_body()).await?;
-                Ok(deserialized)
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
+        if response.status().is_success() {
+            let deserialized = deserialize_stream(response.into_body()).await?;
+            Ok(deserialized)
+        } else {
+            evaluate_error_for_problem(response).map(Err).await
         }
     }
 
@@ -294,7 +292,7 @@ fn construct_authorization_bearer_value<T: AsRef<str>>(
     Ok(value)
 }
 
-async fn deserialize_stream<T: DeserializeOwned>(
+async fn deserialize_stream<'a, T: DeserializeOwned>(
     mut stream: BytesStream,
 ) -> Result<T, NakadiApiError> {
     let mut bytes = Vec::new();
@@ -307,7 +305,7 @@ async fn deserialize_stream<T: DeserializeOwned>(
     Ok(deserialized)
 }
 
-async fn evaluate_error_for_problem<'a>(response: Response<BytesStream>) -> NakadiApiError {
+async fn evaluate_error_for_problem(response: Response<BytesStream>) -> NakadiApiError {
     let (parts, body) = response.into_parts();
 
     let flow_id = match parts.headers.get("x-flow-id") {
@@ -708,12 +706,12 @@ impl SubscriptionCommitApi for ApiClient {
 }
 
 impl SubscriptionStreamApi for ApiClient {
-    fn request_stream<T: Into<FlowId>>(
-        &self,
+    fn request_stream<'a, T: Into<FlowId>>(
+        &'a self,
         subscription_id: SubscriptionId,
         parameters: &StreamParameters,
         flow_id: T,
-    ) -> ApiFuture<SubscriptionStream> {
+    ) -> ApiFuture<'a, SubscriptionStreamChunks> {
         let url = self.urls().subscriptions_request_stream(subscription_id);
         let parameters = serde_json::to_vec(parameters).unwrap();
         let flow_id = flow_id.into();
@@ -744,9 +742,9 @@ impl SubscriptionStreamApi for ApiClient {
                                 header_str, err
                             ))
                         })?;
-                        Ok(SubscriptionStream {
+                        Ok(SubscriptionStreamChunks {
                             stream_id,
-                            stream: response.into_body(),
+                            chunks: response.into_body(),
                         })
                     }
                     None => {

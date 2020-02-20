@@ -4,8 +4,8 @@ use std::time::Instant;
 use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
+use crate::components::streams::BatchLine;
 use crate::consumer::HandlerInactivityTimeoutSecs;
-use crate::event_stream::BatchLine;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, EnrichedErr, EnrichedResult, StreamState};
 
@@ -88,8 +88,8 @@ mod processor {
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
+    use crate::components::streams::BatchLine;
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
-    use crate::event_stream::BatchLine;
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
         HandlerAssignment,
