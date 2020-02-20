@@ -131,13 +131,18 @@ pub trait EventsHandler {
 
     /// Decide on how to execute deserialization.
     ///
-    /// The number of bytes to be deserialized is passed.
+    /// The number of bytes to be deserialized is passed to decide
+    /// conditionally.
     ///
     /// If not overwritten the default is `SpawnTarget::Executor`.
     fn deserialize_on(&mut self, _n_bytes: usize) -> SpawnTarget {
         SpawnTarget::Executor
     }
 
+    /// Periodically called if there were no events for a given time.
+    ///
+    /// This method will only be called if the parameter `handler_inactivity_timeout_secs`
+    /// was set for the `Consumer`
     fn on_inactive(
         &mut self,
         _inactive_for: Duration,

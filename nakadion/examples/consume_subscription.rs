@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut builder = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
-        .inactivity_timeout_secs(30)
+        .handler_inactivity_timeout_secs(30)
         .commit_attempt_timeout_millis(1500)
         .connect_stream_timeout_secs(5)
         .warn_stream_stalled_secs(10)

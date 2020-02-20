@@ -13,7 +13,6 @@ use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::event_stream::{
     BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream,
 };
-use crate::handler::BatchHandler;
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::internals::{
     dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},
@@ -69,7 +68,7 @@ where
 
 enum BatchLineMessage {
     BatchLine(BatchLine),
-    Tick,
+    Tick(Instant),
     StreamEnded,
 }
 
@@ -168,7 +167,7 @@ where
                 let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
                 break;
             }
-            BatchLineMessage::Tick => {
+            BatchLineMessage::Tick(timestamp) => {
                 if stream_dead_policy
                     .is_stream_dead(last_frame_received_at, last_events_received_at)
                 {
@@ -186,7 +185,7 @@ where
                     }
                 }
 
-                DispatcherMessage::Tick
+                DispatcherMessage::Tick(timestamp)
             }
             BatchLineMessage::BatchLine(batch) => {
                 let frame_received_at = batch.received_at();
@@ -323,7 +322,7 @@ where
 
                         break (active_dispatcher, batch_lines_sink, first_frame);
                     }
-                    Ok(BatchLineMessage::Tick) => {
+                    Ok(BatchLineMessage::Tick(_timestamp)) => {
                         if stream_dead_policy
                             .is_stream_dead(nothing_received_since, nothing_received_since)
                         {
@@ -388,7 +387,7 @@ fn make_ticked_batch_line_stream(
     let ticker =
         interval_at((Instant::now() + tick_interval).into(), tick_interval).map(move |_| {
             instrumentation.stream_tick_emitted();
-            Ok(BatchLineMessage::Tick)
+            Ok(BatchLineMessage::Tick(Instant::now()))
         });
 
     stream::select(batch_stream, ticker)

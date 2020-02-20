@@ -138,7 +138,12 @@ impl InactivityAnswer {
 /// }
 /// ```
 pub trait BatchHandler: Send {
+    /// Handle a batch of bytes
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a>;
+    /// Periodically called if there were no events for a given time.
+    ///
+    /// This method will only be called if the parameter `handler_inactivity_timeout_secs`
+    /// was set for the `Consumer`
     fn on_inactive(
         &mut self,
         _inactive_for: Duration,

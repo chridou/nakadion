@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::{Stream, TryFutureExt};
 
@@ -9,14 +10,13 @@ use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
 
-mod disp_all_seq;
-mod disp_et_par;
-mod disp_etp_par;
+mod all_seq;
+mod par;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
     Batch(BatchLine),
-    Tick,
+    Tick(Instant),
     StreamEnded,
 }
 
@@ -43,15 +43,15 @@ impl Dispatcher {
     {
         match strategy {
             DispatchStrategy::AllSeq => SleepingDispatcher::AllSeq(
-                self::disp_all_seq::Dispatcher::sleeping(handler_factory, api_client, config),
+                self::all_seq::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
             DispatchStrategy::EventTypePar => SleepingDispatcher::EventTypePar(
-                self::disp_et_par::Dispatcher::sleeping(handler_factory, api_client),
+                self::par::et_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
             DispatchStrategy::EventTypePartitionPar => SleepingDispatcher::EventTypePartitionPar(
-                self::disp_etp_par::Dispatcher::sleeping(handler_factory, api_client),
+                self::par::etp_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
-            _ => SleepingDispatcher::EventTypePar(self::disp_et_par::Dispatcher::sleeping(
+            _ => SleepingDispatcher::EventTypePar(self::par::et_par::Dispatcher::sleeping(
                 handler_factory,
                 api_client,
             )),
@@ -60,9 +60,9 @@ impl Dispatcher {
 }
 
 pub(crate) enum SleepingDispatcher<C> {
-    AllSeq(disp_all_seq::Sleeping<C>),
-    EventTypePar(disp_et_par::Sleeping<C>),
-    EventTypePartitionPar(disp_etp_par::Sleeping<C>),
+    AllSeq(all_seq::Sleeping<C>),
+    EventTypePar(par::et_par::Sleeping<C>),
+    EventTypePartitionPar(par::etp_par::Sleeping<C>),
 }
 
 impl<C> SleepingDispatcher<C>
@@ -99,9 +99,9 @@ impl<C> SleepingDispatcher<C> {
 }
 
 pub(crate) enum ActiveDispatcher<'a, C> {
-    AllSeq(disp_all_seq::Active<'a, C>),
-    EventTypePar(disp_et_par::Active<'a, C>),
-    EventTypePartitionPar(disp_etp_par::Active<'a, C>),
+    AllSeq(all_seq::Active<'a, C>),
+    EventTypePar(par::et_par::Active<'a, C>),
+    EventTypePartitionPar(par::etp_par::Active<'a, C>),
 }
 
 impl<'a, C> ActiveDispatcher<'a, C>

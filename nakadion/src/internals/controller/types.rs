@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use tokio::{self, time::delay_for};
 
 use crate::consumer::Config;
-use crate::handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::BatchHandlerFactory;
 use crate::internals::{dispatcher::SleepingDispatcher, ConsumerState};
 use crate::logging::Logs;
 
