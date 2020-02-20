@@ -300,9 +300,22 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
         bytes.extend(next);
     }
 
-    let deserialized = serde_json::from_slice(&bytes)?;
-
-    Ok(deserialized)
+    match serde_json::from_slice(&bytes) {
+        Ok(deserialized) => Ok(deserialized),
+        Err(err) => {
+            let not_deserialized: String = std::str::from_utf8(&bytes)
+                .map_err(|err| {
+                    NakadiApiError::other()
+                        .with_context("Response to deserialize was not UTF-8")
+                        .caused_by(err)
+                })?
+                .chars()
+                .take(20)
+                .collect();
+            let message = format!("Could not deserialize '{}' (maybe more)", not_deserialized);
+            Err(NakadiApiError::other().with_context(message).caused_by(err))
+        }
+    }
 }
 
 async fn evaluate_error_for_problem(response: Response<BytesStream>) -> NakadiApiError {

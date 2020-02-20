@@ -27,7 +27,11 @@ async fn main() -> Result<(), Error> {
     let f = events_stream.try_for_each(move |(meta, events)| {
         let client = client.clone();
         async move {
-            println!("{:?}", events);
+            if let Some(events) = events {
+                println!("{:?}", events);
+            } else {
+                println!("empty line");
+            }
             let cursor = &[meta.cursor];
             client
                 .commit_cursors(subscription_id, stream_id, cursor, RandomFlowId)
