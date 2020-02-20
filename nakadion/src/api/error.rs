@@ -209,8 +209,8 @@ impl From<NakadiApiErrorKind> for NakadiApiError {
     }
 }
 
-impl From<IoError> for NakadiApiError {
-    fn from(err: IoError) -> Self {
+impl From<crate::components::IoError> for NakadiApiError {
+    fn from(err: crate::components::IoError) -> Self {
         Self::io().with_context(err.0)
     }
 }
@@ -326,28 +326,5 @@ impl From<StatusCode> for NakadiApiErrorKind {
         } else {
             NakadiApiErrorKind::Other(Some(status))
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct IoError(pub String);
-
-impl IoError {
-    pub fn new<T: Into<String>>(s: T) -> Self {
-        Self(s.into())
-    }
-}
-
-impl fmt::Display for IoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
-
-        Ok(())
-    }
-}
-
-impl StdError for IoError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        None
     }
 }

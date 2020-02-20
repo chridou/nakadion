@@ -11,6 +11,7 @@ use pin_utils::{unsafe_pinned, unsafe_unpinned};
 use crate::api::IoError;
 use crate::instrumentation::{Instrumentation, Instruments};
 
+/// A frame (line) from Nakadi
 #[derive(Clone)]
 pub struct NakadiFrame {
     pub bytes: Bytes,

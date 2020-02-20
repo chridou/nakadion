@@ -18,7 +18,7 @@ pub type ResponseFuture<'a> = BoxFuture<'a, Result<Response<BytesStream>, Remote
 /// This trait is used to enable pluggable
 /// HTTP clients
 pub trait DispatchHttpRequest {
-    fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture;
+    fn dispatch<'a>(&'a self, req: Request<Bytes>) -> ResponseFuture<'a>;
 }
 
 /// An error with can be caused by a remote call.

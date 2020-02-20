@@ -16,12 +16,13 @@ use crate::Error;
 mod line_parser;
 
 use crate::api::IoError;
-use crate::event_stream::NakadiFrame;
+use crate::components::streams::NakadiFrame;
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::nakadi_types::model::subscription::EventTypePartition;
 
 use line_parser::{parse_line, LineItems, ParseLineError};
 
+/// A stream of analyzed Nakadi Frames
 pub struct BatchLineStream<St>
 where
     St: Stream<Item = Result<NakadiFrame, IoError>>,
@@ -91,6 +92,7 @@ where
     }
 }
 
+/// An analyzed line (frame) from Nakadi
 #[derive(Debug)]
 pub struct BatchLine {
     bytes: Bytes,
@@ -150,13 +152,11 @@ impl BatchLine {
         })
     }
 
-    #[allow(dead_code)]
     pub fn with_frame_id(mut self, frame_id: usize) -> Self {
         self.frame_id = frame_id;
         self
     }
 
-    #[allow(dead_code)]
     pub fn frame_id(&self) -> usize {
         self.frame_id
     }
@@ -165,32 +165,26 @@ impl BatchLine {
         self.received_at
     }
 
-    #[allow(dead_code)]
     pub fn bytes(&self) -> Bytes {
         self.bytes.clone()
     }
 
-    #[allow(dead_code)]
     pub fn cursor_str(&self) -> &str {
         self.items.cursor_str(self.bytes.as_ref())
     }
 
-    #[allow(dead_code)]
     pub fn cursor_bytes(&self) -> Bytes {
         self.items.cursor_bytes(&self.bytes)
     }
 
-    #[allow(dead_code)]
     pub fn partition_bytes(&self) -> Bytes {
         self.items.cursor().partition_bytes(&self.bytes)
     }
 
-    #[allow(dead_code)]
     pub fn partition_str(&self) -> &str {
         self.items.cursor().partition_str(self.bytes.as_ref())
     }
 
-    #[allow(dead_code)]
     pub fn event_type_bytes(&self) -> Bytes {
         self.items.cursor().event_type_bytes(&self.bytes)
     }
@@ -203,42 +197,34 @@ impl BatchLine {
         EventTypePartition::new(self.event_type_str(), self.partition_str())
     }
 
-    #[allow(dead_code)]
     pub fn events_bytes(&self) -> Option<Bytes> {
         self.items.events_bytes(&self.bytes)
     }
 
-    #[allow(dead_code)]
     pub fn events_str(&self) -> Option<&str> {
         self.items.events_str(self.bytes.as_ref())
     }
 
-    #[allow(dead_code)]
     pub fn info_bytes(&self) -> Option<Bytes> {
         self.items.info_bytes(&self.bytes)
     }
 
-    #[allow(dead_code)]
     pub fn info_str(&self) -> Option<&str> {
         self.items.info_str(self.bytes.as_ref())
     }
 
-    #[allow(dead_code)]
     pub fn is_keep_alive_line(&self) -> bool {
         !self.items.has_events()
     }
 
-    #[allow(dead_code)]
     pub fn has_events(&self) -> bool {
         self.items.has_events()
     }
 
-    #[allow(dead_code)]
     pub fn has_info(&self) -> bool {
         self.items.has_info()
     }
 
-    #[allow(dead_code)]
     pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, Error> {
         Ok(serde_json::from_slice(self.cursor_bytes().as_ref())?)
     }
