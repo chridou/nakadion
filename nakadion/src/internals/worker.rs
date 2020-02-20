@@ -1,9 +1,10 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::Stream;
 use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-use crate::consumer::InactivityTimeoutSecs;
+use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::event_stream::BatchLine;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::CommitData, EnrichedErr, EnrichedResult, StreamState};
@@ -13,7 +14,7 @@ use processor::HandlerSlot;
 #[derive(Debug)]
 pub enum WorkerMessage {
     Batch(BatchLine),
-    Tick,
+    Tick(Instant),
     StreamEnded,
 }
 
@@ -22,7 +23,7 @@ impl Worker {
     pub(crate) fn sleeping(
         handler_factory: Arc<dyn BatchHandlerFactory>,
         assignment: HandlerAssignment,
-        inactivity_after: Option<InactivityTimeoutSecs>,
+        inactivity_after: HandlerInactivityTimeoutSecs,
     ) -> SleepingWorker {
         SleepingWorker {
             handler_slot: HandlerSlot::new(handler_factory, assignment, inactivity_after),
@@ -87,7 +88,7 @@ mod processor {
 
     use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
 
-    use crate::consumer::{ConsumerError, ConsumerErrorKind, InactivityTimeoutSecs};
+    use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::event_stream::BatchLine;
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
@@ -128,7 +129,7 @@ mod processor {
 
                 let batch = match msg {
                     WorkerMessage::Batch(batch) => batch,
-                    WorkerMessage::Tick => {
+                    WorkerMessage::Tick(_) => {
                         processing_compound.handler_slot.tick();
                         continue;
                     }
@@ -298,7 +299,7 @@ mod processor {
         pub handler_factory: Arc<dyn BatchHandlerFactory>,
         pub last_event_processed: Instant,
         pub assignment: HandlerAssignment,
-        pub inactivity_after: Option<InactivityTimeoutSecs>,
+        pub inactivity_after: HandlerInactivityTimeoutSecs,
         pub notified_on_inactivity: bool,
         pub logger: Option<Logger>,
     }
@@ -307,7 +308,7 @@ mod processor {
         pub fn new(
             handler_factory: Arc<dyn BatchHandlerFactory>,
             assignment: HandlerAssignment,
-            inactivity_after: Option<InactivityTimeoutSecs>,
+            inactivity_after: HandlerInactivityTimeoutSecs,
         ) -> Self {
             Self {
                 handler: None,
@@ -360,35 +361,33 @@ mod processor {
         }
 
         pub fn tick(&mut self) {
-            if let Some(inactivity_after) = self.inactivity_after {
-                if let Some(mut handler) = self.handler.take() {
-                    let elapsed = self.last_event_processed.elapsed();
-                    if elapsed > inactivity_after.into_duration() && !self.notified_on_inactivity {
-                        if handler
-                            .on_inactive(elapsed, self.last_event_processed)
-                            .should_stay_alive()
-                        {
-                            self.notified_on_inactivity = true;
-                            self.handler = Some(handler);
-                            self.with_logger(|l| {
-                                l.info(format_args!(
-                                    "Keeping inactive handler \
-                                for assignment {} alive.",
-                                    self.assignment
-                                ))
-                            });
-                        } else {
-                            self.with_logger(|l| {
-                                l.info(format_args!(
-                                    "Killed inactive handler \
-                            for assignment {}.",
-                                    self.assignment
-                                ))
-                            });
-                        }
-                    } else {
+            if let Some(mut handler) = self.handler.take() {
+                let elapsed = self.last_event_processed.elapsed();
+                if elapsed > self.inactivity_after.into_duration() && !self.notified_on_inactivity {
+                    if handler
+                        .on_inactive(elapsed, self.last_event_processed)
+                        .should_stay_alive()
+                    {
+                        self.notified_on_inactivity = true;
                         self.handler = Some(handler);
+                        self.with_logger(|l| {
+                            l.info(format_args!(
+                                "Keeping inactive handler \
+                                for assignment {} alive.",
+                                self.assignment
+                            ))
+                        });
+                    } else {
+                        self.with_logger(|l| {
+                            l.info(format_args!(
+                                "Killed inactive handler \
+                            for assignment {}.",
+                                self.assignment
+                            ))
+                        });
                     }
+                } else {
+                    self.handler = Some(handler);
                 }
             }
         }

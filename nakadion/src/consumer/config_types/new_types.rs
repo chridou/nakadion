@@ -32,17 +32,22 @@ impl From<TickIntervalMillis> for Duration {
 }
 
 new_type! {
-    #[doc="The time after which a stream or partition is considered inactive.\n"]
+    #[doc="The time after which a handler is considered inactive.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct InactivityTimeoutSecs(u64, env="INACTIVITY_TIMEOUT_SECS");
+    pub copy struct HandlerInactivityTimeoutSecs(u64, env="HANDLER_INACTIVITY_TIMEOUT_SECS");
 }
-impl InactivityTimeoutSecs {
+impl HandlerInactivityTimeoutSecs {
     pub fn into_duration(self) -> Duration {
         Duration::from_secs(self.0)
     }
 }
-impl From<InactivityTimeoutSecs> for Duration {
-    fn from(v: InactivityTimeoutSecs) -> Self {
+impl Default for HandlerInactivityTimeoutSecs {
+    fn default() -> Self {
+        Self(std::u64::MAX)
+    }
+}
+impl From<HandlerInactivityTimeoutSecs> for Duration {
+    fn from(v: HandlerInactivityTimeoutSecs) -> Self {
         v.into_duration()
     }
 }
@@ -103,7 +108,6 @@ new_type! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct MaxConnectAttempts(usize, env="MAX_CONNECT_ATTEMPTS");
 }
-
 impl Default for MaxConnectAttempts {
     fn default() -> Self {
         std::usize::MAX.into()

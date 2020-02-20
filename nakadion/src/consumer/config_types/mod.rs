@@ -75,11 +75,16 @@ pub struct Builder {
     pub instrumentation: Option<Instrumentation>,
     /// The internal tick interval.
     ///
-    /// This triggers internal notification used to montitor the state
+    /// This triggers internal notification used to monitor the state
     /// of the currently consumed stream.
     pub tick_interval_millis: Option<TickIntervalMillis>,
-    /// The time after which a stream or partition is considered inactive.
-    pub inactivity_timeout_secs: Option<InactivityTimeoutSecs>,
+    /// The time after which a handler is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the handler
+    /// will be notified by calling its `on_inactive` method.
+    ///
+    /// The default is never.
+    pub handler_inactivity_timeout_secs: Option<HandlerInactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_policy: Option<StreamDeadPolicy>,
     /// Emits a warning when no lines were received from Nakadi for the given time.
@@ -155,9 +160,9 @@ impl Builder {
             self.tick_interval_millis = TickIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.inactivity_timeout_secs.is_none() {
-            self.inactivity_timeout_secs =
-                InactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
+        if self.handler_inactivity_timeout_secs.is_none() {
+            self.handler_inactivity_timeout_secs =
+                HandlerInactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.stream_dead_policy.is_none() {
@@ -222,19 +227,24 @@ impl Builder {
 
     /// The internal tick interval.
     ///
-    /// This triggers internal notification used to montitor the state
+    /// This triggers internal notification used to monitor the state
     /// of the currently consumed stream.
     pub fn tick_interval_millis<T: Into<TickIntervalMillis>>(mut self, tick_interval: T) -> Self {
         self.tick_interval_millis = Some(tick_interval.into());
         self
     }
 
-    /// The time after which a stream or partition is considered inactive.
-    pub fn inactivity_timeout_secs<T: Into<InactivityTimeoutSecs>>(
+    /// The time after which a handler is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the handler
+    /// will be notified by calling its `on_inactive` method.
+    ///
+    /// The default is never.
+    pub fn handler_inactivity_timeout_secs<T: Into<HandlerInactivityTimeoutSecs>>(
         mut self,
-        inactivity_timeout: T,
+        handler_inactivity_timeout_secs: T,
     ) -> Self {
-        self.inactivity_timeout_secs = Some(inactivity_timeout.into());
+        self.handler_inactivity_timeout_secs = Some(handler_inactivity_timeout_secs.into());
         self
     }
 
@@ -380,7 +390,7 @@ impl Builder {
 
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
-        let inactivity_timeout = self.inactivity_timeout_secs;
+        let handler_inactivity_timeout = self.handler_inactivity_timeout_secs;
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         let warn_stream_stalled = self.warn_stream_stalled_secs;
@@ -411,7 +421,7 @@ impl Builder {
         self.stream_parameters = Some(stream_parameters);
         self.instrumentation = Some(instrumentation);
         self.tick_interval_millis = Some(tick_interval);
-        self.inactivity_timeout_secs = inactivity_timeout;
+        self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_stream_stalled_secs = warn_stream_stalled;
         self.dispatch_strategy = Some(dispatch_strategy);
@@ -471,7 +481,7 @@ impl Builder {
 
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
-        let inactivity_timeout = self.inactivity_timeout_secs;
+        let handler_inactivity_timeout = self.handler_inactivity_timeout_secs.unwrap_or_default();
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         stream_dead_policy.validate()?;
@@ -493,7 +503,7 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_default();
 
-        let max_connect_attempts = self.max_connect_attempts;
+        let max_connect_attempts = self.max_connect_attempts.unwrap_or_default();
 
         let connect_stream_retry_max_delay =
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
@@ -507,7 +517,7 @@ impl Builder {
             stream_parameters,
             instrumentation,
             tick_interval,
-            inactivity_timeout,
+            handler_inactivity_timeout,
             stream_dead_policy,
             warn_stream_stalled,
             dispatch_strategy,

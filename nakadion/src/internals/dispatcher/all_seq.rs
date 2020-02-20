@@ -24,7 +24,7 @@ impl Dispatcher {
         let worker = Worker::sleeping(
             handler_factory,
             HandlerAssignment::Unspecified,
-            config.inactivity_timeout,
+            config.handler_inactivity_timeout,
         );
 
         Sleeping { worker, api_client }
@@ -51,7 +51,7 @@ where
 
         let worker_stream = messages.map(|dm| match dm {
             DispatcherMessage::Batch(batch) => WorkerMessage::Batch(batch),
-            DispatcherMessage::Tick => WorkerMessage::Tick,
+            DispatcherMessage::Tick(timestamp) => WorkerMessage::Tick(timestamp),
             DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });
 
