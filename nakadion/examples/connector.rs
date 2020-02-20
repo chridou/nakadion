@@ -2,12 +2,8 @@ use nakadi_types::model::subscription::*;
 
 use nakadion::api::{ApiClient, SubscriptionCommitApi};
 use nakadion::components::connector::*;
-use nakadion::instrumentation::Instrumentation;
 
-use futures::{
-    future::{self, TryFutureExt},
-    stream::TryStreamExt,
-};
+use futures::{future::TryFutureExt, stream::TryStreamExt};
 use serde_json::Value;
 use tokio::spawn;
 
@@ -35,7 +31,7 @@ async fn main() -> Result<(), Error> {
             let cursor = &[meta.cursor];
             client
                 .commit_cursors(subscription_id, stream_id, cursor, RandomFlowId)
-                .map_err(Error::from_error)
+                .map_err(|err| Error::new(format!("Could not commit: {}", err)))
                 .await?;
             Ok(())
         }

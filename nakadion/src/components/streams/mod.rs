@@ -1,3 +1,5 @@
+//! Transformed Streams of a binary Nakadi Stream
+
 mod batch_line;
 mod framed;
 
