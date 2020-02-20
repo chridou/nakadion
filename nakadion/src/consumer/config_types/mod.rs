@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::NakadionEssentials;
+use crate::components::NakadionEssentials;
 use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};

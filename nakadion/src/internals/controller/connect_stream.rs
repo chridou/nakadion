@@ -4,28 +4,26 @@ use tokio::time::delay_for;
 
 use crate::nakadi_types::FlowId;
 
-use crate::api::{SubscriptionStreamApi, SubscriptionStreamChunks};
-use crate::components::connector::{ConnectErrorKind, Connector, ConnectorParams, Connects};
+use crate::api::SubscriptionStreamChunks;
+use crate::components::connector::{ConnectErrorKind, ProvidesConnector};
 use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::ConsumerState;
 use crate::logging::Logs;
 
-pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi + Send + Sync + 'static>(
-    api_client: C,
+pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
+    connector_provider: C,
     consumer_state: ConsumerState,
 ) -> Result<SubscriptionStreamChunks, ConsumerError> {
     let config = consumer_state.config();
     let instrumentation = consumer_state.instrumentation();
+    let subscription_id = consumer_state.subscription_id();
 
-    let connector_params = ConnectorParams {
-        subscription_id: consumer_state.subscription_id(),
-        stream_params: consumer_state.stream_parameters().clone(),
-        connect_stream_timeout: config.connect_stream_timeout,
-        flow_id: Some(FlowId::random()),
-    };
-
-    let connector = Connector::new(api_client, connector_params, Some(instrumentation.clone()));
+    let mut connector = connector_provider.connector();
+    connector.set_flow_id(FlowId::random());
+    connector.set_connect_stream_timeout(config.connect_stream_timeout);
+    connector.set_instrumentation(instrumentation.clone());
+    *connector.stream_parameters_mut() = config.stream_parameters.clone();
 
     let mut backoff = Backoff::new(config.connect_stream_retry_max_delay.into_inner());
 
@@ -42,7 +40,7 @@ pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi + Send + Sync 
         }
         attempts_left -= 1;
 
-        match connector.chunked_stream().await {
+        match connector.connect(subscription_id).await {
             Ok(stream) => {
                 instrumentation.stream_connected(connect_started_at.elapsed());
 

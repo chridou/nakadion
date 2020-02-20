@@ -262,22 +262,7 @@ pub trait SubscriptionApi {
         cursors: &[SubscriptionCursor],
         flow_id: T,
     ) -> ApiFuture<()>;
-}
 
-pub trait SubscriptionCommitApi {
-    /// Endpoint for committing offsets of the subscription.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)
-    fn commit_cursors<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        stream: StreamId,
-        cursors: &[SubscriptionCursor],
-        flow_id: T,
-    ) -> ApiFuture<CursorCommitResults>;
-}
-
-pub trait SubscriptionStreamApi {
     /// Starts a new stream for reading events from this subscription.
     ///
     /// Starts a new stream for reading events from this subscription. The minimal consumption unit is a partition, so
@@ -315,6 +300,19 @@ pub trait SubscriptionStreamApi {
     ) -> ApiFuture<SubscriptionStreamChunks>;
 }
 
+pub trait SubscriptionCommitApi {
+    /// Endpoint for committing offsets of the subscription.
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)
+    fn commit_cursors<T: Into<FlowId>>(
+        &self,
+        id: SubscriptionId,
+        stream: StreamId,
+        cursors: &[SubscriptionCursor],
+        flow_id: T,
+    ) -> ApiFuture<CursorCommitResults>;
+}
+
 /// A stream of of chunks directly from Nakadi
 pub struct SubscriptionStreamChunks {
     pub stream_id: StreamId,
@@ -325,14 +323,4 @@ impl<'a> SubscriptionStreamChunks {
     pub fn parts(self) -> (StreamId, BytesStream) {
         (self.stream_id, self.chunks)
     }
-}
-
-pub trait NakadionEssentials:
-    SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
-{
-}
-
-impl<T> NakadionEssentials for T where
-    T: SubscriptionCommitApi + SubscriptionStreamApi + Send + Sync + 'static
-{
 }

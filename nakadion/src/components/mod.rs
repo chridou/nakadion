@@ -2,8 +2,21 @@
 use std::error::Error as StdError;
 use std::fmt;
 
+use self::connector::ProvidesConnector;
+use crate::api::SubscriptionCommitApi;
+
 pub mod connector;
 pub mod streams;
+
+pub trait NakadionEssentials:
+    SubscriptionCommitApi + ProvidesConnector + Send + Sync + 'static
+{
+}
+
+impl<T> NakadionEssentials for T where
+    T: SubscriptionCommitApi + ProvidesConnector + Send + Sync + 'static
+{
+}
 
 #[derive(Debug)]
 pub struct IoError(pub String);

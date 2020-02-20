@@ -14,15 +14,10 @@ async fn main() -> Result<(), Error> {
 
     let subscription_id = SubscriptionId::from_env()?;
 
-    let connector_params = ConnectorParams {
-        subscription_id,
-        stream_params: StreamParameters::default(),
-        connect_stream_timeout: ConnectStreamTimeoutSecs::default(),
-        flow_id: None,
-    };
-    let connector = Connector::new(client.clone(), connector_params, None);
-
-    let (stream_id, events_stream) = connector.events_stream::<Value>().await?;
+    let connector = client.connector();
+    let (stream_id, events_stream) = Streamer(connector)
+        .events_stream::<Value>(subscription_id)
+        .await?;
 
     let f = events_stream.try_for_each(move |(meta, events)| {
         let client = client.clone();

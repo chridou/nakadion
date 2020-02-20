@@ -8,9 +8,10 @@ use tokio::{
     time::interval_at,
 };
 
-use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
-use crate::components::streams::{
-    BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream,
+use crate::api::{BytesStream, SubscriptionCommitApi};
+use crate::components::{
+    streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
+    NakadionEssentials,
 };
 use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::instrumentation::{Instrumentation, Instruments};
