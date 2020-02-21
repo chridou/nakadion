@@ -8,9 +8,11 @@ use tokio::{
     time::interval_at,
 };
 
-use crate::api::{BytesStream, NakadionEssentials, SubscriptionCommitApi};
-use crate::components::streams::{
-    BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream,
+use crate::api::BytesStream;
+use crate::components::{
+    committer::ProvidesCommitter,
+    streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
+    StreamingEssentials,
 };
 use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::instrumentation::{Instrumentation, Instruments};
@@ -32,7 +34,7 @@ pub(crate) struct Controller<C> {
 
 impl<C> Controller<C>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     pub(crate) fn new(params: ControllerParams<C>) -> Self {
         Self { params }
@@ -45,7 +47,7 @@ where
 
 async fn create_background_task<C>(params: ControllerParams<C>) -> Result<(), ConsumerError>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     let consumer_state = params.consumer_state.clone();
     let mut sleeping_dispatcher = Dispatcher::sleeping(
@@ -77,7 +79,7 @@ async fn stream_lifecycle<C>(
     sleeping_dispatcher: SleepingDispatcher<C>,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     let consumer_state = params.consumer_state.clone();
     let sleep_ticker = SleepTicker::start(sleeping_dispatcher, consumer_state.clone());
@@ -130,7 +132,7 @@ async fn consume_stream_to_end<C, S>(
     stream_state: StreamState,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
-    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
+    C: ProvidesCommitter + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let stream_dead_policy = stream_state.config().stream_dead_policy;
@@ -288,7 +290,7 @@ async fn wait_for_first_frame<C, S>(
     ConsumerError,
 >
 where
-    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
+    C: ProvidesCommitter + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let now = Instant::now();

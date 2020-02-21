@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use futures::{Stream, TryFutureExt};
 
-use crate::api::SubscriptionCommitApi;
+use crate::components::committer::ProvidesCommitter;
 use crate::components::streams::BatchLine;
 use crate::consumer::{Config, DispatchStrategy};
 use crate::handler::BatchHandlerFactory;
@@ -39,7 +39,7 @@ impl Dispatcher {
         config: Config,
     ) -> SleepingDispatcher<C>
     where
-        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+        C: ProvidesCommitter + Send + Sync + Clone + 'static,
     {
         match strategy {
             DispatchStrategy::AllSeq => SleepingDispatcher::AllSeq(
@@ -67,7 +67,7 @@ pub(crate) enum SleepingDispatcher<C> {
 
 impl<C> SleepingDispatcher<C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<'static, C>
     where
@@ -106,7 +106,7 @@ pub(crate) enum ActiveDispatcher<'a, C> {
 
 impl<'a, C> ActiveDispatcher<'a, C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
         match self {

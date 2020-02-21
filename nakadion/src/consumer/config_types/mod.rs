@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::NakadionEssentials;
+use crate::components::StreamingEssentials;
 use crate::handler::{BatchHandler, BatchHandlerFactory};
 use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
@@ -444,7 +444,7 @@ impl Builder {
         logs: L,
     ) -> Result<Consumer, Error>
     where
-        C: NakadionEssentials + Send + Sync + 'static + Clone,
+        C: StreamingEssentials + Send + Sync + 'static + Clone,
         HF: BatchHandlerFactory,
         L: LoggingAdapter,
     {

@@ -18,7 +18,7 @@ pub use crate::components::{
 };
 
 pub use crate::api::BytesStream;
-pub use crate::api::{NakadiApiError, SubscriptionStreamApi, SubscriptionStreamChunks};
+pub use crate::api::{NakadiApiError, SubscriptionApi, SubscriptionStreamChunks};
 pub use crate::consumer::ConnectStreamTimeoutSecs;
 use crate::instrumentation::{Instrumentation, Instruments};
 pub use crate::nakadi_types::{
@@ -33,14 +33,21 @@ pub type EventsStream<E> = BoxStream<'static, Result<(StreamedBatchMeta, Option<
 pub type FramesStream = BoxStream<'static, Result<NakadiFrame, IoError>>;
 pub type BatchStream = BoxStream<'static, Result<BatchLine, BatchLineError>>;
 
-/// Metadata on the currently received batch
-#[derive(Debug, Clone)]
-pub struct StreamedBatchMeta {
-    pub cursor: SubscriptionCursor,
-    pub received_at: Instant,
-    pub frame_id: usize,
+/// Gives a `Connects`
+pub trait ProvidesConnector {
+    fn connector(&self) -> Box<dyn Connects + Send + Sync + 'static>;
 }
 
+impl<T> ProvidesConnector for T
+where
+    T: SubscriptionApi + Sync + Send + 'static + Clone,
+{
+    fn connector(&self) -> Box<dyn Connects + Send + Sync + 'static> {
+        Box::new(Connector::from_client(self.clone()))
+    }
+}
+
+/// Can connect to a Nakadi Stream
 pub trait Connects {
     /// Return instrumentation.
     ///
@@ -50,143 +57,94 @@ pub trait Connects {
     }
 
     /// Get a stream of chunks directly from Nakadi.
-    fn chunked_stream(&self) -> ConnectFuture<SubscriptionStreamChunks>;
+    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks>;
 
-    /// Get a stream of frames(lines) directly from Nakadi.
-    fn frame_stream(&self) -> ConnectFuture<(StreamId, FramesStream)>
-    where
-        Self: Sync,
-    {
-        async move {
-            let (stream_id, chunks) = self.chunked_stream().await?.parts();
+    fn set_flow_id(&mut self, flow_id: FlowId);
 
-            let framed =
-                crate::components::streams::FramedStream::new(chunks, self.instrumentation());
+    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs);
 
-            Ok((stream_id, framed.boxed()))
-        }
-        .boxed()
-    }
+    fn set_instrumentation(&mut self, instrumentation: Instrumentation);
 
-    /// Get a stream of analyzed lines.
-    fn batch_stream(&self) -> ConnectFuture<(StreamId, BatchStream)>
-    where
-        Self: Sync,
-    {
-        async move {
-            let (stream_id, frames) = self.frame_stream().await?;
-
-            let lines =
-                crate::components::streams::BatchLineStream::new(frames, self.instrumentation());
-
-            Ok((stream_id, lines.boxed()))
-        }
-        .boxed()
-    }
-
-    /// Get a stream of deserialized events.
-    fn events_stream<E: DeserializeOwned>(&self) -> ConnectFuture<(StreamId, EventsStream<E>)>
-    where
-        Self: Sync,
-    {
-        async move {
-            let (stream_id, batches) = self.batch_stream().await?;
-
-            let events = batches.map(|r| match r {
-                Ok(batch_line) => {
-                    let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
-                    let meta = StreamedBatchMeta {
-                        cursor,
-                        received_at: batch_line.received_at(),
-                        frame_id: batch_line.frame_id(),
-                    };
-
-                    if let Some(events_bytes) = batch_line.events_bytes() {
-                        let events = serde_json::from_slice::<Vec<E>>(&events_bytes)?;
-                        Ok((meta, Some(events)))
-                    } else {
-                        Ok((meta, None))
-                    }
-                }
-                Err(err) => Err(Error::from_error(err)),
-            });
-
-            Ok((stream_id, events.boxed()))
-        }
-        .boxed()
-    }
+    fn stream_parameters_mut(&mut self) -> &mut StreamParameters;
 }
 
 /// Parameters to configure the `Connector`
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ConnectorParams {
-    pub subscription_id: SubscriptionId,
     pub stream_params: StreamParameters,
     pub connect_stream_timeout: ConnectStreamTimeoutSecs,
-    pub flow_id: Option<FlowId>,
+    pub instrumentation: Instrumentation,
 }
 
 /// A `Connector` to connect to a Nakadi Stream
 pub struct Connector<C> {
-    inner: ConnectorInner<C>,
+    stream_client: C,
+    params: ConnectorParams,
+    flow_id: Option<FlowId>,
 }
 
 impl<C> Connector<C>
 where
-    C: SubscriptionStreamApi + Sync + 'static,
+    C: SubscriptionApi + Send + Sync + 'static,
 {
-    pub fn new(
-        stream_client: C,
-        params: ConnectorParams,
-        instrumentation: Option<Instrumentation>,
-    ) -> Self {
+    pub fn new(stream_client: C, params: ConnectorParams) -> Self {
         Self {
-            inner: ConnectorInner {
-                stream_client,
-                instrumentation: instrumentation.unwrap_or_default(),
-                params,
-            },
+            stream_client,
+            params,
+            flow_id: None,
         }
+    }
+
+    pub fn from_client(stream_client: C) -> Self {
+        Self {
+            stream_client,
+            params: ConnectorParams::default(),
+            flow_id: None,
+        }
+    }
+}
+
+impl<C> From<C> for Connector<C>
+where
+    C: SubscriptionApi + Send + Sync + 'static,
+{
+    fn from(c: C) -> Self {
+        Self::from_client(c)
     }
 }
 
 impl<C> Connects for Connector<C>
 where
-    C: SubscriptionStreamApi + Sync + Send + 'static,
+    C: SubscriptionApi + Sync + Send + 'static,
 {
     fn instrumentation(&self) -> Instrumentation {
-        self.inner.instrumentation.clone()
+        self.params.instrumentation.clone()
     }
-    fn chunked_stream(&self) -> ConnectFuture<SubscriptionStreamChunks> {
+    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks> {
         async move {
-            let inner = &self.inner;
-            let flow_id = inner
-                .params
-                .flow_id
-                .clone()
-                .unwrap_or_else(|| RandomFlowId.into());
-            let f = inner.stream_client.request_stream(
-                inner.params.subscription_id,
-                &inner.params.stream_params,
+            let flow_id = self.flow_id.clone().unwrap_or_else(|| RandomFlowId.into());
+            let f = self.stream_client.request_stream(
+                subscription_id,
+                &self.params.stream_params,
                 flow_id,
             );
-            let connect_timeout = inner.params.connect_stream_timeout.into_duration();
+            let connect_timeout = self.params.connect_stream_timeout.into_duration();
             let started = Instant::now();
             match timeout(connect_timeout, f).await {
                 Ok(Ok(stream)) => {
-                    inner
+                    self.params
                         .instrumentation
                         .stream_connect_attempt_success(started.elapsed());
                     Ok(stream)
                 }
                 Ok(Err(api_error)) => {
-                    inner
+                    self.params
                         .instrumentation
                         .stream_connect_attempt_failed(started.elapsed());
                     Err(api_error.into())
                 }
                 Err(err) => {
-                    inner
+                    self.params
                         .instrumentation
                         .stream_connect_attempt_failed(started.elapsed());
                     Err(ConnectError::io()
@@ -200,33 +158,21 @@ where
         }
         .boxed()
     }
-}
 
-struct ConnectorInner<C> {
-    stream_client: C,
-    instrumentation: Instrumentation,
-    params: ConnectorParams,
-}
+    fn set_flow_id(&mut self, flow_id: FlowId) {
+        self.flow_id = Some(flow_id.into());
+    }
 
-impl From<NakadiApiError> for ConnectError {
-    fn from(api_error: NakadiApiError) -> Self {
-        if let Some(status) = api_error.status() {
-            match status {
-                StatusCode::NOT_FOUND => ConnectError::not_found().caused_by(api_error),
-                StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
-                    ConnectError::access_denied().caused_by(api_error)
-                }
-                StatusCode::BAD_REQUEST => ConnectError::bad_request().caused_by(api_error),
-                StatusCode::UNPROCESSABLE_ENTITY => {
-                    ConnectError::unprocessable().caused_by(api_error)
-                }
-                _ => ConnectError::other().caused_by(api_error),
-            }
-        } else if api_error.is_io_error() {
-            ConnectError::bad_request().caused_by(api_error)
-        } else {
-            ConnectError::other().caused_by(api_error)
-        }
+    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs) {
+        self.params.connect_stream_timeout = connect_stream_timeout;
+    }
+
+    fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
+        self.params.instrumentation = instrumentation;
+    }
+
+    fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
+        &mut self.params.stream_params
     }
 }
 
@@ -306,6 +252,28 @@ impl From<ConnectError> for Error {
     }
 }
 
+impl From<NakadiApiError> for ConnectError {
+    fn from(api_error: NakadiApiError) -> Self {
+        if let Some(status) = api_error.status() {
+            match status {
+                StatusCode::NOT_FOUND => ConnectError::not_found().caused_by(api_error),
+                StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                    ConnectError::access_denied().caused_by(api_error)
+                }
+                StatusCode::BAD_REQUEST => ConnectError::bad_request().caused_by(api_error),
+                StatusCode::UNPROCESSABLE_ENTITY => {
+                    ConnectError::unprocessable().caused_by(api_error)
+                }
+                _ => ConnectError::other().caused_by(api_error),
+            }
+        } else if api_error.is_io_error() {
+            ConnectError::bad_request().caused_by(api_error)
+        } else {
+            ConnectError::other().caused_by(api_error)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ConnectErrorKind {
     SubscriptionNotFound,
@@ -327,5 +295,113 @@ impl fmt::Display for ConnectErrorKind {
             ConnectErrorKind::Other => write!(f, "other")?,
         }
         Ok(())
+    }
+}
+
+/// Metadata on the currently received batch
+#[derive(Debug, Clone)]
+pub struct StreamedBatchMeta {
+    pub cursor: SubscriptionCursor,
+    pub received_at: Instant,
+    pub frame_id: usize,
+}
+
+/// Wraps a `Connects` for extension
+pub struct Streamer<C>(pub C);
+
+impl<C> Streamer<C>
+where
+    C: Connects + Send + Sync,
+{
+    /// Get a stream of frames(lines) directly from Nakadi.
+    pub fn frame_stream(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> ConnectFuture<(StreamId, FramesStream)> {
+        async move {
+            let (stream_id, chunks) = self.0.connect(subscription_id).await?.parts();
+
+            let framed =
+                crate::components::streams::FramedStream::new(chunks, self.0.instrumentation());
+
+            Ok((stream_id, framed.boxed()))
+        }
+        .boxed()
+    }
+
+    /// Get a stream of analyzed lines.
+    pub fn batch_stream(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> ConnectFuture<(StreamId, BatchStream)> {
+        async move {
+            let (stream_id, frames) = self.frame_stream(subscription_id).await?;
+
+            let lines =
+                crate::components::streams::BatchLineStream::new(frames, self.0.instrumentation());
+
+            Ok((stream_id, lines.boxed()))
+        }
+        .boxed()
+    }
+
+    /// Get a stream of deserialized events.
+    pub fn events_stream<E: DeserializeOwned>(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> ConnectFuture<(StreamId, EventsStream<E>)> {
+        async move {
+            let (stream_id, batches) = self.batch_stream(subscription_id).await?;
+
+            let events = batches.map(|r| match r {
+                Ok(batch_line) => {
+                    let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
+                    let meta = StreamedBatchMeta {
+                        cursor,
+                        received_at: batch_line.received_at(),
+                        frame_id: batch_line.frame_id(),
+                    };
+
+                    if let Some(events_bytes) = batch_line.events_bytes() {
+                        let events = serde_json::from_slice::<Vec<E>>(&events_bytes)?;
+                        Ok((meta, Some(events)))
+                    } else {
+                        Ok((meta, None))
+                    }
+                }
+                Err(err) => Err(Error::from_error(err)),
+            });
+
+            Ok((stream_id, events.boxed()))
+        }
+        .boxed()
+    }
+}
+
+impl Connects for Box<dyn Connects + Send + Sync> {
+    fn instrumentation(&self) -> Instrumentation {
+        self.as_ref().instrumentation()
+    }
+
+    /// Get a stream of chunks directly from Nakadi.
+    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks> {
+        self.as_ref().connect(subscription_id)
+    }
+
+    fn set_flow_id(&mut self, flow_id: FlowId) {
+        self.as_mut().set_flow_id(flow_id);
+    }
+
+    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs) {
+        self.as_mut()
+            .set_connect_stream_timeout(connect_stream_timeout)
+    }
+
+    fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
+        self.as_mut().set_instrumentation(instrumentation)
+    }
+
+    fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
+        self.as_mut().stream_parameters_mut()
     }
 }

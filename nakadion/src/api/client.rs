@@ -672,53 +672,7 @@ impl SubscriptionApi for ApiClient {
         )
         .boxed()
     }
-}
 
-impl SubscriptionCommitApi for ApiClient {
-    fn commit_cursors<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        stream: StreamId,
-        cursors: &[SubscriptionCursor],
-        flow_id: T,
-    ) -> ApiFuture<CursorCommitResults> {
-        #[derive(Serialize)]
-        struct ItemsWrapper<'a> {
-            items: &'a [SubscriptionCursor],
-        };
-
-        let wrapped = ItemsWrapper { items: cursors };
-
-        let serialized = serde_json::to_vec(&wrapped).unwrap();
-
-        let flow_id = flow_id.into();
-        async move {
-            let url = self.urls().subscriptions_commit_cursors(id);
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
-            *request.method_mut() = Method::POST;
-
-            request.headers_mut().append(
-                HeaderName::from_static("x-nakadi-streamid"),
-                HeaderValue::from_str(stream.to_string().as_ref())?,
-            );
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
-
-            let status = response.status();
-            match status {
-                StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
-                StatusCode::OK => {
-                    let commit_results = deserialize_stream(response.into_body()).await?;
-                    Ok(commit_results)
-                }
-                _ => evaluate_error_for_problem(response).map(Err).await,
-            }
-        }
-        .boxed()
-    }
-}
-
-impl SubscriptionStreamApi for ApiClient {
     fn request_stream<'a, T: Into<FlowId>>(
         &'a self,
         subscription_id: SubscriptionId,
@@ -768,6 +722,48 @@ impl SubscriptionStreamApi for ApiClient {
                 }
             } else {
                 evaluate_error_for_problem(response).map(Err).await
+            }
+        }
+        .boxed()
+    }
+
+    fn commit_cursors<T: Into<FlowId>>(
+        &self,
+        id: SubscriptionId,
+        stream: StreamId,
+        cursors: &[SubscriptionCursor],
+        flow_id: T,
+    ) -> ApiFuture<CursorCommitResults> {
+        #[derive(Serialize)]
+        struct ItemsWrapper<'a> {
+            items: &'a [SubscriptionCursor],
+        };
+
+        let wrapped = ItemsWrapper { items: cursors };
+
+        let serialized = serde_json::to_vec(&wrapped).unwrap();
+
+        let flow_id = flow_id.into();
+        async move {
+            let url = self.urls().subscriptions_commit_cursors(id);
+            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            *request.method_mut() = Method::POST;
+
+            request.headers_mut().append(
+                HeaderName::from_static("x-nakadi-streamid"),
+                HeaderValue::from_str(stream.to_string().as_ref())?,
+            );
+
+            let response = self.inner.dispatch_http_request.dispatch(request).await?;
+
+            let status = response.status();
+            match status {
+                StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
+                StatusCode::OK => {
+                    let commit_results = deserialize_stream(response.into_body()).await?;
+                    Ok(commit_results)
+                }
+                _ => evaluate_error_for_problem(response).map(Err).await,
             }
         }
         .boxed()

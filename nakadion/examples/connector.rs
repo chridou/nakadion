@@ -1,7 +1,7 @@
 use nakadi_types::model::subscription::*;
 
-use nakadion::api::{ApiClient, SubscriptionCommitApi};
-use nakadion::components::connector::*;
+use nakadion::api::ApiClient;
+use nakadion::components::{committer::*, connector::*};
 
 use futures::{future::TryFutureExt, stream::TryStreamExt};
 use serde_json::Value;
@@ -14,18 +14,14 @@ async fn main() -> Result<(), Error> {
 
     let subscription_id = SubscriptionId::from_env()?;
 
-    let connector_params = ConnectorParams {
-        subscription_id,
-        stream_params: StreamParameters::default(),
-        connect_stream_timeout: ConnectStreamTimeoutSecs::default(),
-        flow_id: None,
-    };
-    let connector = Connector::new(client.clone(), connector_params, None);
-
-    let (stream_id, events_stream) = connector.events_stream::<Value>().await?;
+    let connector = client.connector();
+    let (stream_id, events_stream) = Streamer(connector)
+        .events_stream::<Value>(subscription_id)
+        .await?;
 
     let f = events_stream.try_for_each(move |(meta, events)| {
         let client = client.clone();
+        let committer = client.committer(subscription_id, stream_id);
         async move {
             if let Some(events) = events {
                 println!("{:?}", events);
@@ -33,8 +29,8 @@ async fn main() -> Result<(), Error> {
                 println!("empty line");
             }
             let cursor = &[meta.cursor];
-            client
-                .commit_cursors(subscription_id, stream_id, cursor, RandomFlowId)
+            committer
+                .commit(cursor)
                 .map_err(|err| Error::new(format!("Could not commit: {}", err)))
                 .await?;
             Ok(())

@@ -2,8 +2,22 @@
 use std::error::Error as StdError;
 use std::fmt;
 
+use self::committer::ProvidesCommitter;
+use self::connector::ProvidesConnector;
+
+pub mod committer;
 pub mod connector;
 pub mod streams;
+
+pub trait StreamingEssentials:
+    ProvidesConnector + ProvidesCommitter + Send + Sync + 'static
+{
+}
+
+impl<T> StreamingEssentials for T where
+    T: ProvidesConnector + ProvidesCommitter + Send + Sync + 'static
+{
+}
 
 #[derive(Debug)]
 pub struct IoError(pub String);
