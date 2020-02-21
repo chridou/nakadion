@@ -176,28 +176,6 @@ where
     }
 }
 
-impl From<NakadiApiError> for ConnectError {
-    fn from(api_error: NakadiApiError) -> Self {
-        if let Some(status) = api_error.status() {
-            match status {
-                StatusCode::NOT_FOUND => ConnectError::not_found().caused_by(api_error),
-                StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
-                    ConnectError::access_denied().caused_by(api_error)
-                }
-                StatusCode::BAD_REQUEST => ConnectError::bad_request().caused_by(api_error),
-                StatusCode::UNPROCESSABLE_ENTITY => {
-                    ConnectError::unprocessable().caused_by(api_error)
-                }
-                _ => ConnectError::other().caused_by(api_error),
-            }
-        } else if api_error.is_io_error() {
-            ConnectError::bad_request().caused_by(api_error)
-        } else {
-            ConnectError::other().caused_by(api_error)
-        }
-    }
-}
-
 /// Error returned on failed connect attempts for a stream
 #[derive(Debug)]
 pub struct ConnectError {
@@ -271,6 +249,28 @@ impl fmt::Display for ConnectError {
 impl From<ConnectError> for Error {
     fn from(err: ConnectError) -> Self {
         Error::from_error(err)
+    }
+}
+
+impl From<NakadiApiError> for ConnectError {
+    fn from(api_error: NakadiApiError) -> Self {
+        if let Some(status) = api_error.status() {
+            match status {
+                StatusCode::NOT_FOUND => ConnectError::not_found().caused_by(api_error),
+                StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                    ConnectError::access_denied().caused_by(api_error)
+                }
+                StatusCode::BAD_REQUEST => ConnectError::bad_request().caused_by(api_error),
+                StatusCode::UNPROCESSABLE_ENTITY => {
+                    ConnectError::unprocessable().caused_by(api_error)
+                }
+                _ => ConnectError::other().caused_by(api_error),
+            }
+        } else if api_error.is_io_error() {
+            ConnectError::bad_request().caused_by(api_error)
+        } else {
+            ConnectError::other().caused_by(api_error)
+        }
     }
 }
 

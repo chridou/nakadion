@@ -8,8 +8,9 @@ use tokio::{
     time::interval_at,
 };
 
-use crate::api::{BytesStream, SubscriptionCommitApi};
+use crate::api::BytesStream;
 use crate::components::{
+    committer::ProvidesCommitter,
     streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
     NakadionEssentials,
 };
@@ -131,7 +132,7 @@ async fn consume_stream_to_end<C, S>(
     stream_state: StreamState,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
-    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
+    C: ProvidesCommitter + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let stream_dead_policy = stream_state.config().stream_dead_policy;
@@ -289,7 +290,7 @@ async fn wait_for_first_frame<C, S>(
     ConsumerError,
 >
 where
-    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
+    C: ProvidesCommitter + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let now = Instant::now();

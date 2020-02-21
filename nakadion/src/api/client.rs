@@ -726,9 +726,7 @@ impl SubscriptionApi for ApiClient {
         }
         .boxed()
     }
-}
 
-impl SubscriptionCommitApi for ApiClient {
     fn commit_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,

@@ -298,9 +298,7 @@ pub trait SubscriptionApi {
         parameters: &StreamParameters,
         flow_id: T,
     ) -> ApiFuture<SubscriptionStreamChunks>;
-}
 
-pub trait SubscriptionCommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)

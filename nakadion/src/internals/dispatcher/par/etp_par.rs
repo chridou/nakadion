@@ -8,7 +8,7 @@ use futures::{
 use std::future::Future;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::api::SubscriptionCommitApi;
+use crate::components::committer::ProvidesCommitter;
 use crate::consumer::ConsumerError;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{
@@ -29,7 +29,7 @@ impl Dispatcher {
         api_client: C,
     ) -> Sleeping<C>
     where
-        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+        C: ProvidesCommitter + Send + Sync + Clone + 'static,
     {
         Sleeping {
             assignments: BTreeMap::default(),
@@ -47,7 +47,7 @@ pub(crate) struct Sleeping<C> {
 
 impl<C> Sleeping<C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, C>
     where
@@ -217,7 +217,7 @@ pub(crate) struct Active<'a, C> {
 
 impl<'a, C> Active<'a, C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
         let Active {

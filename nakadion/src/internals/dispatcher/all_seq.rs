@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 
-use crate::api::SubscriptionCommitApi;
+use crate::components::committer::ProvidesCommitter;
 use crate::consumer::Config;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::*, worker::*, EnrichedResult, StreamState};
@@ -19,7 +19,7 @@ impl Dispatcher {
         config: Config,
     ) -> Sleeping<C>
     where
-        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+        C: ProvidesCommitter + Send + Sync + Clone + 'static,
     {
         let worker = Worker::sleeping(
             handler_factory,
@@ -38,7 +38,7 @@ pub(crate) struct Sleeping<C> {
 
 impl<C> Sleeping<C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, C>
     where
@@ -93,7 +93,7 @@ pub(crate) struct Active<'a, C> {
 
 impl<'a, C> Active<'a, C>
 where
-    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
+    C: ProvidesCommitter + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
         let Active {
