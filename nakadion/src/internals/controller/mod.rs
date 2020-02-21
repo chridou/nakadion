@@ -12,7 +12,7 @@ use crate::api::BytesStream;
 use crate::components::{
     committer::ProvidesCommitter,
     streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
-    NakadionEssentials,
+    StreamingEssentials,
 };
 use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::instrumentation::{Instrumentation, Instruments};
@@ -34,7 +34,7 @@ pub(crate) struct Controller<C> {
 
 impl<C> Controller<C>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     pub(crate) fn new(params: ControllerParams<C>) -> Self {
         Self { params }
@@ -47,7 +47,7 @@ where
 
 async fn create_background_task<C>(params: ControllerParams<C>) -> Result<(), ConsumerError>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     let consumer_state = params.consumer_state.clone();
     let mut sleeping_dispatcher = Dispatcher::sleeping(
@@ -79,7 +79,7 @@ async fn stream_lifecycle<C>(
     sleeping_dispatcher: SleepingDispatcher<C>,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     let consumer_state = params.consumer_state.clone();
     let sleep_ticker = SleepTicker::start(sleeping_dispatcher, consumer_state.clone());

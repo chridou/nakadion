@@ -9,12 +9,12 @@ pub mod committer;
 pub mod connector;
 pub mod streams;
 
-pub trait NakadionEssentials:
+pub trait StreamingEssentials:
     ProvidesConnector + ProvidesCommitter + Send + Sync + 'static
 {
 }
 
-impl<T> NakadionEssentials for T where
+impl<T> StreamingEssentials for T where
     T: ProvidesConnector + ProvidesCommitter + Send + Sync + 'static
 {
 }

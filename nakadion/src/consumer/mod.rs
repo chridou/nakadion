@@ -10,8 +10,8 @@ use std::task::{Context, Poll};
 
 use futures::future::{BoxFuture, FutureExt};
 
-use crate::components::NakadionEssentials;
-use crate::handler::{BatchHandler, BatchHandlerFactory};
+use crate::components::StreamingEssentials;
+use crate::handler::BatchHandlerFactory;
 use crate::internals::{
     controller::{types::ControllerParams, Controller},
     ConsumerState,
@@ -258,7 +258,7 @@ impl<C> fmt::Debug for Inner<C> {
 
 impl<C> ConsumerInternal for Inner<C>
 where
-    C: NakadionEssentials + Clone,
+    C: StreamingEssentials + Clone,
 {
     fn start(
         &self,
