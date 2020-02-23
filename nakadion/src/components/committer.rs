@@ -1,3 +1,4 @@
+//! Component to commit cursoers
 use std::error::Error as StdError;
 use std::fmt;
 use std::time::Instant;
@@ -14,7 +15,7 @@ use crate::nakadi_types::{
     Error, FlowId,
 };
 
-/// Gives a `Connects`
+/// Gives a `Commits`
 pub trait ProvidesCommitter {
     fn committer(
         &self,
@@ -36,9 +37,10 @@ where
     }
 }
 
+/// A future containing a commit result on success
 pub type CommitFuture<'a> = BoxFuture<'a, Result<CursorCommitResults, CommitError>>;
 
-/// Can connect to a Nakadi Stream
+/// Can commit cursoers for a stream
 pub trait Commits {
     /// Commit cursor s to Nakadi.
     fn commit<'a>(&'a self, cursors: &'a [SubscriptionCursor]) -> CommitFuture<'a>;
@@ -56,11 +58,19 @@ pub trait Commits {
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation);
 
+    fn set_subscription_id(&mut self, subscription_id: SubscriptionId);
+
+    fn set_stream_id(&mut self, stream_id: StreamId);
+
     fn subscription_id(&self) -> SubscriptionId;
 
     fn stream_id(&self) -> StreamId;
 }
 
+/// Commits cursors for a stream
+///
+/// `Committer` is bound to a given subscription and stream.
+/// It has to be configured with its mutating methods.
 pub struct Committer<C> {
     client: C,
     flow_id: Option<FlowId>,
@@ -74,6 +84,7 @@ impl<C> Committer<C>
 where
     C: SubscriptionApi + Send + Sync + 'static,
 {
+    /// Create a new instance bound to the given subscription and stream
     pub fn new(client: C, subscription_id: SubscriptionId, stream_id: StreamId) -> Self {
         Self {
             client,
@@ -143,6 +154,14 @@ where
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
         self.instrumentation = instrumentation;
+    }
+
+    fn set_subscription_id(&mut self, subscription_id: SubscriptionId) {
+        self.subscription_id = subscription_id;
+    }
+
+    fn set_stream_id(&mut self, stream_id: StreamId) {
+        self.stream_id = stream_id;
     }
 
     fn subscription_id(&self) -> SubscriptionId {

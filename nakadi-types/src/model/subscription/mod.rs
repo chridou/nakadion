@@ -63,6 +63,10 @@ impl EventTypePartition {
             partition: partition.into(),
         }
     }
+
+    pub fn split(self) -> (EventTypeName, PartitionId) {
+        (self.event_type, self.partition)
+    }
 }
 
 impl fmt::Display for EventTypePartition {

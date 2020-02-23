@@ -32,6 +32,9 @@ pub trait Instruments {
 
     // === DISPATCHER ===
 
+    fn dispatcher_partiton_activated(&self);
+    fn dispatcher_partiton_deactivated(&self, active_for: Duration);
+
     // === WORKERS ===
 
     fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration);
@@ -253,6 +256,27 @@ impl Instruments for Instrumentation {
     }
 
     // === DISPATCHER ===
+
+    fn dispatcher_partiton_activated(&self) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.dispatcher_partiton_activated(),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.dispatcher_partiton_activated(),
+        }
+    }
+    fn dispatcher_partiton_deactivated(&self, active_for: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.dispatcher_partiton_deactivated(active_for)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.dispatcher_partiton_deactivated(active_for)
+            }
+        }
+    }
 
     // === WORKERS ===
 

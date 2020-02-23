@@ -131,6 +131,17 @@ impl Instruments for Metrix {
 
     // === DISPATCHER ===
 
+    fn dispatcher_partiton_activated(&self) {
+        self.tx
+            .observed_one_value_now(Metric::DispatcherPartitionActivated, Increment);
+    }
+    fn dispatcher_partiton_deactivated(&self, active_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::DispatcherPartitionDeactivatedAfter,
+            (active_for, TimeUnit::Milliseconds),
+        );
+    }
+
     // === HANDLERS ===
 
     fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
@@ -194,6 +205,8 @@ pub enum Metric {
     ControllerInfoReceivedElapsed,
     ControllerKeepAliveReceivedElapsed,
     HandlerBatchProcessedBytes,
+    DispatcherPartitionActivated,
+    DispatcherPartitionDeactivatedAfter,
     HandlerBatchDeserializationBytes,
     HandlerBatchDeserializationTime,
     HandlerProcessedEvents,

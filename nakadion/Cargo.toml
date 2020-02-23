@@ -12,7 +12,7 @@ keywords = [ "nakadi", "event", "broker", "distributed","messaging"]
 edition = "2018"
 
 [dependencies]
-nakadi-types = { path = "../nakadi-types", version="^0.1.0-alpha.6"}
+nakadi-types = { path = "../nakadi-types", version="^0.1.0-alpha.7"}
 futures = "0.3"
 pin-utils = "0.1.0-alpha.4"
 tokio = {version = "0.2", features = ["fs", "sync", "time", "stream", "rt-core", "blocking"] }

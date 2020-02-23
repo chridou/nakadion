@@ -221,6 +221,17 @@ impl HandlerAssignment {
             }
         }
     }
+
+    pub fn into_event_type_and_partition(self) -> (Option<EventTypeName>, Option<PartitionId>) {
+        match self {
+            HandlerAssignment::Unspecified => (None, None),
+            HandlerAssignment::EventType(event_type) => (Some(event_type), None),
+            HandlerAssignment::EventTypePartition(etp) => {
+                let (a, b) = etp.split();
+                (Some(a), Some(b))
+            }
+        }
+    }
 }
 
 /// A factory that creates `BatchHandler`s.
