@@ -11,31 +11,31 @@ use crate::Error;
 /// # FromStr
 ///
 /// ```rust
-/// use nakadion::consumer::DispatchStrategy;
+/// use nakadion::consumer::DispatchMode;
 ///
-/// let strategy = "all_seq".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::AllSeq);
+/// let strategy = "all_seq".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::AllSeq);
 ///
-/// let strategy = "event_type_par".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePar);
+/// let strategy = "event_type_par".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::EventTypePar);
 ///
-/// let strategy = "event_type_partition_par".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionPar);
+/// let strategy = "event_type_partition_par".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::EventTypePartitionPar);
 /// ```
 ///
 /// JSON is also valid:
 ///
 /// ```rust
-/// use nakadion::consumer::DispatchStrategy;
+/// use nakadion::consumer::DispatchMode;
 ///
-/// let strategy = "{\"strategy\": \"all_seq\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::AllSeq);
+/// let strategy = "{\"strategy\": \"all_seq\"}".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::AllSeq);
 ///
-/// let strategy = "{\"strategy\": \"event_type_par\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePar);
+/// let strategy = "{\"strategy\": \"event_type_par\"}".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::EventTypePar);
 ///
-/// let strategy = "{\"strategy\": \"event_type_partition_par\"}".parse::<DispatchStrategy>().unwrap();
-/// assert_eq!(strategy, DispatchStrategy::EventTypePartitionPar);
+/// let strategy = "{\"strategy\": \"event_type_partition_par\"}".parse::<DispatchMode>().unwrap();
+/// assert_eq!(strategy, DispatchMode::EventTypePartitionPar);
 /// ```
 ///
 /// # Environment variables
@@ -45,7 +45,7 @@ use crate::Error;
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "strategy")]
-pub enum DispatchStrategy {
+pub enum DispatchMode {
     /// Dispatch all batches to a single worker(handler)
     ///
     /// This means batches all are processed sequentially by a single handler.
@@ -67,7 +67,7 @@ pub enum DispatchStrategy {
     /// This will always request a handler with `HandlerAssignment::EventType(EventTypeName)`
     /// from the `BatchHandlerFactory`.
     ///
-    /// This is the default `DispatchStrategy`.
+    /// This is the default `DispatchMode`.
     EventTypePar,
     /// Dispatch all batches to a dedicated worker for an
     /// partition on each event type.
@@ -82,29 +82,29 @@ pub enum DispatchStrategy {
     EventTypePartitionPar,
 }
 
-impl DispatchStrategy {
-    env_funs!("DISPATCH_STRATEGY");
+impl DispatchMode {
+    env_funs!("DISPATCH_MODE");
 }
 
-impl Default for DispatchStrategy {
+impl Default for DispatchMode {
     fn default() -> Self {
-        DispatchStrategy::EventTypePar
+        DispatchMode::EventTypePar
     }
 }
 
-impl fmt::Display for DispatchStrategy {
+impl fmt::Display for DispatchMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DispatchStrategy::AllSeq => write!(f, "all_seq")?,
-            DispatchStrategy::EventTypePar => write!(f, "event_type_par")?,
-            DispatchStrategy::EventTypePartitionPar => write!(f, "event_type_partition_par")?,
+            DispatchMode::AllSeq => write!(f, "all_seq")?,
+            DispatchMode::EventTypePar => write!(f, "event_type_par")?,
+            DispatchMode::EventTypePartitionPar => write!(f, "event_type_partition_par")?,
         }
 
         Ok(())
     }
 }
 
-impl FromStr for DispatchStrategy {
+impl FromStr for DispatchMode {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -115,9 +115,9 @@ impl FromStr for DispatchStrategy {
         }
 
         match s {
-            "all_seq" => Ok(DispatchStrategy::AllSeq),
-            "event_type_par" => Ok(DispatchStrategy::EventTypePar),
-            "event_type_partition_par" => Ok(DispatchStrategy::EventTypePartitionPar),
+            "all_seq" => Ok(DispatchMode::AllSeq),
+            "event_type_par" => Ok(DispatchMode::EventTypePar),
+            "event_type_partition_par" => Ok(DispatchMode::EventTypePartitionPar),
             _ => Err(Error::new(format!("not a valid dispatch strategy: {}", s))),
         }
     }

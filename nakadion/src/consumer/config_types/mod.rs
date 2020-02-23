@@ -43,7 +43,7 @@ pub use complex_types::*;
 /// * "INACTIVITY_TIMEOUT_SECS"
 /// * "STREAM_DEAD_POLICY"
 /// * "WARN_STREAM_STALLED_SECS"
-/// * "DISPATCH_STRATEGY"
+/// * "dispatch_mode"
 /// * "COMMIT_STRATEGY"
 /// * "ABORT_CONNECT_ON_AUTH_ERROR"
 /// * "ABORT_CONNECT_ON_SUBSCRIPTION_NOT_FOUND"
@@ -92,7 +92,7 @@ pub struct Builder {
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
-    pub dispatch_strategy: Option<DispatchStrategy>,
+    pub dispatch_mode: Option<DispatchMode>,
     /// Defines when to commit cursors.
     ///
     /// It is recommended to set this value instead of letting Nakadion
@@ -174,8 +174,8 @@ impl Builder {
                 WarnStreamStalledSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.dispatch_strategy.is_none() {
-            self.dispatch_strategy = DispatchStrategy::try_from_env_prefixed(prefix.as_ref())?;
+        if self.dispatch_mode.is_none() {
+            self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.abort_connect_on_auth_error.is_none() {
@@ -266,8 +266,8 @@ impl Builder {
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
-    pub fn dispatch_strategy(mut self, dispatch_strategy: DispatchStrategy) -> Self {
-        self.dispatch_strategy = Some(dispatch_strategy);
+    pub fn dispatch_mode(mut self, dispatch_mode: DispatchMode) -> Self {
+        self.dispatch_mode = Some(dispatch_mode);
         self
     }
 
@@ -395,7 +395,7 @@ impl Builder {
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         let warn_stream_stalled = self.warn_stream_stalled_secs;
 
-        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
+        let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
         let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
             commit_strategy
@@ -424,7 +424,7 @@ impl Builder {
         self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_stream_stalled_secs = warn_stream_stalled;
-        self.dispatch_strategy = Some(dispatch_strategy);
+        self.dispatch_mode = Some(dispatch_mode);
         self.commit_strategy = Some(commit_strategy);
         self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
         self.abort_connect_on_subscription_not_found =
@@ -487,7 +487,7 @@ impl Builder {
         stream_dead_policy.validate()?;
         let warn_stream_stalled = self.warn_stream_stalled_secs;
 
-        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
+        let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
         let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
             commit_strategy
@@ -520,7 +520,7 @@ impl Builder {
             handler_inactivity_timeout,
             stream_dead_policy,
             warn_stream_stalled,
-            dispatch_strategy,
+            dispatch_mode,
             commit_strategy,
             abort_connect_on_auth_error,
             abort_connect_on_subscription_not_found,

@@ -51,7 +51,7 @@ where
 {
     let consumer_state = params.consumer_state.clone();
     let mut sleeping_dispatcher = Dispatcher::sleeping(
-        params.config().dispatch_strategy.clone(),
+        params.config().dispatch_mode.clone(),
         Arc::clone(&params.handler_factory),
         params.api_client.clone(),
         params.consumer_state.config().clone(),
