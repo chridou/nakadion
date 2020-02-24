@@ -1,7 +1,6 @@
-use std::sync::Arc;
-use std::time::Instant;
-
+//! Dispatch all events on the same worker sequentially
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
+use std::sync::Arc;
 
 use crate::components::committer::ProvidesCommitter;
 use crate::consumer::Config;
@@ -51,7 +50,9 @@ where
             Committer::start(api_client.clone(), stream_state.clone());
 
         let worker_stream = messages.map(move |dm| match dm {
-            DispatcherMessage::Batch(_etp, batch) => WorkerMessage::Batch(batch),
+            DispatcherMessage::BatchWithEvents(_etp, batch) => {
+                WorkerMessage::BatchWithEvents(batch)
+            }
             DispatcherMessage::Tick(timestamp) => WorkerMessage::Tick(timestamp),
             DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });

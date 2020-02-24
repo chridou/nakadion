@@ -1,3 +1,4 @@
+//! Dispatch events to workers based on their event type and partition
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -16,25 +17,37 @@ mod par;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
-    Batch(EventTypePartition, BatchLine),
+    // A batch containing events along with the `EventTypePartition` extracted from the cursor
+    BatchWithEvents(EventTypePartition, BatchLine),
     Tick(Instant),
     StreamEnded,
 }
 
 impl DispatcherMessage {
-    pub fn is_batch(&self) -> bool {
+    pub fn is_batch_with_events(&self) -> bool {
         match self {
-            DispatcherMessage::Batch(_, _) => true,
+            DispatcherMessage::BatchWithEvents(_, _) => true,
             _ => false,
         }
     }
 }
 
+/// The dispatcher has 2 states: Sleeping and active.
+///
+/// * When sleeping it does not have any infrastructure for stream consumption running
+/// * When active it has all the infrastructure for consuming a stream up and running and consumes batches
+///
+/// Once a stream is not consumed anymore the dispatcher will wait for its components to shut down.
+/// The controller joins an active dispatcher to get the dispatcher in a sleeping state again so that
+/// it knows when it is safe to connect to a new stream.
+///
+/// The dispatcher supports multiple modes on dispatching events. The mode can not be changed
+/// after construction
 pub(crate) struct Dispatcher;
 
 impl Dispatcher {
     pub fn sleeping<C>(
-        strategy: DispatchMode,
+        mode: DispatchMode,
         handler_factory: Arc<dyn BatchHandlerFactory>,
         api_client: C,
         config: Config,
@@ -42,7 +55,7 @@ impl Dispatcher {
     where
         C: ProvidesCommitter + Send + Sync + Clone + 'static,
     {
-        match strategy {
+        match mode {
             DispatchMode::AllSeq => SleepingDispatcher::AllSeq(
                 self::all_seq::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
@@ -52,10 +65,6 @@ impl Dispatcher {
             DispatchMode::EventTypePartitionPar => SleepingDispatcher::EventTypePartitionPar(
                 self::par::etp_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
-            _ => SleepingDispatcher::EventTypePar(self::par::et_par::Dispatcher::sleeping(
-                handler_factory,
-                api_client,
-            )),
         }
     }
 }
@@ -99,6 +108,7 @@ impl<C> SleepingDispatcher<C> {
     }
 }
 
+/// A dispatcher consuming a stream of batches
 pub(crate) enum ActiveDispatcher<'a, C> {
     AllSeq(all_seq::Active<'a, C>),
     EventTypePar(par::et_par::Active<'a, C>),

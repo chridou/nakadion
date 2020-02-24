@@ -160,7 +160,7 @@ where
     }
 
     fn set_flow_id(&mut self, flow_id: FlowId) {
-        self.flow_id = Some(flow_id.into());
+        self.flow_id = Some(flow_id);
     }
 
     fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs) {

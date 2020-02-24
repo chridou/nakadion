@@ -1,3 +1,4 @@
+//! Commit cursors based on a strategy
 use std::collections::{hash_map::Entry, HashMap};
 use std::time::{Duration, Instant};
 

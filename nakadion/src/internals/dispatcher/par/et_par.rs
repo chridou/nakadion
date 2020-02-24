@@ -1,6 +1,6 @@
+//! Dispatch all events for the same event type on a single worker sequentially
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Instant;
 
 use futures::{
     future::{BoxFuture, TryFutureExt},
@@ -123,7 +123,7 @@ where
         pin_mut!(stream);
         while let Some(next_message) = stream.next().await {
             let (event_type_partition, batch) = match next_message {
-                DispatcherMessage::Batch(etp, batch) => (etp, batch),
+                DispatcherMessage::BatchWithEvents(etp, batch) => (etp, batch),
                 DispatcherMessage::Tick(timestamp) => {
                     activated.values().for_each(|w| {
                         w.process(WorkerMessage::Tick(timestamp));
@@ -158,7 +158,7 @@ where
                 activated.get(event_type_str).unwrap()
             };
 
-            if !worker.process(WorkerMessage::Batch(batch)) {
+            if !worker.process(WorkerMessage::BatchWithEvents(batch)) {
                 stream_state.request_stream_cancellation();
                 break;
             }

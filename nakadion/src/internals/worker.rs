@@ -1,3 +1,8 @@
+//! The worker creates handlers and processes batches (events) on them.
+//!
+//! Each worker is responsible for a single handler and has
+//! a predefined `HandlerAssignment` which is passed to the
+//! handler factory to create the correct worker.
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,7 +18,7 @@ use processor::HandlerSlot;
 
 #[derive(Debug)]
 pub enum WorkerMessage {
-    Batch(BatchLine),
+    BatchWithEvents(BatchLine),
     Tick(Instant),
     StreamEnded,
 }
@@ -128,7 +133,7 @@ mod processor {
                 }
 
                 let batch = match msg {
-                    WorkerMessage::Batch(batch) => batch,
+                    WorkerMessage::BatchWithEvents(batch) => batch,
                     WorkerMessage::Tick(_) => {
                         processing_compound.handler_slot.tick();
                         continue;

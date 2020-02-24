@@ -1,3 +1,4 @@
+//! Internals of the `Consumer`
 use std::fmt::Arguments;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -13,6 +14,9 @@ pub mod controller;
 pub mod dispatcher;
 pub mod worker;
 
+/// A state that stays valid for the whole lifetime of the consumer.
+///
+/// That means it is valid over multiple streams.
 #[derive(Clone)]
 pub(crate) struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
@@ -33,6 +37,9 @@ impl ConsumerState {
         }
     }
 
+    /// Creates a new stream state.
+    ///
+    /// The `StreamState` as the analogy to this one for the lifetime of a stream
     pub fn stream_state(&self, stream_id: StreamId) -> StreamState {
         StreamState::new(
             stream_id,
@@ -43,6 +50,7 @@ impl ConsumerState {
         )
     }
 
+    /// Triggering this will cause the `Consumer` to abort
     pub fn request_global_cancellation(&self) {
         self.is_globally_cancelled.store(true, Ordering::SeqCst)
     }
@@ -59,6 +67,7 @@ impl ConsumerState {
         &self.config
     }
 
+    #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
         &self.config().stream_parameters
     }
@@ -89,6 +98,9 @@ impl Logs for ConsumerState {
     }
 }
 
+/// The state of a stream.
+///
+/// This struct is valid for the whole lifetime of  stream.
 #[derive(Clone)]
 pub(crate) struct StreamState {
     stream_id: StreamId,
@@ -117,6 +129,9 @@ impl StreamState {
         }
     }
 
+    /// Returns true if cancellation of the stream was requested.
+    ///
+    /// This holds also true for the whole consumer being aborted.
     pub fn cancellation_requested(&self) -> bool {
         if self.is_cancelled.load(Ordering::SeqCst) {
             return true;
@@ -129,6 +144,9 @@ impl StreamState {
         }
     }
 
+    /// Request the cancellation of the current stream
+    ///
+    /// This will initiate a reconnect for a new stream
     pub fn request_stream_cancellation(&self) {
         self.is_cancelled.store(true, Ordering::SeqCst)
     }
@@ -180,12 +198,19 @@ impl Logs for StreamState {
     }
 }
 
+/// A result that contains data that is (mostly) present in both the success and the error case
 pub(crate) type EnrichedResult<T> = Result<EnrichedOk<T>, EnrichedErr>;
 
+/// Additional data returned with a success
 pub(crate) struct EnrichedOk<T> {
+    /// The number of batches that have been processed.
+    ///
+    /// This is used to correct the "in-flight" metrics since they are
+    /// "delta based".
     pub processed_batches: usize,
     pub payload: T,
 }
+
 impl<T> EnrichedOk<T> {
     pub fn new(payload: T, processed_batches: usize) -> Self {
         Self {
@@ -205,7 +230,15 @@ impl<T> EnrichedOk<T> {
     }
 }
 
+/// An Error with additional data
 pub(crate) struct EnrichedErr {
+    /// The number of batches that have been processed.
+    ///
+    /// This is used to correct the "in-flight" metrics since they are
+    /// "delta based".
+    ///
+    /// This can not be added on "hard errors" like spawn failures etc. where
+    /// we loose state.
     pub processed_batches: Option<usize>,
     pub err: ConsumerError,
 }
@@ -218,6 +251,7 @@ impl EnrichedErr {
         }
     }
 
+    /// Convenience ctor for cases where we lost state
     pub fn no_data<E: Into<ConsumerError>>(err: E) -> Self {
         Self {
             err: err.into(),

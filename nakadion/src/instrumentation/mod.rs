@@ -116,6 +116,7 @@ pub trait Instruments {
     fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration);
 }
 
+/// This defines the level of metrics being collected
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MetricsDetailLevel {
     Low,
@@ -129,6 +130,7 @@ impl Default for MetricsDetailLevel {
     }
 }
 
+/// Used by the consumer to notify on measurable state changes
 #[derive(Clone)]
 pub struct Instrumentation {
     instr: InstrumentationSelection,
@@ -136,6 +138,9 @@ pub struct Instrumentation {
 }
 
 impl Instrumentation {
+    /// Do not collect any data.
+    ///
+    /// This is the default.
     pub fn off() -> Self {
         {
             Instrumentation {
@@ -145,6 +150,7 @@ impl Instrumentation {
         }
     }
 
+    /// Use the given implementation of `Instruments`
     pub fn new<I>(instruments: I, detail: MetricsDetailLevel) -> Self
     where
         I: Instruments + Send + Sync + 'static,
