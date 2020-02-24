@@ -34,3 +34,9 @@ jobs:
       - run: cargo test --manifest-path=./nakadi-types/Cargo.toml
       - run: cargo build  ${{ matrix.features }} --manifest-path=./nakadion/Cargo.toml
       - run: cargo test  ${{ matrix.features }} --manifest-path=./nakadion/Cargo.toml
+      - name: Run integration test against Nakadi
+        if: matrix.rust != 'nightly' && matrix.features == ''
+        run: |
+          git clone https://github.com/adyach/nakadi-docker
+          cd nakadi-docker && docker-compose up -d
+          while ! METRICS=$(curl -s "localhost:8080/metrics"); do sleep 5; done; echo $METRICS
