@@ -29,11 +29,10 @@ pub trait Instruments {
     fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize);
     fn controller_info_received(&self, frame_received_at: Instant);
     fn controller_keep_alive_received(&self, frame_received_at: Instant);
+    fn controller_partition_activated(&self);
+    fn controller_partition_deactivated(&self, active_for: Duration);
 
     // === DISPATCHER ===
-
-    fn dispatcher_partiton_activated(&self);
-    fn dispatcher_partiton_deactivated(&self, active_for: Duration);
 
     // === WORKERS ===
 
@@ -255,28 +254,28 @@ impl Instruments for Instrumentation {
         }
     }
 
-    // === DISPATCHER ===
-
-    fn dispatcher_partiton_activated(&self) {
+    fn controller_partition_activated(&self) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.dispatcher_partiton_activated(),
+            InstrumentationSelection::Custom(ref instr) => instr.controller_partition_activated(),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.dispatcher_partiton_activated(),
+            InstrumentationSelection::Metrix(ref instr) => instr.controller_partition_activated(),
         }
     }
-    fn dispatcher_partiton_deactivated(&self, active_for: Duration) {
+    fn controller_partition_deactivated(&self, active_for: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.dispatcher_partiton_deactivated(active_for)
+                instr.controller_partition_deactivated(active_for)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.dispatcher_partiton_deactivated(active_for)
+                instr.controller_partition_deactivated(active_for)
             }
         }
     }
+
+    // === DISPATCHER ===
 
     // === WORKERS ===
 

@@ -85,6 +85,13 @@ pub struct Builder {
     ///
     /// The default is never.
     pub handler_inactivity_timeout_secs: Option<HandlerInactivityTimeoutSecs>,
+    /// The time after which a partition is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the partition
+    /// will be considered inactive.
+    ///
+    /// The default is 90 seconds.
+    pub partition_inactivity_timeout_secs: Option<PartitionInactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_policy: Option<StreamDeadPolicy>,
     /// Emits a warning when no lines were received from Nakadi for the given time.
@@ -163,6 +170,11 @@ impl Builder {
         if self.handler_inactivity_timeout_secs.is_none() {
             self.handler_inactivity_timeout_secs =
                 HandlerInactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
+        if self.partition_inactivity_timeout_secs.is_none() {
+            self.partition_inactivity_timeout_secs =
+                PartitionInactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.stream_dead_policy.is_none() {
@@ -245,6 +257,20 @@ impl Builder {
         handler_inactivity_timeout_secs: T,
     ) -> Self {
         self.handler_inactivity_timeout_secs = Some(handler_inactivity_timeout_secs.into());
+        self
+    }
+
+    /// The time after which a partition is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the partition
+    /// will be considered inactive.
+    ///
+    /// The default is 90 seconds.
+    pub fn partition_inactivity_timeout_secs<T: Into<PartitionInactivityTimeoutSecs>>(
+        mut self,
+        partition_inactivity_timeout_secs: T,
+    ) -> Self {
+        self.partition_inactivity_timeout_secs = Some(partition_inactivity_timeout_secs.into());
         self
     }
 
@@ -391,6 +417,8 @@ impl Builder {
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let handler_inactivity_timeout = self.handler_inactivity_timeout_secs;
+        let partition_inactivity_timeout =
+            Some(self.partition_inactivity_timeout_secs.unwrap_or_default());
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         let warn_stream_stalled = self.warn_stream_stalled_secs;
@@ -422,6 +450,7 @@ impl Builder {
         self.instrumentation = Some(instrumentation);
         self.tick_interval_millis = Some(tick_interval);
         self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
+        self.partition_inactivity_timeout_secs = partition_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_stream_stalled_secs = warn_stream_stalled;
         self.dispatch_mode = Some(dispatch_mode);
@@ -482,6 +511,8 @@ impl Builder {
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let handler_inactivity_timeout = self.handler_inactivity_timeout_secs.unwrap_or_default();
+        let partition_inactivity_timeout =
+            self.partition_inactivity_timeout_secs.unwrap_or_default();
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         stream_dead_policy.validate()?;
@@ -518,6 +549,7 @@ impl Builder {
             instrumentation,
             tick_interval,
             handler_inactivity_timeout,
+            partition_inactivity_timeout,
             stream_dead_policy,
             warn_stream_stalled,
             dispatch_mode,

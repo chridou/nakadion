@@ -42,7 +42,6 @@ slog-async = "2.4.0"
 
 [[example]]
 name = "consume_subscription"
-required-features = ["slog"]
 
 [package.metadata.docs.rs]
 all-features = true

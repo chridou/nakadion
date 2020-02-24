@@ -9,14 +9,14 @@ use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
+use crate::nakadi_types::model::subscription::EventTypePartition;
 
 mod all_seq;
 mod par;
-pub use partition_tracker::*;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
-    Batch(BatchLine),
+    Batch(EventTypePartition, BatchLine),
     Tick(Instant),
     StreamEnded,
 }
@@ -24,7 +24,7 @@ pub enum DispatcherMessage {
 impl DispatcherMessage {
     pub fn is_batch(&self) -> bool {
         match self {
-            DispatcherMessage::Batch(_) => true,
+            DispatcherMessage::Batch(_, _) => true,
             _ => false,
         }
     }
@@ -132,36 +132,5 @@ where
                     .await
             }
         }
-    }
-}
-
-mod partition_tracker {
-    use std::collections::BTreeMap;
-    use std::time::Instant;
-
-    use crate::instrumentation::{Instrumentation, Instruments};
-    use crate::nakadi_types::model::subscription::EventTypePartition;
-
-    pub struct PartitionTracker {
-        last_checked: Instant,
-        partitions: BTreeMap<EventTypePartition, Entry>,
-        instrumentation: Instrumentation,
-    }
-
-    impl PartitionTracker {
-        pub fn new(instrumentation: Instrumentation) -> Self {
-            Self {
-                last_checked: Instant::now(),
-                partitions: BTreeMap::new(),
-                instrumentation,
-            }
-        }
-
-        pub fn activity(&mut self, partition: &EventTypePartition) {}
-    }
-
-    struct Entry {
-        activated_at: Instant,
-        last_activity: Instant,
     }
 }

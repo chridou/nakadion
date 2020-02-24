@@ -53,6 +53,27 @@ impl From<HandlerInactivityTimeoutSecs> for Duration {
 }
 
 new_type! {
+    #[doc="The time after which a partition is considered inactive.\n\nDefault is 90 seconds\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct PartitionInactivityTimeoutSecs(u64, env="PARTITION_INACTIVITY_TIMEOUT_SECS");
+}
+impl PartitionInactivityTimeoutSecs {
+    pub fn into_duration(self) -> Duration {
+        Duration::from_secs(self.0)
+    }
+}
+impl Default for PartitionInactivityTimeoutSecs {
+    fn default() -> Self {
+        Self(90)
+    }
+}
+impl From<PartitionInactivityTimeoutSecs> for Duration {
+    fn from(v: PartitionInactivityTimeoutSecs) -> Self {
+        v.into_duration()
+    }
+}
+
+new_type! {
     #[doc="The time after which a stream is considered stuck and has to be aborted.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamDeadTimeoutSecs(u64, env="STREAM_DEAD_TIMEOUT_SECS");

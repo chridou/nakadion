@@ -23,6 +23,7 @@ use crate::internals::{
 use crate::logging::Logs;
 
 mod connect_stream;
+mod partition_tracker;
 pub(crate) mod types;
 
 use types::*;
@@ -150,6 +151,16 @@ where
     let instrumentation = stream_state.instrumentation();
 
     let mut stream = stream.boxed();
+
+    let mut partition_tracker = partition_tracker::PartitionTracker::new(
+        stream_state.instrumentation().clone(),
+        stream_state
+            .config()
+            .partition_inactivity_timeout
+            .into_duration(),
+        stream_state.clone(),
+    );
+
     while let Some(batch_line_message_or_err) = stream.next().await {
         let batch_line_message = match batch_line_message_or_err {
             Ok(msg) => msg,
@@ -186,7 +197,7 @@ where
                         ));
                     }
                 }
-
+                partition_tracker.check_for_inactivity(Instant::now());
                 DispatcherMessage::Tick(timestamp)
             }
             BatchLineMessage::BatchLine(batch) => {
@@ -194,20 +205,29 @@ where
                 let now = Instant::now();
                 last_frame_received_at = now;
 
+                let event_type_partition = batch.to_event_type_partition();
+                partition_tracker.activity(&event_type_partition);
+
                 if let Some(info_str) = batch.info_str() {
                     instrumentation.controller_info_received(frame_received_at);
-                    stream_state.info(format_args!("Received info line: {}", info_str));
+                    stream_state.info(format_args!(
+                        "Received info line for {}: {}",
+                        event_type_partition, info_str
+                    ));
                 }
 
                 if batch.is_keep_alive_line() {
                     instrumentation.controller_keep_alive_received(frame_received_at);
-                    stream_state.debug(format_args!("Keep alive line received."));
+                    stream_state.debug(format_args!(
+                        "Keep alive line received for {}.",
+                        event_type_partition
+                    ));
                     continue;
                 } else {
-                    last_events_received_at = Instant::now();
+                    last_events_received_at = now;
                     let bytes = batch.bytes().len();
                     instrumentation.controller_batch_received(frame_received_at, bytes);
-                    DispatcherMessage::Batch(batch)
+                    DispatcherMessage::Batch(event_type_partition, batch)
                 }
             }
         };
@@ -223,6 +243,7 @@ where
     }
 
     drop(stream);
+    drop(partition_tracker);
 
     stream_state.debug(format_args!(
         "Streaming stopping after {:?}.",
