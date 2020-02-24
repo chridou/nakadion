@@ -3,13 +3,17 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::components::StreamingEssentials;
-use crate::handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::BatchHandlerFactory;
 use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
 use crate::Error;
 
 use super::{Config, Consumer, Inner};
-use crate::instrumentation::Instrumentation;
+pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
+#[cfg(feature = "metrix")]
+pub use crate::instrumentation::{Metrix, MetrixConfig};
+#[cfg(feature = "metrix")]
+pub use metrix::{processor::ProcessorMount, AggregatesProcessors};
 
 mod new_types;
 pub use new_types::*;
@@ -398,6 +402,27 @@ impl Builder {
         let stream_parameters = self.stream_parameters.unwrap_or_default();
         self.stream_parameters = Some(f(stream_parameters)?);
         Ok(self)
+    }
+
+    /// Use the given Metrix instrumentation as the instrumentation
+    #[cfg(feature = "metrix")]
+    pub fn metrix(mut self, metrix: Metrix, detail: MetricsDetailLevel) -> Self {
+        self.instrumentation = Some(Instrumentation::metrix(metrix, detail));
+        self
+    }
+
+    /// Create new Metrix instrumentation and
+    /// put it into the given processor with the optional name.
+    #[cfg(feature = "metrix")]
+    pub fn metrix_mounted<A: AggregatesProcessors>(
+        mut self,
+        config: &MetrixConfig,
+        detail: MetricsDetailLevel,
+        processor: &mut A,
+    ) -> Self {
+        let instr = Instrumentation::metrix_mounted(config, detail, processor);
+        self.instrumentation = Some(instr);
+        self
     }
 
     /// Applies the defaults to all values that have not been set so far.

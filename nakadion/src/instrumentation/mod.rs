@@ -4,11 +4,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "metrix")]
-mod metrix;
+mod metrix_impl;
 
 #[cfg(feature = "metrix")]
-pub use self::metrix::{Metrix, MetrixConfig, MetrixTrackingSecs};
+pub use self::metrix_impl::{Metrix, MetrixConfig, MetrixTrackingSecs};
+#[cfg(feature = "metrix")]
+pub use metrix::{
+    driver::{DriverBuilder, TelemetryDriver},
+    processor::ProcessorMount,
+    AggregatesProcessors,
+};
 
+/// An interface on which `Nakadion` exposes metrics
+///
+/// An implementor of this interface can be used with
+/// `Instrumentation::new`
 pub trait Instruments {
     // === CONSUMER ===
     fn consumer_batches_in_flight_inc(&self);
@@ -93,6 +103,26 @@ impl Instrumentation {
             instr: InstrumentationSelection::Metrix(metrix),
             detail,
         }
+    }
+
+    #[cfg(feature = "metrix")]
+    pub fn metrix_mounted<A: AggregatesProcessors>(
+        config: &MetrixConfig,
+        detail: MetricsDetailLevel,
+        processor: &mut A,
+    ) -> Self {
+        let metrix = Metrix::new(config, processor);
+        Self::metrix(metrix, detail)
+    }
+
+    #[cfg(feature = "metrix")]
+    pub fn metrix_mountable(
+        config: &MetrixConfig,
+        detail: MetricsDetailLevel,
+        mountable_name: Option<&str>,
+    ) -> (Self, ProcessorMount) {
+        let (metrix, mount) = Metrix::new_mountable(config, mountable_name);
+        (Self::metrix(metrix, detail), mount)
     }
 }
 
