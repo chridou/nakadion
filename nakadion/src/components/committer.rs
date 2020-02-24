@@ -229,7 +229,7 @@ impl CommitError {
             CommitErrorKind::AccessDenied => false,
             CommitErrorKind::Unprocessable => false,
             CommitErrorKind::BadRequest => false,
-            CommitErrorKind::Io => false,
+            CommitErrorKind::Io => true,
             CommitErrorKind::Other => false,
         }
     }
