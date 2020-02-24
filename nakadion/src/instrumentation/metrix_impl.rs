@@ -26,6 +26,8 @@ impl Metrix {
         Metrix { tx }
     }
 
+    /// Creates new Metrix instrumentation and returns a mount that can be plugged with metrix
+    /// and the instrumentation which can be plugged into the `Consumer`
     pub fn new_mountable(config: &MetrixConfig, name: Option<&str>) -> (Metrix, ProcessorMount) {
         let mut mount = if let Some(name) = name {
             ProcessorMount::new(name)
@@ -118,14 +120,25 @@ impl Instruments for Metrix {
     }
     fn controller_info_received(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
-            Metric::ControllerInfoReceivedElapsed,
+            Metric::ControllerInfoReceivedLag,
             (frame_received_at.elapsed(), TimeUnit::Microseconds),
         );
     }
     fn controller_keep_alive_received(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
-            Metric::ControllerKeepAliveReceivedElapsed,
+            Metric::ControllerKeepAliveReceivedLag,
             (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+
+    fn controller_partition_activated(&self) {
+        self.tx
+            .observed_one_value_now(Metric::ControllerPartitionActivated, Increment);
+    }
+    fn controller_partition_deactivated(&self, active_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerPartitionDeactivatedAfter,
+            (active_for, TimeUnit::Milliseconds),
         );
     }
 
@@ -145,9 +158,13 @@ impl Instruments for Metrix {
     }
     fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
         self.tx
-            .observed_one_value_now(Metric::HandlerBatchProcessedBytes, n_bytes);
+            .observed_one_value_now(Metric::HandlerBatchProcessedBytes, n_bytes)
+            .observed_one_value_now(
+                Metric::HandlerBatchLag,
+                (frame_received_at.elapsed(), TimeUnit::Microseconds),
+            );
     }
-    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {
+    fn handler_deserialization(&self, n_bytes: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::HandlerBatchDeserializationBytes, n_bytes)
             .observed_one_value_now(
@@ -156,9 +173,14 @@ impl Instruments for Metrix {
             );
     }
 
-    // === HANDLERS ===
-
     // === COMMITTER ===
+
+    fn committer_cursor_received(&self, frame_received_at: Instant) {
+        self.tx.observed_one_value_now(
+            Metric::CommitterCursorsReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Milliseconds),
+        );
+    }
 
     fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
         self.tx
@@ -168,6 +190,7 @@ impl Instruments for Metrix {
                 (time, TimeUnit::Milliseconds),
             );
     }
+
     fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
@@ -191,13 +214,17 @@ pub enum Metric {
     StreamFrameReceivedBytes,
     ControllerBatchReceivedBytes,
     ControllerBatchReceivedLag,
-    ControllerInfoReceivedElapsed,
-    ControllerKeepAliveReceivedElapsed,
+    ControllerInfoReceivedLag,
+    ControllerKeepAliveReceivedLag,
+    ControllerPartitionActivated,
+    ControllerPartitionDeactivatedAfter,
+    HandlerBatchLag,
     HandlerBatchProcessedBytes,
+    HandlerBatchProcessedTime,
     HandlerBatchDeserializationBytes,
     HandlerBatchDeserializationTime,
     HandlerProcessedEvents,
-    HandlerBatchProcessedTime,
+    CommitterCursorsReceivedLag,
     CommitterCursorsCommittedTime,
     CommitterCursorsCommittedCount,
     CommitterCommitFailed,
@@ -239,7 +266,24 @@ mod instr {
                         .handler(
                             ValueMeter::new_with_defaults("bytes_per_second")
                                 .for_label(Metric::HandlerBatchProcessedBytes),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("bytes_per_batch")
+                                .for_label(Metric::HandlerBatchProcessedBytes),
                         ),
+                )
+                .panel(
+                    Panel::named(
+                        (
+                            Metric::ControllerPartitionActivated,
+                            Metric::ControllerPartitionDeactivatedAfter,
+                        ),
+                        "partitions",
+                    )
+                    .gauge(create_gauge("active", config).inc_dec_on(
+                        Metric::ControllerPartitionActivated,
+                        Metric::ControllerPartitionDeactivatedAfter,
+                    )),
                 )
                 .panel(
                     Panel::named(AcceptAllLabels, "events")
@@ -259,6 +303,28 @@ mod instr {
                         .handler(
                             ValueMeter::new_with_defaults("batch_deserialization_bytes_per_second")
                                 .for_label(Metric::HandlerBatchDeserializationBytes),
+                        ),
+                )
+                .panel(
+                    Panel::named(AcceptAllLabels, "batch_lag")
+                        .histogram(
+                            Histogram::new_with_defaults("controller")
+                                .display_time_unit(TimeUnit::Microseconds)
+                                .accept((
+                                    Metric::ControllerBatchReceivedLag,
+                                    Metric::ControllerKeepAliveReceivedLag,
+                                    Metric::ControllerInfoReceivedLag,
+                                )),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("handlers")
+                                .display_time_unit(TimeUnit::Microseconds)
+                                .accept(Metric::HandlerBatchLag),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("committer")
+                                .display_time_unit(TimeUnit::Microseconds)
+                                .accept(Metric::CommitterCursorsReceivedLag),
                         ),
                 ),
         );

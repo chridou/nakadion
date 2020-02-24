@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 
@@ -49,8 +50,8 @@ where
         let (committer, committer_join_handle) =
             Committer::start(api_client.clone(), stream_state.clone());
 
-        let worker_stream = messages.map(|dm| match dm {
-            DispatcherMessage::Batch(batch) => WorkerMessage::Batch(batch),
+        let worker_stream = messages.map(move |dm| match dm {
+            DispatcherMessage::Batch(_etp, batch) => WorkerMessage::Batch(batch),
             DispatcherMessage::Tick(timestamp) => WorkerMessage::Tick(timestamp),
             DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });

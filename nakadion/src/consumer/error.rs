@@ -60,10 +60,6 @@ impl ConsumerError {
     pub(crate) fn enriched(self, batches_processed: usize) -> crate::internals::EnrichedErr {
         crate::internals::EnrichedErr::new(self, batches_processed)
     }
-
-    pub(crate) fn not_enriched(self) -> crate::internals::EnrichedErr {
-        crate::internals::EnrichedErr::no_data(self)
-    }
 }
 
 impl StdError for ConsumerError {
@@ -136,7 +132,7 @@ impl fmt::Display for ConsumerErrorKind {
             ConsumerErrorKind::HandlerFactory => write!(f, "handler factory")?,
             ConsumerErrorKind::InvalidBatch => write!(f, "invalid batch")?,
             ConsumerErrorKind::Other => write!(f, "other")?,
-            _ => write!(f, "uncategorized")?,
+            _ => write!(f, "not categorized")?,
         }
         Ok(())
     }

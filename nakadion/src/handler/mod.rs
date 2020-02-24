@@ -158,7 +158,7 @@ pub struct HandlerFn<F>(pub F);
 
 impl<F> BatchHandler for HandlerFn<F>
 where
-    F: for<'a> Fn(Bytes, BatchMeta<'a>) -> BatchHandlerFuture<'a> + Send,
+    F: for<'a> FnMut(Bytes, BatchMeta<'a>) -> BatchHandlerFuture<'a> + Send,
 {
     fn handle<'a>(&'a mut self, events: Bytes, meta: BatchMeta<'a>) -> BatchHandlerFuture<'a> {
         (self.0)(events, meta)
@@ -218,6 +218,17 @@ impl HandlerAssignment {
             HandlerAssignment::EventType(event_type) => (Some(&event_type), None),
             HandlerAssignment::EventTypePartition(ref etp) => {
                 (Some(etp.event_type()), Some(etp.partition()))
+            }
+        }
+    }
+
+    pub fn into_event_type_and_partition(self) -> (Option<EventTypeName>, Option<PartitionId>) {
+        match self {
+            HandlerAssignment::Unspecified => (None, None),
+            HandlerAssignment::EventType(event_type) => (Some(event_type), None),
+            HandlerAssignment::EventTypePartition(etp) => {
+                let (a, b) = etp.split();
+                (Some(a), Some(b))
             }
         }
     }
@@ -286,24 +297,23 @@ pub trait BatchHandlerFactory: Send + Sync + 'static {
     /// Returning an `Error` aborts the `Consumer`.
     ///
     /// It is up to the `BatchHandlerFactory` on whether it respects `assignment`.
-    fn handler(
-        &self,
-        assignment: &HandlerAssignment,
-    ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>>;
+    fn handler<'a>(
+        &'a self,
+        assignment: &'a HandlerAssignment,
+    ) -> BoxFuture<'a, Result<Box<dyn BatchHandler>, Error>>;
 }
 
-/*
 impl<T> BatchHandlerFactory for T
 where
-    T: Fn(&HandlerAssignment) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>>
+    T: for<'a> Fn(&'a HandlerAssignment) -> BoxFuture<'a, Result<Box<dyn BatchHandler>, Error>>
         + Send
         + Sync
         + 'static,
 {
     fn handler<'a>(
-        &self,
+        &'a self,
         assignment: &'a HandlerAssignment,
-    ) -> BoxFuture<Result<Box<dyn BatchHandler>, Error>> {
+    ) -> BoxFuture<'a, Result<Box<dyn BatchHandler>, Error>> {
         self(assignment)
     }
-}*/
+}

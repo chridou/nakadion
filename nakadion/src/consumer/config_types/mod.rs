@@ -3,13 +3,17 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::components::StreamingEssentials;
-use crate::handler::{BatchHandler, BatchHandlerFactory};
+use crate::handler::BatchHandlerFactory;
 use crate::logging::LoggingAdapter;
 use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
 use crate::Error;
 
 use super::{Config, Consumer, Inner};
-use crate::instrumentation::Instrumentation;
+pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
+#[cfg(feature = "metrix")]
+pub use crate::instrumentation::{Metrix, MetrixConfig};
+#[cfg(feature = "metrix")]
+pub use metrix::{processor::ProcessorMount, AggregatesProcessors};
 
 mod new_types;
 pub use new_types::*;
@@ -43,7 +47,7 @@ pub use complex_types::*;
 /// * "INACTIVITY_TIMEOUT_SECS"
 /// * "STREAM_DEAD_POLICY"
 /// * "WARN_STREAM_STALLED_SECS"
-/// * "DISPATCH_STRATEGY"
+/// * "dispatch_mode"
 /// * "COMMIT_STRATEGY"
 /// * "ABORT_CONNECT_ON_AUTH_ERROR"
 /// * "ABORT_CONNECT_ON_SUBSCRIPTION_NOT_FOUND"
@@ -85,6 +89,13 @@ pub struct Builder {
     ///
     /// The default is never.
     pub handler_inactivity_timeout_secs: Option<HandlerInactivityTimeoutSecs>,
+    /// The time after which a partition is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the partition
+    /// will be considered inactive.
+    ///
+    /// The default is 90 seconds.
+    pub partition_inactivity_timeout_secs: Option<PartitionInactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_policy: Option<StreamDeadPolicy>,
     /// Emits a warning when no lines were received from Nakadi for the given time.
@@ -92,7 +103,7 @@ pub struct Builder {
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
-    pub dispatch_strategy: Option<DispatchStrategy>,
+    pub dispatch_mode: Option<DispatchMode>,
     /// Defines when to commit cursors.
     ///
     /// It is recommended to set this value instead of letting Nakadion
@@ -165,6 +176,11 @@ impl Builder {
                 HandlerInactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
+        if self.partition_inactivity_timeout_secs.is_none() {
+            self.partition_inactivity_timeout_secs =
+                PartitionInactivityTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
         if self.stream_dead_policy.is_none() {
             self.stream_dead_policy = StreamDeadPolicy::try_from_env_prefixed(prefix.as_ref())?;
         }
@@ -174,8 +190,8 @@ impl Builder {
                 WarnStreamStalledSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.dispatch_strategy.is_none() {
-            self.dispatch_strategy = DispatchStrategy::try_from_env_prefixed(prefix.as_ref())?;
+        if self.dispatch_mode.is_none() {
+            self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.abort_connect_on_auth_error.is_none() {
@@ -248,6 +264,20 @@ impl Builder {
         self
     }
 
+    /// The time after which a partition is considered inactive.
+    ///
+    /// If no batches have been processed for the given amount of time, the partition
+    /// will be considered inactive.
+    ///
+    /// The default is 90 seconds.
+    pub fn partition_inactivity_timeout_secs<T: Into<PartitionInactivityTimeoutSecs>>(
+        mut self,
+        partition_inactivity_timeout_secs: T,
+    ) -> Self {
+        self.partition_inactivity_timeout_secs = Some(partition_inactivity_timeout_secs.into());
+        self
+    }
+
     /// Define when a stream is considered stuck/dead and has to be aborted.
     pub fn stream_dead_policy<T: Into<StreamDeadPolicy>>(mut self, stream_dead_policy: T) -> Self {
         self.stream_dead_policy = Some(stream_dead_policy.into());
@@ -266,8 +296,8 @@ impl Builder {
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
-    pub fn dispatch_strategy(mut self, dispatch_strategy: DispatchStrategy) -> Self {
-        self.dispatch_strategy = Some(dispatch_strategy);
+    pub fn dispatch_mode(mut self, dispatch_mode: DispatchMode) -> Self {
+        self.dispatch_mode = Some(dispatch_mode);
         self
     }
 
@@ -374,6 +404,27 @@ impl Builder {
         Ok(self)
     }
 
+    /// Use the given Metrix instrumentation as the instrumentation
+    #[cfg(feature = "metrix")]
+    pub fn metrix(mut self, metrix: Metrix, detail: MetricsDetailLevel) -> Self {
+        self.instrumentation = Some(Instrumentation::metrix(metrix, detail));
+        self
+    }
+
+    /// Create new Metrix instrumentation and
+    /// put it into the given processor with the optional name.
+    #[cfg(feature = "metrix")]
+    pub fn metrix_mounted<A: AggregatesProcessors>(
+        mut self,
+        config: &MetrixConfig,
+        detail: MetricsDetailLevel,
+        processor: &mut A,
+    ) -> Self {
+        let instr = Instrumentation::metrix_mounted(config, detail, processor);
+        self.instrumentation = Some(instr);
+        self
+    }
+
     /// Applies the defaults to all values that have not been set so far.
     ///
     /// Remember that there is no default for a `SubscriptionId` which must be set otherwise.
@@ -391,11 +442,13 @@ impl Builder {
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let handler_inactivity_timeout = self.handler_inactivity_timeout_secs;
+        let partition_inactivity_timeout =
+            Some(self.partition_inactivity_timeout_secs.unwrap_or_default());
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         let warn_stream_stalled = self.warn_stream_stalled_secs;
 
-        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
+        let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
         let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
             commit_strategy
@@ -422,9 +475,10 @@ impl Builder {
         self.instrumentation = Some(instrumentation);
         self.tick_interval_millis = Some(tick_interval);
         self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
+        self.partition_inactivity_timeout_secs = partition_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_stream_stalled_secs = warn_stream_stalled;
-        self.dispatch_strategy = Some(dispatch_strategy);
+        self.dispatch_mode = Some(dispatch_mode);
         self.commit_strategy = Some(commit_strategy);
         self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
         self.abort_connect_on_subscription_not_found =
@@ -482,12 +536,14 @@ impl Builder {
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
 
         let handler_inactivity_timeout = self.handler_inactivity_timeout_secs.unwrap_or_default();
+        let partition_inactivity_timeout =
+            self.partition_inactivity_timeout_secs.unwrap_or_default();
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         stream_dead_policy.validate()?;
         let warn_stream_stalled = self.warn_stream_stalled_secs;
 
-        let dispatch_strategy = self.dispatch_strategy.clone().unwrap_or_default();
+        let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
         let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
             commit_strategy
@@ -518,9 +574,10 @@ impl Builder {
             instrumentation,
             tick_interval,
             handler_inactivity_timeout,
+            partition_inactivity_timeout,
             stream_dead_policy,
             warn_stream_stalled,
-            dispatch_strategy,
+            dispatch_mode,
             commit_strategy,
             abort_connect_on_auth_error,
             abort_connect_on_subscription_not_found,

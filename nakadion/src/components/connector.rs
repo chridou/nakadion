@@ -306,23 +306,18 @@ pub struct StreamedBatchMeta {
     pub frame_id: usize,
 }
 
-/// Wraps a `Connects` for extension
-pub struct Streamer<C>(pub C);
-
-impl<C> Streamer<C>
-where
-    C: Connects + Send + Sync,
-{
+/// `Connects` with extensions
+pub trait ConnectsExt: Connects + Sync {
     /// Get a stream of frames(lines) directly from Nakadi.
-    pub fn frame_stream(
+    fn frame_stream(
         &self,
         subscription_id: SubscriptionId,
     ) -> ConnectFuture<(StreamId, FramesStream)> {
         async move {
-            let (stream_id, chunks) = self.0.connect(subscription_id).await?.parts();
+            let (stream_id, chunks) = self.connect(subscription_id).await?.parts();
 
             let framed =
-                crate::components::streams::FramedStream::new(chunks, self.0.instrumentation());
+                crate::components::streams::FramedStream::new(chunks, self.instrumentation());
 
             Ok((stream_id, framed.boxed()))
         }
@@ -330,7 +325,7 @@ where
     }
 
     /// Get a stream of analyzed lines.
-    pub fn batch_stream(
+    fn batch_stream(
         &self,
         subscription_id: SubscriptionId,
     ) -> ConnectFuture<(StreamId, BatchStream)> {
@@ -338,7 +333,7 @@ where
             let (stream_id, frames) = self.frame_stream(subscription_id).await?;
 
             let lines =
-                crate::components::streams::BatchLineStream::new(frames, self.0.instrumentation());
+                crate::components::streams::BatchLineStream::new(frames, self.instrumentation());
 
             Ok((stream_id, lines.boxed()))
         }
@@ -346,7 +341,7 @@ where
     }
 
     /// Get a stream of deserialized events.
-    pub fn events_stream<E: DeserializeOwned>(
+    fn events_stream<E: DeserializeOwned>(
         &self,
         subscription_id: SubscriptionId,
     ) -> ConnectFuture<(StreamId, EventsStream<E>)> {
@@ -377,6 +372,8 @@ where
         .boxed()
     }
 }
+
+impl<T> ConnectsExt for T where T: Connects + Sync {}
 
 impl Connects for Box<dyn Connects + Send + Sync> {
     fn instrumentation(&self) -> Instrumentation {

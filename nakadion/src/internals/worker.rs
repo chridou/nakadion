@@ -213,7 +213,7 @@ mod processor {
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .handler_deserialization_time(n_events_bytes, t_deserialize);
+                            .handler_deserialization(n_events_bytes, t_deserialize);
                     }
 
                     let commit_data = CommitData {
@@ -242,7 +242,7 @@ mod processor {
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .handler_deserialization_time(n_events_bytes, t_deserialize);
+                            .handler_deserialization(n_events_bytes, t_deserialize);
                     }
 
                     Ok(true)

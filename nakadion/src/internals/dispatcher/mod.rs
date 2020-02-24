@@ -5,17 +5,18 @@ use futures::{Stream, TryFutureExt};
 
 use crate::components::committer::ProvidesCommitter;
 use crate::components::streams::BatchLine;
-use crate::consumer::{Config, DispatchStrategy};
+use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
+use crate::nakadi_types::model::subscription::EventTypePartition;
 
 mod all_seq;
 mod par;
 
 #[derive(Debug)]
 pub enum DispatcherMessage {
-    Batch(BatchLine),
+    Batch(EventTypePartition, BatchLine),
     Tick(Instant),
     StreamEnded,
 }
@@ -23,7 +24,7 @@ pub enum DispatcherMessage {
 impl DispatcherMessage {
     pub fn is_batch(&self) -> bool {
         match self {
-            DispatcherMessage::Batch(_) => true,
+            DispatcherMessage::Batch(_, _) => true,
             _ => false,
         }
     }
@@ -33,7 +34,7 @@ pub(crate) struct Dispatcher;
 
 impl Dispatcher {
     pub fn sleeping<C>(
-        strategy: DispatchStrategy,
+        strategy: DispatchMode,
         handler_factory: Arc<dyn BatchHandlerFactory>,
         api_client: C,
         config: Config,
@@ -42,13 +43,13 @@ impl Dispatcher {
         C: ProvidesCommitter + Send + Sync + Clone + 'static,
     {
         match strategy {
-            DispatchStrategy::AllSeq => SleepingDispatcher::AllSeq(
+            DispatchMode::AllSeq => SleepingDispatcher::AllSeq(
                 self::all_seq::Dispatcher::sleeping(handler_factory, api_client, config),
             ),
-            DispatchStrategy::EventTypePar => SleepingDispatcher::EventTypePar(
+            DispatchMode::EventTypePar => SleepingDispatcher::EventTypePar(
                 self::par::et_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
-            DispatchStrategy::EventTypePartitionPar => SleepingDispatcher::EventTypePartitionPar(
+            DispatchMode::EventTypePartitionPar => SleepingDispatcher::EventTypePartitionPar(
                 self::par::etp_par::Dispatcher::sleeping(handler_factory, api_client),
             ),
             _ => SleepingDispatcher::EventTypePar(self::par::et_par::Dispatcher::sleeping(

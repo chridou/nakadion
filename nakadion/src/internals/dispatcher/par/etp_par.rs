@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::{
     future::{BoxFuture, TryFutureExt},
@@ -121,8 +122,8 @@ where
 
         pin_mut!(stream);
         while let Some(next_message) = stream.next().await {
-            let batch = match next_message {
-                DispatcherMessage::Batch(batch) => batch,
+            let (event_type_partition, batch) = match next_message {
+                DispatcherMessage::Batch(etp, batch) => (etp, batch),
                 DispatcherMessage::Tick(timestamp) => {
                     activated.values().for_each(|w| {
                         w.process(WorkerMessage::Tick(timestamp));
@@ -137,7 +138,6 @@ where
                 }
             };
 
-            let event_type_partition = batch.to_event_type_partition();
             let worker = if let Some(worker) = activated.get(&event_type_partition) {
                 worker
             } else {
