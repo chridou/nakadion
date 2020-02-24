@@ -250,6 +250,21 @@ where
     }
 }
 
+/*impl<T, E> EventsHandler for T
+where
+    T: for<'a> Fn(Vec<E>, BatchMeta<'a>) -> BoxFuture<'a, EventsPostAction> + Send,
+    E: DeserializeOwned,
+{
+    type Event = E;
+    fn handle<'a>(
+        &'a mut self,
+        events: Vec<Self::Event>,
+        meta: BatchMeta<'a>,
+    ) -> BoxFuture<'a, EventsPostAction> {
+        (self)(events, meta)
+    }
+}*/
+
 // This function clones the ast before deserializing... but we are in an
 // exceptional case anyways...
 fn try_deserialize_individually<T: DeserializeOwned + Send + 'static>(

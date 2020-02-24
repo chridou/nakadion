@@ -38,12 +38,12 @@ pub trait Instruments {
 
     fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration);
     fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize);
-    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration);
+    fn handler_deserialization(&self, n_bytes: usize, time: Duration);
 
     // === HANDLERS ===
 
     // === COMMITTER ===
-
+    fn committer_cursor_received(&self, frame_received_at: Instant);
     fn committer_cursors_committed(&self, n_cursors: usize, time: Duration);
     fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration);
 }
@@ -218,14 +218,16 @@ impl Instruments for Instrumentation {
 
     // === CONTROLLER ===
     fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_batch_received(frame_received_at, events_bytes)
-            }
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_batch_received(frame_received_at, events_bytes)
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => {
+                    instr.controller_batch_received(frame_received_at, events_bytes)
+                }
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => {
+                    instr.controller_batch_received(frame_received_at, events_bytes)
+                }
             }
         }
     }
@@ -305,16 +307,16 @@ impl Instruments for Instrumentation {
             }
         }
     }
-    fn handler_deserialization_time(&self, n_bytes: usize, time: Duration) {
-        if self.detail >= MetricsDetailLevel::Medium {
+    fn handler_deserialization(&self, n_bytes: usize, time: Duration) {
+        if self.detail >= MetricsDetailLevel::High {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
-                    instr.handler_deserialization_time(n_bytes, time)
+                    instr.handler_deserialization(n_bytes, time)
                 }
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => {
-                    instr.handler_deserialization_time(n_bytes, time)
+                    instr.handler_deserialization(n_bytes, time)
                 }
             }
         }
@@ -323,6 +325,20 @@ impl Instruments for Instrumentation {
     // === HANDLERS ===
 
     // === COMMITTER ===
+    fn committer_cursor_received(&self, frame_received_at: Instant) {
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => {
+                    instr.committer_cursor_received(frame_received_at)
+                }
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => {
+                    instr.committer_cursor_received(frame_received_at)
+                }
+            }
+        }
+    }
 
     fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
         match self.instr {
