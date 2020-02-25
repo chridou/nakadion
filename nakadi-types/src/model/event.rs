@@ -115,6 +115,17 @@ pub mod publishable {
         metadata: EventMetaDataPub,
     }
 
+    impl<T> From<super::DataChangeEvent<T>> for DataChangeEventPub<T> {
+        fn from(e: super::DataChangeEvent<T>) -> Self {
+            Self {
+                data: e.data,
+                data_type: e.data_type,
+                data_op: e.data_op,
+                metadata: e.metadata.into(),
+            }
+        }
+    }
+
     /// A `BusinessEvent` template for publishing of events
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_DataChangeEvent)
@@ -123,6 +134,15 @@ pub mod publishable {
         #[serde(flatten)]
         payload: T,
         metadata: EventMetaDataPub,
+    }
+
+    impl<T> From<super::BusinessEvent<T>> for BusinessEventPub<T> {
+        fn from(e: super::BusinessEvent<T>) -> Self {
+            Self {
+                payload: e.payload,
+                metadata: e.metadata.into(),
+            }
+        }
     }
 
     /// Metadata of an event
@@ -150,5 +170,18 @@ pub mod publishable {
         /// ‘user_defined’.
         partition: Option<PartitionId>,
         flow_id: Option<FlowId>,
+    }
+
+    impl From<super::EventMetaData> for EventMetaDataPub {
+        fn from(m: super::EventMetaData) -> Self {
+            Self {
+                eid: m.eid,
+                event_type: Some(m.event_type),
+                occurred_at: m.occurred_at,
+                parent_eids: m.parent_eids,
+                partition: None,
+                flow_id: Some(m.flow_id),
+            }
+        }
     }
 }
