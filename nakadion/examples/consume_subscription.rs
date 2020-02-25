@@ -51,6 +51,7 @@ fn main() {
 mod handler {
     use futures::future::{BoxFuture, FutureExt};
 
+    use nakadi_types::model::event::DataChangeEvent;
     use nakadion::handler::*;
 
     pub struct MyHandler {
@@ -58,7 +59,7 @@ mod handler {
     }
 
     impl EventsHandler for MyHandler {
-        type Event = serde_json::Value;
+        type Event = DataChangeEvent<serde_json::Value>;
         fn handle<'a>(
             &'a mut self,
             events: Vec<Self::Event>,
@@ -71,6 +72,7 @@ mod handler {
                         "events: {} - frame id: {}",
                         self.events_received, meta.frame_id,
                     );
+                    println!("{:#?}", events);
                 }
                 EventsPostAction::Commit
             }
