@@ -69,7 +69,7 @@ pub trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///

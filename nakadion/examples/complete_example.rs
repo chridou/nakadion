@@ -1,12 +1,16 @@
-use nakadi_types::model::subscription::*;
+use nakadi_types::{model::subscription::*, NakadiBaseUrl, RandomFlowId};
 
-use nakadion::api::ApiClient;
+use nakadion::api::{ApiClient, SchemaRegistryApi};
 use nakadion::consumer::*;
 
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Ahoi!");
+    let nakadi_base_url = NakadiBaseUrl::from_env()?;
+    let api_client = ApiClient::builder().finish_from_env()?;
+
+    let known_event_types = api_client.list_event_types(RandomFlowId).await?;
+    assert!(known_event_types.is_empty());
 
     Ok(())
 }

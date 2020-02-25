@@ -394,9 +394,12 @@ impl SchemaRegistryApi for ApiClient {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>> {
-        self.get(self.urls().schema_registry_list_event_types(), flow_id)
-            .boxed()
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>> {
+        self.get(
+            self.urls().schema_registry_list_event_types(),
+            flow_id.into(),
+        )
+        .boxed()
     }
     /// Creates a new EventType.
     ///
