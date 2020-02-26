@@ -42,4 +42,4 @@ jobs:
           while ! METRICS=$(curl -s "localhost:8080/metrics"); do sleep 5; done; echo $METRICS
           export NAKADION_NAKADI_BASE_URL="http://localhost:8080"
           export NAKADION_ACCESS_TOKEN_ALLOW_NONE=true
-          cargo run -p nakadion --example complete_example --release
+          cargo run -p nakadion --example integration

@@ -6,13 +6,12 @@ use std::fmt;
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
-use serde::Serialize;
 
 use nakadi_types::model::event_type::*;
 use nakadi_types::model::partition::*;
 use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
-use nakadi_types::FlowId;
+use nakadi_types::{Error, FlowId};
 
 use dispatch_http_request::RemoteCallError;
 
