@@ -317,4 +317,38 @@ macro_rules! new_type {
             env_funs!($env);
         }
     };
+    ($(#[$outer:meta])* pub secs struct $Name:ident($T:ty, env=$env:expr);) => {
+        __new_type_base!($(#[$outer])*;$Name;$T);
+        __new_type_base_copy_ext!($Name;$T);
+        impl $Name {
+            env_funs!($env);
+
+            pub fn into_duration(self) -> Duration {
+                Duration::from_secs(u64::from(self.0))
+            }
+        }
+
+        impl From<$Name> for Duration {
+            fn from(v: $Name) -> Duration {
+                v.into_duration()
+            }
+        }
+    };
+    ($(#[$outer:meta])* pub millis struct $Name:ident($T:ty, env=$env:expr);) => {
+        __new_type_base!($(#[$outer])*;$Name;$T);
+        __new_type_base_copy_ext!($Name;$T);
+        impl $Name {
+            env_funs!($env);
+
+            pub fn into_duration(self) -> Duration {
+                Duration::from_millis(u64::from(self.0))
+            }
+        }
+
+        impl From<$Name> for Duration {
+            fn from(v: $Name) -> Duration {
+                v.into_duration()
+            }
+        }
+    };
 }

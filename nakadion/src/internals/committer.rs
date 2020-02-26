@@ -210,7 +210,7 @@ where
     let stream_id = stream_state.stream_id();
 
     let mut committer = provides_committer.committer(subscription_id, stream_id);
-    committer.set_timeout(config.commit_attempt_timeout);
+    committer.set_timeout_millis(config.commit_attempt_timeout);
 
     let mut next_commit_earliest_at = Instant::now();
     loop {

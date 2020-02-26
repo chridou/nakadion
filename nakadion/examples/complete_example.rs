@@ -6,12 +6,14 @@ use nakadion::consumer::*;
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let nakadi_base_url = NakadiBaseUrl::from_env()?;
     let api_client = ApiClient::builder().finish_from_env()?;
 
-    println!("There should be no events");
+    println!("Query registered event types");
     let known_event_types = api_client.list_event_types(RandomFlowId).await?;
-    assert!(known_event_types.is_empty());
+    println!(
+        "There are {} event types registered",
+        known_event_types.len()
+    );
 
     Ok(())
 }

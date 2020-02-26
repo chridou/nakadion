@@ -173,6 +173,7 @@ pub mod components;
 pub mod consumer;
 pub mod handler;
 pub mod instrumentation;
+pub mod publisher;
 
 pub(crate) mod internals;
 pub(crate) mod logging;

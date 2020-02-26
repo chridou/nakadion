@@ -111,7 +111,7 @@ pub trait SchemaRegistryApi {
 pub enum PublishFailure {
     /// The submitted events were unprocessable so none were published
     Unprocessable(BatchResponse),
-    /// Only events failed.
+    /// Only some events failed.
     PartialFailure(BatchResponse),
     /// There was an error that was not `Unprocessable`
     Other(NakadiApiError),
@@ -192,10 +192,10 @@ pub trait PublishApi {
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<E: Serialize, T: Into<FlowId>>(
+    fn publish_events<B: Into<Bytes>, T: Into<FlowId>>(
         &self,
         event_type: &EventTypeName,
-        events: &[E],
+        events: B,
         flow_id: T,
     ) -> PublishFuture;
 }
