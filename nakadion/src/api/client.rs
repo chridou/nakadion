@@ -466,7 +466,7 @@ impl SchemaRegistryApi for ApiClient {
 }
 
 impl PublishApi for ApiClient {
-    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+    fn publish_events_batch<'a, B: Into<Bytes>, T: Into<FlowId>>(
         &'a self,
         event_type: &'a EventTypeName,
         events: B,

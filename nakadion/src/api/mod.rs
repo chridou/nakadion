@@ -205,7 +205,7 @@ pub trait PublishApi {
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+    fn publish_events_batch<'a, B: Into<Bytes>, T: Into<FlowId>>(
         &'a self,
         event_type: &'a EventTypeName,
         events: B,

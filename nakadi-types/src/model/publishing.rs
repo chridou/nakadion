@@ -22,6 +22,16 @@ pub struct BatchResponse {
     pub batch_items: Vec<BatchItemResponse>,
 }
 
+impl BatchResponse {
+    pub fn is_empty(&self) -> bool {
+        self.batch_items.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.batch_items.len()
+    }
+}
+
 impl fmt::Display for BatchResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BatchResponse")?;
