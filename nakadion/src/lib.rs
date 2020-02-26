@@ -29,7 +29,7 @@
 //! * `NAKADION_SUBSCRIPTION_ID`
 //! * `NAKADION_ACCESS_TOKEN_FIXED` with a valid token or `NAKADION_ACCESS_TOKEN_ALLOW_NONE` set to `true`
 //!
-//! ```no_run
+//! ```ignore
 //! use nakadion::api::ApiClient;
 //! use nakadion::consumer::*;
 //!
@@ -173,6 +173,7 @@ pub mod components;
 pub mod consumer;
 pub mod handler;
 pub mod instrumentation;
+pub mod publisher;
 
 pub(crate) mod internals;
 pub(crate) mod logging;

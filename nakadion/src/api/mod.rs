@@ -69,7 +69,7 @@ pub trait SchemaRegistryApi {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>>;
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>>;
 
     /// Creates a new EventType.
     ///
@@ -111,10 +111,23 @@ pub trait SchemaRegistryApi {
 pub enum PublishFailure {
     /// The submitted events were unprocessable so none were published
     Unprocessable(BatchResponse),
-    /// Only events failed.
+    /// Only some events failed.
     PartialFailure(BatchResponse),
     /// There was an error that was not `Unprocessable`
     Other(NakadiApiError),
+}
+
+impl PublishFailure {
+    /// Turns this failure into either a `BatchResponse` or a `NakadiApiError` whereas the
+    /// `NakadiApiError` is considered
+    /// an error since the `NakadiApiError` can also hint on Nakadi problems or bad requests.
+    pub fn into_result(self) -> Result<BatchResponse, NakadiApiError> {
+        match self {
+            PublishFailure::Unprocessable(batch_response) => Ok(batch_response),
+            PublishFailure::PartialFailure(batch_response) => Ok(batch_response),
+            PublishFailure::Other(api_error) => Err(api_error),
+        }
+    }
 }
 
 impl StdError for PublishFailure {
@@ -151,7 +164,7 @@ impl From<RemoteCallError> for PublishFailure {
     }
 }
 
-type PublishFuture<'a> = BoxFuture<'a, Result<(), PublishFailure>>;
+pub type PublishFuture<'a> = BoxFuture<'a, Result<(), PublishFailure>>;
 
 /// Publishes a batch of Events.
 ///
@@ -192,12 +205,12 @@ pub trait PublishApi {
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<E: Serialize, T: Into<FlowId>>(
-        &self,
-        event_type: &EventTypeName,
-        events: &[E],
+    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+        &'a self,
+        event_type: &'a EventTypeName,
+        events: B,
         flow_id: T,
-    ) -> PublishFuture;
+    ) -> PublishFuture<'a>;
 }
 
 pub trait SubscriptionApi {

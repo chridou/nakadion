@@ -21,7 +21,7 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
 
     let mut connector = connector_provider.connector();
     connector.set_flow_id(FlowId::random());
-    connector.set_connect_stream_timeout(config.connect_stream_timeout);
+    connector.set_connect_stream_timeout_secs(config.connect_stream_timeout);
     connector.set_instrumentation(instrumentation.clone());
     *connector.stream_parameters_mut() = config.stream_parameters.clone();
 

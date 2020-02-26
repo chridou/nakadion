@@ -2,7 +2,7 @@
 ///
 /// Even though this is part of the event type resources this
 /// deserves special attention since publishing events involves
-/// special login for recovery in case of a failed publishing attempt.
+/// special logic for recovery in case of a failed publishing attempt.
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,7 @@ pub struct BatchItemResponse {
     /// Indicator of the step in the publishing process this Event reached.
     pub step: Option<PublishingStep>,
     /// Human readable information about the failure on this item.
+    ///
     /// Items that are not “submitted” should have a description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -51,6 +52,7 @@ pub struct BatchItemResponse {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PublishingStatus {
     /// Indicates successful submission, including commit on he underlying broker.
     Submitted,
@@ -68,12 +70,13 @@ pub enum PublishingStatus {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PublishingStep {
     /// Indicates that nothing was yet attempted for the publishing of this Event. Should
     /// be present only in the case of aborting the publishing during the validation of another
     /// (previous) Event.
     None,
-    Validation,
+    Validating,
     Partitioning,
     Enriching,
     Publishing,

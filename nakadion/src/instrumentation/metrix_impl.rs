@@ -44,7 +44,7 @@ impl Metrix {
 new_type! {
     #[doc="The maximum retry delay between failed attempts to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct MetrixTrackingSecs(usize, env="METRIX_TRACKING_SECS");
+    pub secs struct MetrixTrackingSecs(u32, env="METRIX_TRACKING_SECS");
 }
 impl Default for MetrixTrackingSecs {
     fn default() -> Self {
@@ -336,6 +336,6 @@ mod instr {
 fn create_gauge(name: &str, config: &MetrixConfig) -> Gauge {
     let tracking_seconds = config.tracking_secs.unwrap_or_default();
     Gauge::new(name)
-        .tracking(tracking_seconds.into())
+        .tracking(tracking_seconds.into_inner() as usize)
         .group_values(true)
 }

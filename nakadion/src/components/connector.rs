@@ -61,7 +61,7 @@ pub trait Connects {
 
     fn set_flow_id(&mut self, flow_id: FlowId);
 
-    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs);
+    fn set_connect_stream_timeout_secs(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs);
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation);
 
@@ -72,7 +72,7 @@ pub trait Connects {
 #[derive(Default, Debug, Clone)]
 pub struct ConnectorParams {
     pub stream_params: StreamParameters,
-    pub connect_stream_timeout: ConnectStreamTimeoutSecs,
+    pub connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
     pub instrumentation: Instrumentation,
 }
 
@@ -128,7 +128,7 @@ where
                 &self.params.stream_params,
                 flow_id,
             );
-            let connect_timeout = self.params.connect_stream_timeout.into_duration();
+            let connect_timeout = self.params.connect_stream_timeout_secs.into_duration();
             let started = Instant::now();
             match timeout(connect_timeout, f).await {
                 Ok(Ok(stream)) => {
@@ -163,8 +163,11 @@ where
         self.flow_id = Some(flow_id);
     }
 
-    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs) {
-        self.params.connect_stream_timeout = connect_stream_timeout;
+    fn set_connect_stream_timeout_secs(
+        &mut self,
+        connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
+    ) {
+        self.params.connect_stream_timeout_secs = connect_stream_timeout_secs;
     }
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
@@ -389,9 +392,12 @@ impl Connects for Box<dyn Connects + Send + Sync> {
         self.as_mut().set_flow_id(flow_id);
     }
 
-    fn set_connect_stream_timeout(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs) {
+    fn set_connect_stream_timeout_secs(
+        &mut self,
+        connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
+    ) {
         self.as_mut()
-            .set_connect_stream_timeout(connect_stream_timeout)
+            .set_connect_stream_timeout_secs(connect_stream_timeout_secs)
     }
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation) {

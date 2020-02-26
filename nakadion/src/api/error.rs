@@ -231,6 +231,14 @@ impl From<http::uri::InvalidUri> for NakadiApiError {
     }
 }
 
+impl From<tokio::time::Elapsed> for NakadiApiError {
+    fn from(err: tokio::time::Elapsed) -> Self {
+        NakadiApiError::io()
+            .with_context("the operation timed out")
+            .caused_by(err)
+    }
+}
+
 impl From<crate::auth::TokenError> for NakadiApiError {
     fn from(err: crate::auth::TokenError) -> Self {
         NakadiApiError::other()

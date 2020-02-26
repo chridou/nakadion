@@ -394,9 +394,12 @@ impl SchemaRegistryApi for ApiClient {
     /// Returns a list of all registered EventTypes
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(&self, flow_id: FlowId) -> ApiFuture<Vec<EventType>> {
-        self.get(self.urls().schema_registry_list_event_types(), flow_id)
-            .boxed()
+    fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>> {
+        self.get(
+            self.urls().schema_registry_list_event_types(),
+            flow_id.into(),
+        )
+        .boxed()
     }
     /// Creates a new EventType.
     ///
@@ -463,18 +466,18 @@ impl SchemaRegistryApi for ApiClient {
 }
 
 impl PublishApi for ApiClient {
-    fn publish_events<E: Serialize, T: Into<FlowId>>(
-        &self,
-        event_type: &EventTypeName,
-        events: &[E],
+    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+        &'a self,
+        event_type: &'a EventTypeName,
+        events: B,
         flow_id: T,
-    ) -> PublishFuture {
-        let serialized = serde_json::to_vec(events).unwrap();
+    ) -> PublishFuture<'a> {
         let url = self.urls().publish_events(event_type);
 
+        let bytes = events.into();
         let flow_id = flow_id.into();
         async move {
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
+            let mut request = self.create_request(&url, bytes, flow_id).await?;
             *request.method_mut() = Method::POST;
 
             let response = self.inner.dispatch_http_request.dispatch(request).await?;

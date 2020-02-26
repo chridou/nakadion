@@ -40,7 +40,7 @@ where
 /// A future containing a commit result on success
 pub type CommitFuture<'a> = BoxFuture<'a, Result<CursorCommitResults, CommitError>>;
 
-/// Can commit cursoers for a stream
+/// Can commit cursors for a stream
 pub trait Commits {
     /// Commit cursor s to Nakadi.
     fn commit<'a>(&'a self, cursors: &'a [SubscriptionCursor]) -> CommitFuture<'a>;
@@ -54,7 +54,7 @@ pub trait Commits {
 
     fn set_flow_id(&mut self, flow_id: FlowId);
 
-    fn set_timeout(&mut self, timeout: CommitAttemptTimeoutMillis);
+    fn set_timeout_millis(&mut self, timeout: CommitAttemptTimeoutMillis);
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation);
 
@@ -77,7 +77,7 @@ pub struct Committer<C> {
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     instrumentation: Instrumentation,
-    timeout: CommitAttemptTimeoutMillis,
+    timeout_millis: CommitAttemptTimeoutMillis,
 }
 
 impl<C> Committer<C>
@@ -92,7 +92,7 @@ where
             subscription_id,
             stream_id,
             instrumentation: Instrumentation::default(),
-            timeout: CommitAttemptTimeoutMillis::default(),
+            timeout_millis: CommitAttemptTimeoutMillis::default(),
         }
     }
 }
@@ -105,7 +105,7 @@ where
         async move {
             let started = Instant::now();
             match timeout(
-                self.timeout.into_duration(),
+                self.timeout_millis.into_duration(),
                 self.client.commit_cursors(
                     self.subscription_id,
                     self.stream_id,
@@ -148,8 +148,8 @@ where
         self.flow_id = Some(flow_id);
     }
 
-    fn set_timeout(&mut self, timeout: CommitAttemptTimeoutMillis) {
-        self.timeout = timeout;
+    fn set_timeout_millis(&mut self, timeout: CommitAttemptTimeoutMillis) {
+        self.timeout_millis = timeout;
     }
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
