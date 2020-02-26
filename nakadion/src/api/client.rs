@@ -466,12 +466,12 @@ impl SchemaRegistryApi for ApiClient {
 }
 
 impl PublishApi for ApiClient {
-    fn publish_events<B: Into<Bytes>, T: Into<FlowId>>(
-        &self,
-        event_type: &EventTypeName,
+    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+        &'a self,
+        event_type: &'a EventTypeName,
         events: B,
         flow_id: T,
-    ) -> PublishFuture {
+    ) -> PublishFuture<'a> {
         let url = self.urls().publish_events(event_type);
 
         let bytes = events.into();
