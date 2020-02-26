@@ -15,9 +15,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let known_event_types = api_client.list_event_types(RandomFlowId).await?;
 
     println!(
-        "There are {} event types already registered:\n{:#?}",
+        "There are {} event types already registered.",
         known_event_types.len(),
-        known_event_types
     );
 
     for et in known_event_types {
