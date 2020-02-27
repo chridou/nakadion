@@ -9,8 +9,8 @@ use nakadion::consumer::*;
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let event_type_a = EventTypeName::new("Event Type A");
-    let event_type_b = EventTypeName::new("Event Type B");
+    let event_type_a = EventTypeName::new("Event_Type_A");
+    let event_type_b = EventTypeName::new("Event_Type_B");
 
     let api_client = ApiClient::builder().finish_from_env()?;
 
