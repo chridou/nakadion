@@ -54,14 +54,9 @@ async fn create_event_type_a(
         .category(Category::Business)
         .enrichment_strategy(EnrichmentStrategy::MetadataEnrichment)
         .compatibility_mode(CompatibilityMode::None)
-        .schema(
-            EventTypeSchemaInput::builder()
-                .schema_type(SchemaType::JsonSchema)
-                .schema(
-                    r#"{"description":"test event a","properties":{"count":{"type":"int"}},"required":["count"]}"#,
-                )
-                .build()?,
-        )
+        .schema(EventTypeSchemaInput::json_schema_parsed(
+            r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#
+        )?)
         .partition_strategy(PartitionStrategy::Hash)
         .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
         .cleanup_policy(CleanupPolicy::Delete)
@@ -88,14 +83,9 @@ async fn create_event_type_b(
         .category(Category::Data)
         .enrichment_strategy(EnrichmentStrategy::MetadataEnrichment)
         .compatibility_mode(CompatibilityMode::None)
-        .schema(
-            EventTypeSchemaInput::builder()
-                .schema_type(SchemaType::JsonSchema)
-                .schema(
-                    r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#,
-                )
-                .build()?,
-        )
+        .schema(EventTypeSchemaInput::json_schema_parsed(
+            r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#
+        )?)
         .partition_strategy(PartitionStrategy::Hash)
         .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
         .cleanup_policy(CleanupPolicy::Delete)

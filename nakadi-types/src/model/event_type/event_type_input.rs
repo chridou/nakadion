@@ -1,4 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Deserializer, Error as SError},
+    ser::Serializer,
+    Deserialize, Serialize,
+};
+use serde_json::Value;
 
 use crate::helpers::mandatory;
 use crate::model::misc::OwningApplication;
@@ -133,6 +138,7 @@ pub struct EventTypeInputBuilder {
     pub compatibility_mode: Option<CompatibilityMode>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(flatten)]
     pub schema: Option<EventTypeSchemaInput>,
     /// Event type cleanup policy. There are two possible values:
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,58 +296,76 @@ impl EventTypeInputBuilder {
 }
 
 /// The most recent schema for this EventType. Submitted events will be validated against it.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct EventTypeSchemaInput {
-    ///The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
-    ///future there could be others.
-    #[serde(rename = "type")]
-    pub schema_type: SchemaType,
-    /// The schema as string in the syntax defined in the field type. Failure to respect the
-    /// syntax will fail any operation on an EventType.
-    pub schema: SchemaSyntax,
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventTypeSchemaInput {
+    Json(Value),
 }
 
 impl EventTypeSchemaInput {
-    pub fn builder() -> EventTypeSchemaInputBuilder {
-        EventTypeSchemaInputBuilder::default()
+    pub fn json_schema<T: Into<Value>>(v: T) -> Self {
+        Self::Json(v.into())
+    }
+
+    pub fn json_schema_parsed(v: &str) -> Result<Self, Error> {
+        let parsed = serde_json::from_str(v)?;
+        Ok(Self::Json(parsed))
+    }
+
+    pub fn schema_type(&self) -> SchemaType {
+        match self {
+            EventTypeSchemaInput::Json(_) => SchemaType::JsonSchema,
+        }
+    }
+
+    pub fn schema_syntax(&self) -> SchemaSyntax {
+        match self {
+            EventTypeSchemaInput::Json(ref syntax) => {
+                SchemaSyntax(serde_json::to_string(syntax).unwrap())
+            }
+        }
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct EventTypeSchemaInputBuilder {
-    ///The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
-    ///future there could be others.
+impl Serialize for EventTypeSchemaInput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let wrapper = EventTypeSchemaInputSer {
+            schema_type: self.schema_type(),
+            schema: self.schema_syntax(),
+        };
+
+        wrapper.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EventTypeSchemaInput {
+    fn deserialize<D>(deserializer: D) -> Result<EventTypeSchemaInput, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wrapper = EventTypeSchemaInputSer::deserialize(deserializer)?;
+
+        match wrapper.schema_type {
+            SchemaType::JsonSchema => {
+                let schema_syntax =
+                    serde_json::from_str(wrapper.schema.as_ref()).map_err(SError::custom)?;
+                Ok(EventTypeSchemaInput::Json(schema_syntax))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct EventTypeSchemaInputSer {
     #[serde(rename = "type")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_type: Option<SchemaType>,
-    /// The schema as string in the syntax defined in the field type. Failure to respect the
-    /// syntax will fail any operation on an EventType.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<SchemaSyntax>,
+    pub schema_type: SchemaType,
+    pub schema: SchemaSyntax,
 }
 
-impl EventTypeSchemaInputBuilder {
-    ///The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
-    ///future there could be others.
-    pub fn schema_type<T: Into<SchemaType>>(mut self, v: T) -> Self {
-        self.schema_type = Some(v.into());
-        self
-    }
-    /// The schema as string in the syntax defined in the field type. Failure to respect the
-    /// syntax will fail any operation on an EventType.
-    pub fn schema<T: Into<SchemaSyntax>>(mut self, v: T) -> Self {
-        self.schema = Some(v.into());
-        self
-    }
-
-    /// Validates the data and returns an `EventTypeSchemaInput` if valid.
-    pub fn build(self) -> Result<EventTypeSchemaInput, Error> {
-        let schema_type = mandatory(self.schema_type, "schema_type")?;
-        let schema = mandatory(self.schema, "schema")?;
-
-        Ok(EventTypeSchemaInput {
-            schema_type,
-            schema,
-        })
-    }
+#[test]
+fn a_schema_input_can_be_parsed() {
+    let input = EventTypeSchemaInput::json_schema_parsed(r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#).unwrap();
+    assert_eq!(input.schema_type(), SchemaType::JsonSchema);
 }
