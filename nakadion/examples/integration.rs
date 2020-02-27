@@ -132,11 +132,12 @@ async fn create_event_type_a(api_client: &ApiClient) -> Result<(), Error> {
             r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
-        .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
+        .partition_key_fields("count")
         .cleanup_policy(CleanupPolicy::Delete)
         .default_statistic(EventTypeStatistics::new(100, 1_000, 2, 2))
         .options(EventTypeOptions::default())
         .audience(EventTypeAudience::CompanyInternal)
+        .authorization( EventTypeAuthorization::new(("*", "*"), ("*", "*"), ("*", "*")))
         .build()?;
 
     api_client
@@ -157,17 +158,13 @@ async fn create_event_type_b(api_client: &ApiClient) -> Result<(), Error> {
             r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
-        .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
+        .partition_key_fields("count")
         .cleanup_policy(CleanupPolicy::Delete)
         .default_statistic(EventTypeStatistics::new(100, 1_000, 4, 4))
         .options(EventTypeOptions::default())
         .audience(EventTypeAudience::CompanyInternal)
-.authorization(
-    EventTypeAuthorization::default()
-    .admin(("*", "*"))
-    .reader(("*", "*"))
-    .writer(("*", "*")))
-    .build()?;
+        .authorization( EventTypeAuthorization::new(("*", "*"), ("*", "*"), ("*", "*")))
+        .build()?;
 
     api_client
         .create_event_type(&event_type, RandomFlowId)

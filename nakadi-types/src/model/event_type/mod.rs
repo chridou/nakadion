@@ -4,7 +4,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
 use crate::model::partition::{CursorOffset, PartitionId};
 
 mod event_type_input;
@@ -115,7 +115,7 @@ impl Default for CompatibilityMode {
 new_type! {
 #[doc="Part of `PartitionKeyFields`\n"]
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct PartitionKey(String, env="EVENT_TYPE_PARTITION_KEY");
+    pub struct PartitionKeyField(String, env="EVENT_TYPE_PARTITION_KEY_FIELD");
 }
 
 /// Required when 'partition_resolution_strategy' is set to ‘hash’. Must be absent otherwise.
@@ -125,36 +125,36 @@ new_type! {
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*partition_key_fields)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct PartitionKeyFields(Vec<PartitionKey>);
+pub struct PartitionKeyFields(Vec<PartitionKeyField>);
 
 impl PartitionKeyFields {
     pub fn new<I>(items: I) -> Self
     where
         I: IntoIterator,
-        I::Item: Into<PartitionKey>,
+        I::Item: Into<PartitionKeyField>,
     {
         let items = items.into_iter().map(|it| it.into()).collect();
         Self(items)
     }
 
-    pub fn partition_key<T: Into<PartitionKey>>(mut self, v: T) -> Self {
+    pub fn partition_key<T: Into<PartitionKeyField>>(mut self, v: T) -> Self {
         self.push(v);
         self
     }
 
-    pub fn push<T: Into<PartitionKey>>(&mut self, v: T) {
+    pub fn push<T: Into<PartitionKeyField>>(&mut self, v: T) {
         self.0.push(v.into());
     }
 
-    pub fn into_inner(self) -> Vec<PartitionKey> {
+    pub fn into_inner(self) -> Vec<PartitionKeyField> {
         self.0
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &PartitionKey> {
+    pub fn iter(&self) -> impl Iterator<Item = &PartitionKeyField> {
         self.0.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PartitionKey> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PartitionKeyField> {
         self.0.iter_mut()
     }
 
@@ -167,8 +167,38 @@ impl PartitionKeyFields {
     }
 }
 
-impl AsRef<[PartitionKey]> for PartitionKeyFields {
-    fn as_ref(&self) -> &[PartitionKey] {
+impl<A> From<A> for PartitionKeyFields
+where
+    A: Into<PartitionKeyField>,
+{
+    fn from(k: A) -> Self {
+        Self(vec![k.into()])
+    }
+}
+
+impl<A, B> From<(A, B)> for PartitionKeyFields
+where
+    A: Into<PartitionKeyField>,
+    B: Into<PartitionKeyField>,
+{
+    fn from((a, b): (A, B)) -> Self {
+        Self(vec![a.into(), b.into()])
+    }
+}
+
+impl<A, B, C> From<(A, B, C)> for PartitionKeyFields
+where
+    A: Into<PartitionKeyField>,
+    B: Into<PartitionKeyField>,
+    C: Into<PartitionKeyField>,
+{
+    fn from((a, b, c): (A, B, C)) -> Self {
+        Self(vec![a.into(), b.into(), c.into()])
+    }
+}
+
+impl AsRef<[PartitionKeyField]> for PartitionKeyFields {
+    fn as_ref(&self) -> &[PartitionKeyField] {
         &self.0
     }
 }
@@ -278,14 +308,27 @@ pub struct EventTypeOptions {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EventTypeAuthorization {
     #[serde(default)]
-    pub admins: Vec<AuthorizationAttribute>,
+    pub admins: AuthorizationAttributes,
     #[serde(default)]
-    pub readers: Vec<AuthorizationAttribute>,
+    pub readers: AuthorizationAttributes,
     #[serde(default)]
-    pub writers: Vec<AuthorizationAttribute>,
+    pub writers: AuthorizationAttributes,
 }
 
 impl EventTypeAuthorization {
+    pub fn new<A, R, W>(admins: A, readers: R, writers: W) -> Self
+    where
+        A: Into<AuthorizationAttributes>,
+        R: Into<AuthorizationAttributes>,
+        W: Into<AuthorizationAttributes>,
+    {
+        Self {
+            admins: admins.into(),
+            readers: readers.into(),
+            writers: writers.into(),
+        }
+    }
+
     pub fn admin<T: Into<AuthorizationAttribute>>(mut self, admin: T) -> Self {
         self.admins.push(admin.into());
         self
@@ -306,7 +349,7 @@ impl EventTypeAuthorization {
         self.readers.push(reader.into())
     }
     pub fn add_writer<T: Into<AuthorizationAttribute>>(&mut self, writer: T) {
-        self.writers.push(reader.into())
+        self.writers.push(writer.into())
     }
 }
 
