@@ -61,7 +61,7 @@ async fn create_event_type_a(
                     r#"{
                         "description":"test event a",
                         "properties": {
-                            count: {
+                            "count": {
                                 type: "int"
                             }
                         },
@@ -104,7 +104,7 @@ async fn create_event_type_b(
                     r#"{
                         "description":"test event b",
                         "properties": {
-                            count: {
+                            "count": {
                                 type: "int"
                             }
                         },
