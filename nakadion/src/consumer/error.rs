@@ -1,6 +1,8 @@
 use std::error::Error as StdError;
 use std::fmt;
 
+use crate::nakadi_types::Error;
+
 /// Always leads to Nakadion shutting down
 #[derive(Debug)]
 pub struct ConsumerError {
@@ -106,6 +108,12 @@ impl From<tokio::task::JoinError> for ConsumerError {
             kind: ConsumerErrorKind::Internal,
             source: Some(Box::new(err)),
         }
+    }
+}
+
+impl From<ConsumerError> for Error {
+    fn from(err: ConsumerError) -> Self {
+        Self::from_error(err)
     }
 }
 

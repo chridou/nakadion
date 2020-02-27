@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
-use crate::model::partition::{Cursor, PartitionId};
+use crate::model::partition::{Cursor, CursorOffset, PartitionId};
 use crate::Error;
 
 pub mod subscription_builder;
@@ -113,6 +113,11 @@ pub struct EventTypeNames(Vec<EventTypeName>);
 impl EventTypeNames {
     pub fn new<T: Into<Vec<EventTypeName>>>(event_types: T) -> Self {
         Self(event_types.into())
+    }
+
+    pub fn event_type_name<T: Into<EventTypeName>>(mut self, v: T) -> Self {
+        self.0.push(v.into());
+        self
     }
 
     pub fn into_inner(self) -> Vec<EventTypeName> {
@@ -325,6 +330,12 @@ impl EventTypePartitionLike for SubscriptionCursorWithoutToken {
     }
 }
 
+impl From<SubscriptionCursor> for SubscriptionCursorWithoutToken {
+    fn from(c: SubscriptionCursor) -> Self {
+        c.into_without_token()
+    }
+}
+
 /// An opaque value defined by the server.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CursorToken(String);
@@ -347,6 +358,26 @@ pub struct SubscriptionCursor {
     pub event_type: EventTypeName,
     /// An opaque value defined by the server.
     pub cursor_token: CursorToken,
+}
+
+impl SubscriptionCursor {
+    pub fn into_without_token(self) -> SubscriptionCursorWithoutToken {
+        SubscriptionCursorWithoutToken {
+            cursor: self.cursor,
+            event_type: self.event_type,
+        }
+    }
+
+    /// Turns this into a `SubscriptionCursorWithoutToken` that points to the begin of the subscription
+    pub fn into_without_token_begin(self) -> SubscriptionCursorWithoutToken {
+        SubscriptionCursorWithoutToken {
+            cursor: Cursor {
+                partition: self.cursor.partition,
+                offset: CursorOffset::Begin,
+            },
+            event_type: self.event_type,
+        }
+    }
 }
 
 impl EventTypePartitionLike for SubscriptionCursor {
@@ -446,6 +477,25 @@ pub enum CommitResult {
     Outdated,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionStats {
+    #[serde(rename = "items")]
+    pub event_type_stats: Vec<SubscriptionEventTypePartitionStats>,
+}
+
+impl SubscriptionStats {
+    pub fn unconsumed_events(&self) -> usize {
+        self.event_type_stats
+            .iter()
+            .map(|p| p.unconsumed_events)
+            .sum()
+    }
+
+    pub fn all_consumed(&self) -> bool {
+        self.unconsumed_events() == 0
+    }
+}
+
 /// Statistics of one `EventType` within a context of subscription.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
@@ -456,13 +506,19 @@ pub struct SubscriptionEventTypeStats {
     pub partitions: Vec<SubscriptionEventTypePartitionStats>,
 }
 
+impl SubscriptionEventTypeStats {
+    pub fn unconsumed_events(&self) -> usize {
+        self.partitions.iter().map(|p| p.unconsumed_events).sum()
+    }
+}
+
 /// Statistics of one partition for an `EventType` within a context of subscription.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionEventTypeStats)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionEventTypePartitionStats {
     partition: PartitionId,
-    unconsumed_events: u64,
+    unconsumed_events: usize,
     #[serde(deserialize_with = "crate::deserialize_empty_string_is_none")]
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_id: Option<StreamId>,

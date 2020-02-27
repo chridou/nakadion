@@ -618,7 +618,7 @@ impl SubscriptionApi for ApiClient {
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_committed_offsets<T: Into<FlowId>>(
+    fn get_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         flow_id: T,
@@ -640,16 +640,9 @@ impl SubscriptionApi for ApiClient {
         id: SubscriptionId,
         show_time_lag: bool,
         flow_id: T,
-    ) -> ApiFuture<Vec<SubscriptionEventTypeStats>> {
-        #[derive(Deserialize)]
-        struct EntityWrapper {
-            #[serde(default)]
-            items: Vec<SubscriptionEventTypeStats>,
-        };
+    ) -> ApiFuture<SubscriptionStats> {
         let url = self.urls().subscriptions_stats(id, show_time_lag);
-        self.get::<EntityWrapper>(url, flow_id.into())
-            .map_ok(|wrapper| wrapper.items)
-            .boxed()
+        self.get(url, flow_id.into()).boxed()
     }
 
     /// Reset subscription offsets to specified values.
@@ -658,12 +651,12 @@ impl SubscriptionApi for ApiClient {
     fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        cursors: &[SubscriptionCursor],
+        cursors: &[SubscriptionCursorWithoutToken],
         flow_id: T,
     ) -> ApiFuture<()> {
         #[derive(Serialize)]
         struct EntityWrapper<'b> {
-            items: &'b [SubscriptionCursor],
+            items: &'b [SubscriptionCursorWithoutToken],
         };
         let data = EntityWrapper { items: cursors };
         let url = self.urls().subscriptions_reset_subscription_cursors(id);

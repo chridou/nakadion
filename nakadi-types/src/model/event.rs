@@ -66,8 +66,8 @@ pub struct DataChangeEvent<T> {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BusinessEvent<T> {
     #[serde(flatten)]
-    payload: T,
-    metadata: EventMetaData,
+    pub payload: T,
+    pub metadata: EventMetaData,
 }
 
 /// Metadata of an event

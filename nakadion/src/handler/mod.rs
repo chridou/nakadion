@@ -184,25 +184,6 @@ pub enum HandlerAssignment {
     EventTypePartition(EventTypePartition),
 }
 
-impl fmt::Display for HandlerAssignment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HandlerAssignment::Unspecified => write!(f, "[unspecified]")?,
-            HandlerAssignment::EventType(ref event_type) => {
-                write!(f, "[event_type={}]", event_type)?
-            }
-            HandlerAssignment::EventTypePartition(ref event_type_partition) => write!(
-                f,
-                "[event_type={}, partition={}]",
-                event_type_partition.event_type(),
-                event_type_partition.partition()
-            )?,
-        }
-
-        Ok(())
-    }
-}
-
 impl HandlerAssignment {
     pub fn event_type(&self) -> Option<&EventTypeName> {
         self.event_type_and_partition().0
@@ -231,6 +212,25 @@ impl HandlerAssignment {
                 (Some(a), Some(b))
             }
         }
+    }
+}
+
+impl fmt::Display for HandlerAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HandlerAssignment::Unspecified => write!(f, "[unspecified]")?,
+            HandlerAssignment::EventType(ref event_type) => {
+                write!(f, "[event_type={}]", event_type)?
+            }
+            HandlerAssignment::EventTypePartition(ref event_type_partition) => write!(
+                f,
+                "[event_type={}, partition={}]",
+                event_type_partition.event_type(),
+                event_type_partition.partition()
+            )?,
+        }
+
+        Ok(())
     }
 }
 

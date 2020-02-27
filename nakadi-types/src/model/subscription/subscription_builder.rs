@@ -21,8 +21,8 @@ impl SubscriptionInputBuilder {
         self
     }
 
-    pub fn owning_application(mut self, owning_application: OwningApplication) -> Self {
-        self.owning_application = Some(owning_application);
+    pub fn owning_application<T: Into<OwningApplication>>(mut self, owning_application: T) -> Self {
+        self.owning_application = Some(owning_application.into());
         self
     }
 

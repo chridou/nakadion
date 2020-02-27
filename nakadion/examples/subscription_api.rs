@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Subscription:\n {:#?}\n", subscription);
 
     let subscription = client
-        .get_committed_offsets(subscription_id, RandomFlowId)
+        .get_subscription_cursors(subscription_id, RandomFlowId)
         .await?;
 
     println!("Committed offsets:\n {:#?}\n", subscription);

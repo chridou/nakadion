@@ -19,6 +19,7 @@ pub use self::client::ApiClient;
 pub use self::error::*;
 pub use crate::components::IoError;
 
+pub mod api_ext;
 mod client;
 pub mod dispatch_http_request;
 mod error;
@@ -257,7 +258,7 @@ pub trait SubscriptionApi {
     /// Exposes the currently committed offsets of a subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_committed_offsets<T: Into<FlowId>>(
+    fn get_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
         flow_id: T,
@@ -271,7 +272,7 @@ pub trait SubscriptionApi {
         id: SubscriptionId,
         show_time_lag: bool,
         flow_id: T,
-    ) -> ApiFuture<Vec<SubscriptionEventTypeStats>>;
+    ) -> ApiFuture<SubscriptionStats>;
 
     /// Reset subscription offsets to specified values.
     ///
@@ -279,7 +280,7 @@ pub trait SubscriptionApi {
     fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        cursors: &[SubscriptionCursor],
+        cursors: &[SubscriptionCursorWithoutToken],
         flow_id: T,
     ) -> ApiFuture<()>;
 
