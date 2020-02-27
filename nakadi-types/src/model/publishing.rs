@@ -30,11 +30,39 @@ impl BatchResponse {
     pub fn len(&self) -> usize {
         self.batch_items.len()
     }
+
+    pub fn failed_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        self.batch_items
+            .iter()
+            .filter(|item| item.publishing_status == PublishingStatus::Failed)
+    }
+
+    pub fn aborted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        self.batch_items
+            .iter()
+            .filter(|item| item.publishing_status == PublishingStatus::Aborted)
+    }
+
+    pub fn submitted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        self.batch_items
+            .iter()
+            .filter(|item| item.publishing_status == PublishingStatus::Submitted)
+    }
 }
 
 impl fmt::Display for BatchResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "BatchResponse")?;
+        let num_submitted = self.submitted_response_items().count();
+        let num_failed = self.failed_response_items().count();
+        let num_aborted = self.aborted_response_items().count();
+        write!(
+            f,
+            "BatchResponse(items:{}, submitted:{}, failed: {}, aborted: {})",
+            self.len(),
+            num_submitted,
+            num_failed,
+            num_aborted
+        )?;
 
         Ok(())
     }

@@ -148,7 +148,7 @@ impl Default for PublishRetryOnAuthErrors {
 
 /// Configuration for a publisher
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct PublisherConfig {
     /// Timeout for a complete publishing including potential retries
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_millis: Option<PublishTimeoutMillis>,
@@ -172,7 +172,7 @@ pub struct Config {
     pub partial_failure_strategy: Option<PartialFailureStrategy>,
 }
 
-impl Config {
+impl PublisherConfig {
     /// Creates a new `Config` from the environment where all the env vars
     /// are prefixed with `NAKADION_`.
     pub fn try_from_env() -> Result<Self, Error> {
@@ -229,6 +229,51 @@ impl Config {
 
         Ok(())
     }
+
+    /// Timeout for a complete publishing including potential retries
+    pub fn timeout_millis<T: Into<PublishTimeoutMillis>>(mut self, v: T) -> Self {
+        self.timeout_millis = Some(v.into());
+        self
+    }
+    /// Timeout for a single publish request with Nakadi
+    pub fn attempt_timeout_millis<T: Into<PublishAttemptTimeoutMillis>>(mut self, v: T) -> Self {
+        self.attempt_timeout_millis = Some(v.into());
+        self
+    }
+    /// Interval length before the first retry attempt
+    pub fn initial_retry_interval_millis<T: Into<PublishInitialRetryIntervalMillis>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.initial_retry_interval_millis = Some(v.into());
+        self
+    }
+    /// Multiplier for the length of of the next retry interval
+    pub fn retry_interval_multiplier<T: Into<PublishRetryIntervalMultiplier>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.retry_interval_multiplier = Some(v.into());
+        self
+    }
+    /// Maximum length of an interval before a retry
+    pub fn max_retry_interval_millis<T: Into<PublishMaxRetryIntervalMillis>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.max_retry_interval_millis = Some(v.into());
+        self
+    }
+    /// Retry on authentication/authorization errors if `true`
+    pub fn retry_on_auth_errors<T: Into<PublishRetryOnAuthErrors>>(mut self, v: T) -> Self {
+        self.retry_on_auth_errors = Some(v.into());
+        self
+    }
+    /// Strategy for handling partial failures
+    pub fn partial_failure_strategy<T: Into<PartialFailureStrategy>>(mut self, v: T) -> Self {
+        self.partial_failure_strategy = Some(v.into());
+        self
+    }
 }
 
 /// Publishes events that have been serialized before
@@ -247,7 +292,7 @@ pub trait PublishesSerializedEvents {
 /// Publish non serialized events.
 ///
 /// This trait is implemented for all types which implement `PublishesSerializedEvents`.
-trait PublishesEvents {
+pub trait PublishesEvents {
     fn publish_events<'a, E: Serialize + Sync, T: Into<FlowId>>(
         &'a self,
         event_type: &'a EventTypeName,
@@ -266,9 +311,33 @@ trait PublishesEvents {
 /// `retry_on_auth_errors` is set to `true`.
 #[derive(Clone)]
 pub struct Publisher<C> {
-    config: Config,
+    config: PublisherConfig,
     api_client: Arc<C>,
     on_retry: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
+}
+
+impl<C> Publisher<C>
+where
+    C: PublishApi + Send + Sync + 'static,
+{
+    pub fn new(api_client: C) -> Self {
+        Self::with_config(api_client, PublisherConfig::default())
+    }
+
+    pub fn with_config(api_client: C, config: PublisherConfig) -> Self {
+        Self {
+            config,
+            api_client: Arc::new(api_client),
+            on_retry: Arc::new(|_, _| {}),
+        }
+    }
+
+    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
+        &mut self,
+        on_retry: F,
+    ) {
+        self.on_retry = Arc::new(on_retry);
+    }
 }
 
 impl<C> PublishesSerializedEvents for Publisher<C>
@@ -409,26 +478,6 @@ where
                 .await
         }
         .boxed()
-    }
-}
-
-impl<C> Publisher<C>
-where
-    C: PublishApi + Send + Sync + 'static,
-{
-    pub fn new(api_client: C, config: Config) -> Self {
-        Self {
-            config,
-            api_client: Arc::new(api_client),
-            on_retry: Arc::new(|_, _| {}),
-        }
-    }
-
-    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
-        &mut self,
-        on_retry: F,
-    ) {
-        self.on_retry = Arc::new(on_retry);
     }
 }
 

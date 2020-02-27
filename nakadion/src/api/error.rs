@@ -4,7 +4,7 @@ use std::fmt;
 use http::StatusCode;
 use http_api_problem::HttpApiProblem;
 
-use nakadi_types::FlowId;
+use crate::nakadi_types::{Error, FlowId};
 
 /// An error type to get insights on why an HTTP request failed
 #[derive(Debug)]
@@ -279,6 +279,12 @@ impl From<serde_json::Error> for NakadiApiError {
             Self::other().with_context("JSON de-/serialization error")
         }
         .caused_by(err)
+    }
+}
+
+impl From<NakadiApiError> for Error {
+    fn from(err: NakadiApiError) -> Self {
+        Error::from_error(err)
     }
 }
 

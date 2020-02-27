@@ -141,9 +141,11 @@ impl StdError for PublishFailure {
 impl fmt::Display for PublishFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PublishFailure::Other(err) => write!(f, "{}", err)?,
-            PublishFailure::PartialFailure(batch) => write!(f, "{}", batch)?,
-            PublishFailure::Unprocessable(batch) => write!(f, "{}", batch)?,
+            PublishFailure::Other(err) => write!(f, "publishing failed: {}", err)?,
+            PublishFailure::PartialFailure(batch) => {
+                write!(f, "publishing failed partially: {}", batch)?
+            }
+            PublishFailure::Unprocessable(batch) => write!(f, "publishing failed: {}", batch)?,
         }
 
         Ok(())
@@ -160,6 +162,12 @@ impl From<RemoteCallError> for PublishFailure {
     fn from(remote_call_error: RemoteCallError) -> Self {
         let api_error = NakadiApiError::from(remote_call_error);
         Self::Other(api_error)
+    }
+}
+
+impl From<PublishFailure> for Error {
+    fn from(err: PublishFailure) -> Self {
+        Error::from_error(err)
     }
 }
 
