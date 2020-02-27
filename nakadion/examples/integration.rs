@@ -55,7 +55,7 @@ async fn create_event_type_a(
         .enrichment_strategy(EnrichmentStrategy::MetadataEnrichment)
         .compatibility_mode(CompatibilityMode::None)
         .schema(EventTypeSchemaInput::json_schema_parsed(
-            r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#
+            r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
         .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
@@ -84,7 +84,7 @@ async fn create_event_type_b(
         .enrichment_strategy(EnrichmentStrategy::MetadataEnrichment)
         .compatibility_mode(CompatibilityMode::None)
         .schema(EventTypeSchemaInput::json_schema_parsed(
-            r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#
+            r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
         .partition_key_fields(PartitionKeyFields::default().partition_key("count"))

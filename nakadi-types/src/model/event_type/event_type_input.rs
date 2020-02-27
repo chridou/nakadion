@@ -366,6 +366,6 @@ struct EventTypeSchemaInputSer {
 
 #[test]
 fn a_schema_input_can_be_parsed() {
-    let input = EventTypeSchemaInput::json_schema_parsed(r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#).unwrap();
+    let input = EventTypeSchemaInput::json_schema_parsed(r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#).unwrap();
     assert_eq!(input.schema_type(), SchemaType::JsonSchema);
 }
