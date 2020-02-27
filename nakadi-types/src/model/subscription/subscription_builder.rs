@@ -1,9 +1,10 @@
+use crate::helpers::mandatory;
 use crate::model::misc::OwningApplication;
 use crate::Error;
 
 use super::*;
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SubscriptionInputBuilder {
     pub id: Option<SubscriptionId>,
     pub owning_application: Option<OwningApplication>,
@@ -76,12 +77,7 @@ impl SubscriptionInputBuilder {
             None
         };
 
-        let owning_application = if let Some(owning_application) = self.owning_application {
-            owning_application
-        } else {
-            return Err(Error::new("owning application is mandatory"));
-        };
-
+        let owning_application = mandatory(self.owning_application, "owning_application")?;
         let event_types = if let Some(event_types) = self.event_types {
             if event_types.is_empty() {
                 return Err(Error::new("event types must not be empty"));
@@ -92,11 +88,7 @@ impl SubscriptionInputBuilder {
             return Err(Error::new("event types is mandatory"));
         };
 
-        let read_from = if let Some(read_from) = self.read_from {
-            read_from
-        } else {
-            return Err(Error::new("read from is mandatory"));
-        };
+        let read_from = mandatory(self.read_from, "read_from")?;
 
         let initial_cursors = if let Some(initial_cursors) = self.initial_cursors {
             if initial_cursors.is_empty() {
@@ -108,11 +100,7 @@ impl SubscriptionInputBuilder {
             None
         };
 
-        let authorization = if let Some(authorization) = self.authorization {
-            authorization
-        } else {
-            return Err(Error::new("authorization is mandatory"));
-        };
+        let authorization = mandatory(self.authorization, "authorization")?;
 
         Ok(SubscriptionInput {
             id,

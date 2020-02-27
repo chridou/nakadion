@@ -352,3 +352,14 @@ macro_rules! new_type {
         }
     };
 }
+
+pub fn mandatory<T>(v: Option<T>, field_name: &'static str) -> Result<T, crate::Error> {
+    if let Some(v) = v {
+        Ok(v)
+    } else {
+        Err(crate::Error::new(format!(
+            "field '{}' is mandatory",
+            field_name
+        )))
+    }
+}

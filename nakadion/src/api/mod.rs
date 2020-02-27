@@ -6,13 +6,12 @@ use std::fmt;
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
-use serde::Serialize;
 
 use nakadi_types::model::event_type::*;
 use nakadi_types::model::partition::*;
 use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
-use nakadi_types::FlowId;
+use nakadi_types::{Error, FlowId};
 
 use dispatch_http_request::RemoteCallError;
 
@@ -76,7 +75,7 @@ pub trait SchemaRegistryApi {
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
     fn create_event_type<T: Into<FlowId>>(
         &self,
-        event_type: &EventType,
+        event_type: &EventTypeInput,
         flow_id: T,
     ) -> ApiFuture<()>;
 
@@ -142,9 +141,11 @@ impl StdError for PublishFailure {
 impl fmt::Display for PublishFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PublishFailure::Other(err) => write!(f, "{}", err)?,
-            PublishFailure::PartialFailure(batch) => write!(f, "{}", batch)?,
-            PublishFailure::Unprocessable(batch) => write!(f, "{}", batch)?,
+            PublishFailure::Other(err) => write!(f, "publishing failed: {}", err)?,
+            PublishFailure::PartialFailure(batch) => {
+                write!(f, "publishing failed partially: {}", batch)?
+            }
+            PublishFailure::Unprocessable(batch) => write!(f, "publishing failed: {}", batch)?,
         }
 
         Ok(())
@@ -161,6 +162,12 @@ impl From<RemoteCallError> for PublishFailure {
     fn from(remote_call_error: RemoteCallError) -> Self {
         let api_error = NakadiApiError::from(remote_call_error);
         Self::Other(api_error)
+    }
+}
+
+impl From<PublishFailure> for Error {
+    fn from(err: PublishFailure) -> Self {
+        Error::from_error(err)
     }
 }
 
@@ -205,7 +212,7 @@ pub trait PublishApi {
     /// identified by name.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
-    fn publish_events<'a, B: Into<Bytes>, T: Into<FlowId>>(
+    fn publish_events_batch<'a, B: Into<Bytes>, T: Into<FlowId>>(
         &'a self,
         event_type: &'a EventTypeName,
         events: B,
