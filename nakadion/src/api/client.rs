@@ -410,7 +410,7 @@ impl SchemaRegistryApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<()> {
         let payload_to_send = serde_json::to_vec(event_type).unwrap();
-        self.send_receive_payload(
+        self.send_payload(
             self.urls().schema_registry_create_event_type(),
             Method::POST,
             payload_to_send,

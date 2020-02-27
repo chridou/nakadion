@@ -46,8 +46,7 @@ pub struct EventTypeInput {
     ///
     /// See documentation for the write operation for details on behaviour in case of unsuccessful
     /// enrichment.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enrichment_strategy: Option<EnrichmentStrategy>,
+    pub enrichment_strategies: Vec<EnrichmentStrategy>,
     /// Determines how the assignment of the event to a partition should be handled.
     pub partition_strategy: PartitionStrategy,
     /// Required when ‘partition_resolution_strategy’ is set to ‘hash’. Must be absent otherwise.
@@ -116,7 +115,7 @@ pub struct EventTypeInputBuilder {
     /// See documentation for the write operation for details on behaviour in case of unsuccessful
     /// enrichment.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub enrichment_strategy: Option<EnrichmentStrategy>,
+    pub enrichment_strategies: Option<Vec<EnrichmentStrategy>>,
     /// Determines how the assignment of the event to a partition should be handled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partition_strategy: Option<PartitionStrategy>,
@@ -188,9 +187,14 @@ impl EventTypeInputBuilder {
     /// See documentation for the write operation for details on behaviour in case of unsuccessful
     /// enrichment.
     pub fn enrichment_strategy<T: Into<EnrichmentStrategy>>(mut self, v: T) -> Self {
-        self.enrichment_strategy = Some(v.into());
+        if let Some(ref mut strategies) = self.enrichment_strategies {
+            strategies.push(v.into());
+        } else {
+            self.enrichment_strategies = Some(vec![v.into()]);
+        }
         self
     }
+
     /// Determines how the assignment of the event to a partition should be handled.
     pub fn partition_strategy<T: Into<PartitionStrategy>>(mut self, v: T) -> Self {
         self.partition_strategy = Some(v.into());
@@ -248,7 +252,7 @@ impl EventTypeInputBuilder {
         let name = mandatory(self.name, "name")?;
         let owning_application = mandatory(self.owning_application, "owning_application")?;
         let category = mandatory(self.category, "category")?;
-        let enrichment_strategy = self.enrichment_strategy;
+        let enrichment_strategies = self.enrichment_strategies.unwrap_or_default();
         let partition_strategy = mandatory(self.partition_strategy, "partition_strategy")?;
         let partition_key_fields = self.partition_key_fields;
         let compatibility_mode = mandatory(self.compatibility_mode, "compatibility_mode")?;
@@ -281,7 +285,7 @@ impl EventTypeInputBuilder {
             name,
             owning_application,
             category,
-            enrichment_strategy,
+            enrichment_strategies,
             partition_strategy,
             partition_key_fields,
             compatibility_mode,
