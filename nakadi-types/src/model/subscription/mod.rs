@@ -225,6 +225,15 @@ pub struct SubscriptionAuthorization {
 }
 
 impl SubscriptionAuthorization {
+    pub fn admin<T: Into<AuthorizationAttribute>>(mut self, admin: T) -> Self {
+        self.admins.push(admin.into());
+        self
+    }
+    pub fn reader<T: Into<AuthorizationAttribute>>(mut self, reader: T) -> Self {
+        self.readers.push(reader.into());
+        self
+    }
+
     pub fn add_admin<T: Into<AuthorizationAttribute>>(&mut self, admin: T) {
         self.admins.push(admin.into())
     }
@@ -304,7 +313,7 @@ impl SubscriptionInput {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadFrom {
-    Start,
+    Begin,
     End,
     Cursors,
 }

@@ -68,12 +68,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     join1.await??;
     join2.await??;
 
-    println!("Create subscription 1");
+    println!("Create subscription for {}", EVENT_TYPE_A);
     let subscription_input = SubscriptionInput::builder()
         .owning_application("nakadi_test")
         .consumer_group("test_app_1")
         .event_types(EventTypeNames::default().event_type_name(EVENT_TYPE_A))
-        .read_from(ReadFrom::Start)
+        .read_from(ReadFrom::Begin)
+        .authorization(
+            SubscriptionAuthorization::default()
+                .admin(("*", "*"))
+                .reader(("*", "*")),
+        )
         .finish_for_create()?;
     let subscription = api_client
         .create_subscription(&subscription_input, ())
@@ -81,9 +86,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let subscription_id = subscription.id;
 
-    consume_event_type_a(api_client.clone(), subscription_id)
+    consume_event_type_a(api_client.clone(), subscription_id).await?;
 
-    println!("Create subscription 2");
+    println!(
+        "Create subscription for {} & {}",
+        EVENT_TYPE_A, EVENT_TYPE_B
+    );
     let subscription_input = SubscriptionInput::builder()
         .owning_application("nakadi_test")
         .consumer_group("test_app_2")
@@ -92,11 +100,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .event_type_name(EVENT_TYPE_A)
                 .event_type_name(EVENT_TYPE_B),
         )
-        .read_from(ReadFrom::Start)
+        .read_from(ReadFrom::Begin)
+        .authorization(
+            SubscriptionAuthorization::default()
+                .admin(("*", "*"))
+                .reader(("*", "*")),
+        )
         .finish_for_create()?;
-    let subscription_a = api_client
+    let subscription = api_client
         .create_subscription(&subscription_input, ())
         .await?;
+
+    let subscription_id = subscription.id;
+
+    consume_event_types_ab(api_client.clone(), subscription_id).await?;
+
+    println!("FINISHED WITH SUCCESS");
 
     Ok(())
 }
@@ -214,6 +233,7 @@ async fn consume_event_type_a(
     api_client: ApiClient,
     subscription_id: SubscriptionId,
 ) -> Result<(), Error> {
+    println!("Consume event type {}", EVENT_TYPE_A);
     consume_subscription(
         api_client.clone(),
         subscription_id,
@@ -242,6 +262,39 @@ async fn consume_event_type_a(
     Ok(())
 }
 
+async fn consume_event_types_ab(
+    api_client: ApiClient,
+    subscription_id: SubscriptionId,
+) -> Result<(), Error> {
+    println!("Consume event types {} & {}", EVENT_TYPE_A, EVENT_TYPE_B);
+    consume_subscription(
+        api_client.clone(),
+        subscription_id,
+        HandlerABFactory::new(),
+        100_010_000,
+        DispatchMode::AllSeq,
+    )
+    .await?;
+    consume_subscription(
+        api_client.clone(),
+        subscription_id,
+        HandlerABFactory::new(),
+        100_010_000,
+        DispatchMode::EventTypePar,
+    )
+    .await?;
+    consume_subscription(
+        api_client.clone(),
+        subscription_id,
+        HandlerABFactory::new(),
+        100_010_000,
+        DispatchMode::EventTypePartitionPar,
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     api_client: ApiClient,
     subscription_id: SubscriptionId,
@@ -249,6 +302,9 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     target_value: usize,
     dispatch_mode: DispatchMode,
 ) -> Result<(), Error> {
+    println!("Consume with dispatch mode {}", dispatch_mode);
+
+    println!("Reset cursors");
     api_client
         .reset_cursors_to_begin(subscription_id, ())
         .await?;
@@ -260,6 +316,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
         .dispatch_mode(dispatch_mode)
         .build_with(api_client.clone(), factory, StdOutLogger::default())?;
 
+    println!("Consume");
     let (consumer_handle, consuming) = consumer.start();
 
     spawn(wait_for_all_consumed(
@@ -269,6 +326,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     ));
 
     consuming.await.into_result()?;
+    println!("Consumed");
 
     assert_eq!(check_value.load(Ordering::SeqCst), target_value);
 
