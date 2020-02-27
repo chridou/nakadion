@@ -285,6 +285,31 @@ pub struct EventTypeAuthorization {
     pub writers: Vec<AuthorizationAttribute>,
 }
 
+impl EventTypeAuthorization {
+    pub fn admin<T: Into<AuthorizationAttribute>>(mut self, admin: T) -> Self {
+        self.admins.push(admin.into());
+        self
+    }
+    pub fn reader<T: Into<AuthorizationAttribute>>(mut self, reader: T) -> Self {
+        self.readers.push(reader.into());
+        self
+    }
+    pub fn writer<T: Into<AuthorizationAttribute>>(mut self, writer: T) -> Self {
+        self.writers.push(writer.into());
+        self
+    }
+
+    pub fn add_admin<T: Into<AuthorizationAttribute>>(&mut self, admin: T) {
+        self.admins.push(admin.into())
+    }
+    pub fn add_reader<T: Into<AuthorizationAttribute>>(&mut self, reader: T) {
+        self.readers.push(reader.into())
+    }
+    pub fn add_writer<T: Into<AuthorizationAttribute>>(&mut self, writer: T) {
+        self.writers.push(reader.into())
+    }
+}
+
 /// Intended target audience of the event type. Relevant for standards around quality of design and documentation,
 /// reviews, discoverability, changeability, and permission granting. See the guidelines
 /// https://opensource.zalando.com/restful-api-guidelines/#219

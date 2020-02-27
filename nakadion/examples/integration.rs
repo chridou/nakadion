@@ -162,7 +162,12 @@ async fn create_event_type_b(api_client: &ApiClient) -> Result<(), Error> {
         .default_statistic(EventTypeStatistics::new(100, 1_000, 4, 4))
         .options(EventTypeOptions::default())
         .audience(EventTypeAudience::CompanyInternal)
-        .build()?;
+.authorization(
+    EventTypeAuthorization::default()
+    .admin(("*", "*"))
+    .reader(("*", "*"))
+    .writer(("*", "*")))
+    .build()?;
 
     api_client
         .create_event_type(&event_type, RandomFlowId)
