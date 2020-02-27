@@ -58,7 +58,7 @@ async fn create_event_type_a(
             EventTypeSchemaInput::builder()
                 .schema_type(SchemaType::JsonSchema)
                 .schema(
-                    r#"{"description":"test event a","properties":{"count":{type:"int"}},"required":["count"]}"#,
+                    r#"{"description":"test event a","properties":{"count":{"type":"int"}},"required":["count"]}"#,
                 )
                 .build()?,
         )
@@ -92,7 +92,7 @@ async fn create_event_type_b(
             EventTypeSchemaInput::builder()
                 .schema_type(SchemaType::JsonSchema)
                 .schema(
-                    r#"{"description":"test event a","properties":{"count":{type:"int"}},"required":["count"]}"#,
+                    r#"{"description":"test event b","properties":{"count":{"type":"int"}},"required":["count"]}"#,
                 )
                 .build()?,
         )
