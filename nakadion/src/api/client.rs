@@ -406,7 +406,7 @@ impl SchemaRegistryApi for ApiClient {
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
     fn create_event_type<T: Into<FlowId>>(
         &self,
-        event_type: &EventType,
+        event_type: &EventTypeInput,
         flow_id: T,
     ) -> ApiFuture<()> {
         let payload_to_send = serde_json::to_vec(event_type).unwrap();

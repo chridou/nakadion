@@ -296,7 +296,7 @@ impl SubscriptionInput {
 ///  Applied when the client starts reading from a subscription.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadFrom {
     Start,

@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use crate::model::misc::{AuthorizationAttribute, OwningApplication};
 use crate::model::partition::{CursorOffset, PartitionId};
 
+mod event_type_input;
+pub use event_type_input::*;
+
 new_type! {
  #[doc=r#"Name of an EventType. The name is constrained by a regular expression.
 
@@ -17,7 +20,7 @@ new_type! {
 
  See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)"#]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-    pub struct EventTypeName(String, env="EVENT_TYPE");
+    pub struct EventTypeName(String, env="EVENT_TYPE_NAME");
 }
 
 /// Defines the category of this EventType.
@@ -112,7 +115,7 @@ impl Default for CompatibilityMode {
 new_type! {
 #[doc="Part of `PartitionKeyFields`\n"]
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct PartitionKey(String, env="PARTITION_KEY");
+    pub struct PartitionKey(String, env="EVENT_TYPE_PARTITION_KEY");
 }
 
 /// Required when 'partition_resolution_strategy' is set to ‘hash’. Must be absent otherwise.
@@ -132,6 +135,41 @@ impl PartitionKeyFields {
     {
         let items = items.into_iter().map(|it| it.into()).collect();
         Self(items)
+    }
+
+    pub fn partition_key<T: Into<PartitionKey>>(mut self, v: T) -> Self {
+        self.push(v);
+        self
+    }
+
+    pub fn push<T: Into<PartitionKey>>(&mut self, v: T) {
+        self.0.push(v.into());
+    }
+
+    pub fn into_inner(self) -> Vec<PartitionKey> {
+        self.0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &PartitionKey> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PartitionKey> {
+        self.0.iter_mut()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl AsRef<[PartitionKey]> for PartitionKeyFields {
+    fn as_ref(&self) -> &[PartitionKey] {
+        &self.0
     }
 }
 
@@ -200,20 +238,21 @@ pub struct EventTypeSchema {
     pub schema_type: SchemaType,
     /// The schema as string in the syntax defined in the field type. Failure to respect the
     /// syntax will fail any operation on an EventType.
-    pub schema: String,
+    pub schema: SchemaSyntax,
 }
 
-/// The most recent schema for this EventType. Submitted events will be validated against it.
+new_type! {
+#[doc=r#"
+The schema as string in the syntax defined in the field type.
+
+Failure to respect the
+syntax will fail any operation on an EventType.
+
+"#]
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct EventTypeSchemaInput {
-    ///The type of schema definition. Currently only json_schema (JSON Schema v04) is supported, but in the
-    ///future there could be others.
-    #[serde(rename = "type")]
-    pub schema_type: SchemaType,
-    /// The schema as string in the syntax defined in the field type. Failure to respect the
-    /// syntax will fail any operation on an EventType.
-    pub schema: String,
+    pub struct SchemaSyntax(String, env="EVENT_TYPE_SCHEMA_SYNTAX");
 }
+
 new_type! {
     #[doc="Number of milliseconds that Nakadi stores events published to this event type.\n\n\
     See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypeOptions*retention_time)"]
@@ -307,6 +346,22 @@ pub struct EventTypeStatistics {
     pub write_parallelism: u64,
 }
 
+impl EventTypeStatistics {
+    pub fn new(
+        messages_per_minute: u64,
+        message_size: u64,
+        read_parallelism: u64,
+        write_parallelism: u64,
+    ) -> Self {
+        Self {
+            messages_per_minute,
+            message_size,
+            read_parallelism,
+            write_parallelism,
+        }
+    }
+}
+
 /// Definition of an event type
 ///
 /// This struct is only used for querying from Nakadi.
@@ -393,70 +448,6 @@ pub struct EventType {
     pub created_at: DateTime<Utc>,
     /// Date and time when this event type was updated.
     pub updated_at: DateTime<Utc>,
-}
-
-/// Definition of an event type
-///
-/// This struct is only used for submitting data to Nakadi.
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventTypeInput {
-    /// Name of this EventType. The name is constrained by a regular expression.
-    ///
-    /// Note: the name can encode the owner/responsible for this EventType and ideally should
-    /// follow a common pattern that makes it easy to read and understand, but this level of
-    /// structure is not enforced. For example a team name and data type can be used such as
-    /// ‘acme-team.price-change’.
-    pub name: EventTypeName,
-    /// Indicator of the application owning this EventType.
-    pub owning_application: OwningApplication,
-    /// Defines the category of this EventType.
-    ///
-    /// The value set will influence, if not set otherwise, the default set of
-    /// validations, enrichment-strategies, and the effective schema for validation.
-    pub category: Category,
-    /// Determines the enrichment to be performed on an Event upon reception. Enrichment is
-    /// performed once upon reception (and after validation) of an Event and is only possible on
-    /// fields that are not defined on the incoming Event.
-    ///
-    /// For event types in categories ‘business’ or ‘data’ it’s mandatory to use
-    /// metadata_enrichment strategy. For ‘undefined’ event types it’s not possible to use this
-    /// strategy, since metadata field is not required.
-    ///
-    /// See documentation for the write operation for details on behaviour in case of unsuccessful
-    /// enrichment.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enrichment_strategy: Option<EnrichmentStrategy>,
-    /// Determines how the assignment of the event to a partition should be handled.
-    pub partition_strategy: PartitionStrategy,
-    /// Compatibility mode provides a mean for event owners to evolve their schema, given changes respect the
-    /// semantics defined by this field.
-    ///
-    /// It’s designed to be flexible enough so that producers can evolve their schemas while not
-    /// inadvertently breaking existent consumers.
-    ///
-    /// Once defined, the compatibility mode is fixed, since otherwise it would break a predefined contract,
-    /// declared by the producer.
-    pub compatibility_mode: CompatibilityMode,
-
-    pub schema: EventTypeSchemaInput,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    /// Required when ‘partition_resolution_strategy’ is set to ‘hash’. Must be absent otherwise.
-    /// Indicates the fields used for evaluation the partition of Events of this type.
-    ///
-    /// If this is set it MUST be a valid required field as defined in the schema.
-    pub partition_key_fields: Option<PartitionKeyFields>,
-    /// Event type cleanup policy. There are two possible values:
-    pub cleanup_policy: CleanupPolicy,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_statistic: Option<EventTypeStatistics>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub options: Option<EventTypeOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authorization: Option<EventTypeAuthorization>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audience: Option<EventTypeAudience>,
 }
 
 /// Partition information. Can be helpful when trying to start a stream using an unmanaged API.

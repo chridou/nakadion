@@ -75,7 +75,7 @@ pub trait SchemaRegistryApi {
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
     fn create_event_type<T: Into<FlowId>>(
         &self,
-        event_type: &EventType,
+        event_type: &EventTypeInput,
         flow_id: T,
     ) -> ApiFuture<()>;
 
