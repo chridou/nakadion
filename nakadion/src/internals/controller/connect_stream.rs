@@ -6,7 +6,7 @@ use crate::nakadi_types::FlowId;
 
 use crate::api::SubscriptionStreamChunks;
 use crate::components::connector::{ConnectErrorKind, ProvidesConnector};
-use crate::consumer::{ConsumerError, ConsumerErrorKind};
+use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::ConsumerState;
 use crate::logging::Logs;
@@ -14,7 +14,7 @@ use crate::logging::Logs;
 pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
     connector_provider: C,
     consumer_state: ConsumerState,
-) -> Result<SubscriptionStreamChunks, ConsumerError> {
+) -> Result<SubscriptionStreamChunks, ConsumerAbort> {
     let config = consumer_state.config();
     let instrumentation = consumer_state.instrumentation();
     let subscription_id = consumer_state.subscription_id();
@@ -32,11 +32,13 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
     let connect_started_at = Instant::now();
     loop {
         if consumer_state.global_cancellation_requested() {
-            return Err(ConsumerError::new(ConsumerErrorKind::UserAbort));
+            return Err(ConsumerAbort::UserInitiated);
         }
 
         if attempts_left == 0 {
-            return Err(ConsumerError::other().with_message("No connect attempts left. Aborting"));
+            return Err(ConsumerError::other()
+                .with_message("No connect attempts left. Aborting")
+                .into());
         }
         attempts_left -= 1;
 
@@ -54,27 +56,29 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
                             return Err(ConsumerError::new(
                                 ConsumerErrorKind::SubscriptionNotFound,
                             )
-                            .with_source(err));
+                            .with_source(err)
+                            .into());
                         }
                     }
                     ConnectErrorKind::AccessDenied => {
                         if config.abort_connect_on_auth_error.into() {
                             instrumentation.stream_not_connected(connect_started_at.elapsed());
                             return Err(ConsumerError::new(ConsumerErrorKind::AccessDenied)
-                                .with_source(err));
+                                .with_source(err)
+                                .into());
                         }
                     }
                     ConnectErrorKind::BadRequest => {
                         instrumentation.stream_not_connected(connect_started_at.elapsed());
-                        return Err(
-                            ConsumerError::new(ConsumerErrorKind::Internal).with_source(err)
-                        );
+                        return Err(ConsumerError::new(ConsumerErrorKind::Internal)
+                            .with_source(err)
+                            .into());
                     }
                     ConnectErrorKind::Unprocessable => {
                         instrumentation.stream_not_connected(connect_started_at.elapsed());
-                        return Err(
-                            ConsumerError::new(ConsumerErrorKind::Internal).with_source(err)
-                        );
+                        return Err(ConsumerError::new(ConsumerErrorKind::Internal)
+                            .with_source(err)
+                            .into());
                     }
                     ConnectErrorKind::Io => {}
                     ConnectErrorKind::Other => {}

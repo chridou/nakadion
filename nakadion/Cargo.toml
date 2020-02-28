@@ -43,6 +43,9 @@ slog-async = "2.4.0"
 [[example]]
 name = "consume_subscription"
 
+[[example]]
+name = "integration"
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

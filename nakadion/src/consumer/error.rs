@@ -3,6 +3,78 @@ use std::fmt;
 
 use crate::nakadi_types::Error;
 
+#[derive(Debug)]
+pub enum ConsumerAbort {
+    UserInitiated,
+    Error(ConsumerError),
+}
+
+impl ConsumerAbort {
+    pub fn user_initiated() -> Self {
+        Self::UserInitiated
+    }
+
+    pub fn error<E: Into<ConsumerError>>(err: E) -> Self {
+        Self::Error(err.into())
+    }
+
+    pub fn is_error(&self) -> bool {
+        match self {
+            ConsumerAbort::UserInitiated => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_user_abort(&self) -> bool {
+        match self {
+            ConsumerAbort::UserInitiated => true,
+            _ => false,
+        }
+    }
+
+    pub fn try_into_error(self) -> Result<ConsumerError, Self> {
+        match self {
+            ConsumerAbort::UserInitiated => Err(self),
+            ConsumerAbort::Error(error) => Ok(error),
+        }
+    }
+
+    pub fn maybe_as_consumer_error(&self) -> Option<&ConsumerError> {
+        match self {
+            ConsumerAbort::UserInitiated => None,
+            ConsumerAbort::Error(ref error) => Some(error),
+        }
+    }
+}
+
+impl fmt::Display for ConsumerAbort {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConsumerAbort::UserInitiated => write!(f, "user initiated")?,
+            ConsumerAbort::Error(ref error) => write!(f, "{}", error)?,
+        }
+        Ok(())
+    }
+}
+
+impl StdError for ConsumerAbort {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            ConsumerAbort::UserInitiated => None,
+            ConsumerAbort::Error(ref error) => error.source(),
+        }
+    }
+}
+
+impl<T> From<T> for ConsumerAbort
+where
+    T: Into<ConsumerError>,
+{
+    fn from(err: T) -> Self {
+        Self::Error(err.into())
+    }
+}
+
 /// Always leads to Nakadion shutting down
 #[derive(Debug)]
 pub struct ConsumerError {
@@ -124,7 +196,6 @@ pub enum ConsumerErrorKind {
     AccessDenied,
     Internal,
     HandlerAbort,
-    UserAbort,
     HandlerFactory,
     InvalidBatch,
     Other,
@@ -135,7 +206,6 @@ impl fmt::Display for ConsumerErrorKind {
         match self {
             ConsumerErrorKind::SubscriptionNotFound => write!(f, "subscription not found")?,
             ConsumerErrorKind::Internal => write!(f, "internal")?,
-            ConsumerErrorKind::UserAbort => write!(f, "user initiated")?,
             ConsumerErrorKind::HandlerAbort => write!(f, "handler initiated")?,
             ConsumerErrorKind::HandlerFactory => write!(f, "handler factory")?,
             ConsumerErrorKind::InvalidBatch => write!(f, "invalid batch")?,
