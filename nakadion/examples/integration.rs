@@ -334,8 +334,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     .await
     .map_err(Error::from_error)??;
 
-    let result = consuming.await.into_result();
-    println!("consumption outcome: {:#?}", result);
+    let _ = consuming.await.into_result()?;
 
     println!("Consumed");
 

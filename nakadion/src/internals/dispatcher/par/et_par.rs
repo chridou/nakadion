@@ -122,6 +122,10 @@ where
 
         pin_mut!(stream);
         while let Some(next_message) = stream.next().await {
+            if stream_state.cancellation_requested() {
+                stream_state.info(format_args!("Cancellation requested"));
+                break;
+            }
             let (event_type_partition, batch) = match next_message {
                 DispatcherMessage::BatchWithEvents(etp, batch) => (etp, batch),
                 DispatcherMessage::Tick(timestamp) => {

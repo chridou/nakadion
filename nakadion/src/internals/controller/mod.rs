@@ -15,7 +15,7 @@ use crate::components::{
     streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
     StreamingEssentials,
 };
-use crate::consumer::{ConsumerError, ConsumerErrorKind, TickIntervalMillis};
+use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind, TickIntervalMillis};
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::internals::{
     dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},
@@ -51,13 +51,13 @@ where
         Self { params }
     }
 
-    pub(crate) async fn start(self) -> Result<(), ConsumerError> {
+    pub(crate) async fn start(self) -> ConsumerAbort {
         create_background_task(self.params).await
     }
 }
 
 /// Create a task to be spawned on the runtime to drive the `Controller` over multiple streams
-async fn create_background_task<C>(params: ControllerParams<C>) -> Result<(), ConsumerError>
+async fn create_background_task<C>(params: ControllerParams<C>) -> ConsumerAbort
 where
     C: StreamingEssentials + Clone,
 {
@@ -71,11 +71,14 @@ where
 
     // Each iteration is the life cycle of a stream
     loop {
+        if consumer_state.global_cancellation_requested() {
+            return ConsumerAbort::UserInitiated;
+        }
         sleeping_dispatcher = match stream_life_cycle(params.clone(), sleeping_dispatcher).await {
             Ok(sleeping_dispatcher) => sleeping_dispatcher,
             Err(err) => {
                 consumer_state.request_global_cancellation();
-                return Err(err);
+                return err;
             }
         }
     }
@@ -94,7 +97,7 @@ enum BatchLineMessage {
 async fn stream_life_cycle<C>(
     params: ControllerParams<C>,
     sleeping_dispatcher: SleepingDispatcher<C>,
-) -> Result<SleepingDispatcher<C>, ConsumerError>
+) -> Result<SleepingDispatcher<C>, ConsumerAbort>
 where
     C: StreamingEssentials + Clone,
 {

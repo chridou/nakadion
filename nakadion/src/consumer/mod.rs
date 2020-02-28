@@ -110,28 +110,19 @@ impl Consumer {
 
         let kept_inner = Arc::clone(&self.inner);
         let join = tokio::spawn(async move {
-            let inner = Arc::clone(&self.inner);
+            let stop_reason = self.inner.start(consumer_state).await;
 
-            let mut outcome = ConsumptionOutcome {
-                aborted: None,
-                consumer: Consumer {
-                    inner: Arc::clone(&inner),
-                },
-            };
-
-            match inner.start(consumer_state).await {
-                Ok(()) => {}
-                Err(err) => outcome.aborted = Some(err),
+            ConsumptionOutcome {
+                stop_reason,
+                consumer: self,
             }
-
-            outcome
         });
 
         let f = async move {
             match join.await {
                 Ok(outcome) => outcome,
                 Err(join_error) => ConsumptionOutcome {
-                    aborted: Some(join_error.into()),
+                    stop_reason: join_error.into(),
                     consumer: Consumer { inner: kept_inner },
                 },
             }
@@ -158,14 +149,19 @@ impl fmt::Debug for Consumer {
 /// original consumer and if the `Consumer` was stopped for
 /// other reasons than the stream ending a `ConsumerError`.
 pub struct ConsumptionOutcome {
-    aborted: Option<ConsumerError>,
+    stop_reason: ConsumerAbort,
     consumer: Consumer,
 }
 
 impl ConsumptionOutcome {
-    /// `true` if the consumption was aborted.
-    pub fn is_aborted(&self) -> bool {
-        self.aborted.is_some()
+    /// `true` if the consumption was aborted by the user via the handle.
+    pub fn is_user_aborted(&self) -> bool {
+        self.stop_reason.is_user_abort()
+    }
+
+    /// `true` if the consumption was afrom internally.
+    pub fn is_error(&self) -> bool {
+        self.stop_reason.is_error()
     }
 
     /// Turn the outcome into the contained `Consumer`
@@ -176,21 +172,33 @@ impl ConsumptionOutcome {
     /// If there was an error return the error as `OK` otherwise
     /// return `self` as an error.
     pub fn try_into_err(self) -> Result<ConsumerError, Self> {
-        if self.aborted.is_some() {
-            Ok(self.aborted.unwrap())
-        } else {
-            Err(self)
+        let consumer = self.consumer;
+        match self.stop_reason.try_into_error() {
+            Ok(err) => Ok(err),
+            Err(stop_reason) => Err(ConsumptionOutcome {
+                stop_reason,
+                consumer,
+            }),
         }
     }
 
-    /// Split this outcome into the `Consumer` and maybe an error.
-    pub fn spilt(self) -> (Consumer, Option<ConsumerError>) {
-        (self.consumer, self.aborted)
+    /// Turns this into the reason loosing the consumer
+    pub fn into_reason(self) -> ConsumerAbort {
+        self.stop_reason
+    }
+
+    pub fn as_reason(&self) -> &ConsumerAbort {
+        &self.stop_reason
+    }
+
+    /// Split this outcome into the `Consumer` and the reason.
+    pub fn spilt(self) -> (Consumer, ConsumerAbort) {
+        (self.consumer, self.stop_reason)
     }
 
     /// If there was an error return a reference to it.
     pub fn error(&self) -> Option<&ConsumerError> {
-        self.aborted.as_ref()
+        self.stop_reason.maybe_as_consumer_error()
     }
 
     /// Turn this outcome into a `Result`.
@@ -200,10 +208,9 @@ impl ConsumptionOutcome {
     /// contain the `Consumer´. If there was an error the `Consumer`
     /// will be lost.
     pub fn into_result(self) -> Result<Consumer, ConsumerError> {
-        if let Some(aborted) = self.aborted {
-            Err(aborted)
-        } else {
-            Ok(self.consumer)
+        match self.stop_reason {
+            ConsumerAbort::UserInitiated => Ok(self.consumer),
+            ConsumerAbort::Error(error) => Err(error),
         }
     }
 }
@@ -252,8 +259,7 @@ impl ConsumerHandle {
 }
 
 trait ConsumerInternal: fmt::Debug {
-    fn start(&self, consumer_state: ConsumerState)
-        -> BoxFuture<'static, Result<(), ConsumerError>>;
+    fn start(&self, consumer_state: ConsumerState) -> BoxFuture<'static, ConsumerAbort>;
 
     fn config(&self) -> &Config;
 
@@ -278,10 +284,7 @@ impl<C> ConsumerInternal for Inner<C>
 where
     C: StreamingEssentials + Clone,
 {
-    fn start(
-        &self,
-        consumer_state: ConsumerState,
-    ) -> BoxFuture<'static, Result<(), ConsumerError>> {
+    fn start(&self, consumer_state: ConsumerState) -> BoxFuture<'static, ConsumerAbort> {
         let controller_params = ControllerParams {
             api_client: self.api_client.clone(),
             consumer_state,

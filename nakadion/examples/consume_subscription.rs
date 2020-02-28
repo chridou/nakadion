@@ -34,11 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let outcome = consuming.await;
 
-    if let Some(err) = outcome.error() {
-        println!("{}", err);
-    } else {
-        println!("{}", outcome.is_aborted());
-    }
+    println!("{}", outcome.as_reason());
 
     Ok(())
 }
