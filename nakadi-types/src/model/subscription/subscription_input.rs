@@ -6,6 +6,14 @@ use crate::Error;
 
 use super::*;
 
+/// A struct to create a `Subscription`.
+///
+/// This struct is intended for creating `Subscription`s. Since the interface
+/// for creating `Subscription`s is slightly different from the actual entity this
+/// special struct exists.
+///
+/// ## Subscription
+///
 /// Subscription is a high level consumption unit.
 ///
 /// Subscriptions allow applications to easily scale the number of clients by managing
@@ -63,6 +71,18 @@ pub enum ReadFrom {
     Cursors,
 }
 
+/// A builder for creating a `SubscriptionInput`
+///
+/// ## Subscription
+///
+/// Subscription is a high level consumption unit.
+///
+/// Subscriptions allow applications to easily scale the number of clients by managing
+/// consumed event offsets and distributing load between instances.
+/// The key properties that identify subscription are ‘owning_application’, ‘event_types’ and ‘consumer_group’.
+/// It’s not possible to have two different subscriptions with these properties being the same.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SubscriptionInputBuilder {
     pub id: Option<SubscriptionId>,

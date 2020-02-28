@@ -23,32 +23,49 @@ pub struct BatchResponse {
 }
 
 impl BatchResponse {
+    /// Returns true if there are no `BatchItemResponse`s.
+    ///
+    /// This means also that no errors occurred.
     pub fn is_empty(&self) -> bool {
         self.batch_items.is_empty()
     }
 
+    /// Returns the amount of `BatchItemResponse`s.
+    ///
+    /// Usually at least one contains an error.
     pub fn len(&self) -> usize {
         self.batch_items.len()
     }
 
+    /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Failed`
     pub fn failed_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
         self.batch_items
             .iter()
             .filter(|item| item.publishing_status == PublishingStatus::Failed)
     }
 
+    /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Aborted`
     pub fn aborted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
         self.batch_items
             .iter()
             .filter(|item| item.publishing_status == PublishingStatus::Aborted)
     }
 
+    /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Submitted`
     pub fn submitted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
         self.batch_items
             .iter()
             .filter(|item| item.publishing_status == PublishingStatus::Submitted)
     }
 
+    /// Iterate over all `BatchItemResponse`s where the publishing status is not `PublishingStatus::Submitted`
+    pub fn non_submitted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        self.batch_items
+            .iter()
+            .filter(|item| item.publishing_status != PublishingStatus::Submitted)
+    }
+
+    /// Iterate over all `BatchItemResponse`s
     pub fn iter(&self) -> impl Iterator<Item = &BatchItemResponse> {
         self.batch_items.iter()
     }

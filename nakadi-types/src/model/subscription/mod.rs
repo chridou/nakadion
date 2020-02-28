@@ -68,6 +68,14 @@ impl EventTypePartition {
     pub fn split(self) -> (EventTypeName, PartitionId) {
         (self.event_type, self.partition)
     }
+
+    pub fn event_type(&self) -> &EventTypeName {
+        &self.event_type
+    }
+
+    pub fn partition(&self) -> &PartitionId {
+        &self.partition
+    }
 }
 
 impl fmt::Display for EventTypePartition {
