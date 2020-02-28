@@ -222,7 +222,7 @@ where
         })
         .collect();
 
-    for batch in events.chunks(100) {
+    for batch in events.chunks(50) {
         if let Err(err) = publisher.publish_events(&name, batch, ()).await {
             println!("{:#?}", err);
             return Err(Error::from_error(err));
@@ -232,10 +232,6 @@ where
     println!("Published {} events for event type {}", N_EVENTS, name);
 
     Ok(())
-}
-#[cfg(not(feature = "reqwest"))]
-fn main() {
-    panic!("Please enable the `reqwest` feature which is a default feature");
 }
 
 type EventA = BusinessEvent<Payload>;
@@ -322,6 +318,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
             params
                 .batch_limit(23)
                 .stream_limit(967)
+                .batch_flush_timeout_secs(1)
                 .max_uncommitted_events(67)
         })
         .build_with(api_client.clone(), factory, StdOutLogger::default())?;
@@ -337,7 +334,8 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     .await
     .map_err(Error::from_error)??;
 
-    consuming.await.into_result()?;
+    let result = consuming.await.into_result();
+    println!("consumption outcome: {:#?}", result);
 
     println!("Consumed");
 
@@ -370,7 +368,6 @@ async fn wait_for_all_consumed(
 
 struct HandlerA {
     sum: Arc<AtomicUsize>,
-    last_received: usize,
 }
 
 impl EventsHandler for HandlerA {
@@ -384,10 +381,7 @@ impl EventsHandler for HandlerA {
         async move {
             for event in events {
                 let n = event.data.count;
-                if self.last_received < n {
-                    self.sum.fetch_add(n, Ordering::SeqCst);
-                    self.last_received = n;
-                }
+                self.sum.fetch_add(n, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit
@@ -416,7 +410,6 @@ impl BatchHandlerFactory for HandlerAFactory {
         async move {
             Ok(Box::new(HandlerA {
                 sum: Arc::clone(&self.sum),
-                last_received: 0,
             }) as Box<_>)
         }
         .boxed()
@@ -435,7 +428,6 @@ trait GetSum {
 
 struct HandlerB {
     sum: Arc<AtomicUsize>,
-    last_received: usize,
 }
 
 impl EventsHandler for HandlerB {
@@ -449,10 +441,7 @@ impl EventsHandler for HandlerB {
         async move {
             for event in events {
                 let n = event.data.count;
-                if self.last_received < n {
-                    self.sum.fetch_add(n, Ordering::SeqCst);
-                    self.last_received = n;
-                }
+                self.sum.fetch_add(n, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit
@@ -493,12 +482,10 @@ impl BatchHandlerFactory for HandlerABFactory {
                 if *event_type == self.event_type_a {
                     Ok(Box::new(HandlerA {
                         sum: Arc::clone(&self.sum),
-                        last_received: 0,
                     }) as Box<_>)
                 } else if *event_type == self.event_type_b {
                     Ok(Box::new(HandlerB {
                         sum: Arc::clone(&self.sum),
-                        last_received: 0,
                     }) as Box<_>)
                 } else {
                     Err(Error::new(format!("invalid assignment: {}", assignment)))
@@ -562,4 +549,9 @@ async fn remove_subscriptions(api_client: ApiClient) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(not(feature = "reqwest"))]
+fn main() {
+    panic!("Please enable the `reqwest` feature which is a default feature");
 }
