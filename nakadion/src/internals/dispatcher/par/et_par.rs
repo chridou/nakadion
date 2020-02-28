@@ -18,7 +18,7 @@ use crate::internals::{
 };
 use crate::logging::Logs;
 
-use crate::nakadi_types::model::event_type::EventTypeName;
+use crate::nakadi_types::model::{event_type::EventTypeName, subscription::EventTypePartitionLike};
 
 use super::BufferedWorker;
 
@@ -142,7 +142,7 @@ where
                 }
             };
 
-            let event_type_str = batch.event_type_str();
+            let event_type_str = event_type_partition.event_type().as_str();
             let worker = if let Some(worker) = activated.get(event_type_str) {
                 worker
             } else {

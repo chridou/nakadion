@@ -9,7 +9,6 @@ use http::{
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::sync::mpsc::unbounded_channel;
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;

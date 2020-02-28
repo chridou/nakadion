@@ -16,8 +16,9 @@ mod all_seq;
 mod par;
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum DispatcherMessage {
-    // A batch containing events along with the `EventTypePartition` extracted from the cursor
+    /// A batch containing events along with the `EventTypePartition` extracted from the cursor
     BatchWithEvents(EventTypePartition, BatchLine),
     Tick(Instant),
     StreamEnded,
