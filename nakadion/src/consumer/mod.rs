@@ -1,7 +1,10 @@
-//! Kit for creating a consumer for a subscription
+//! A consumer for a subscription
 //!
 //! Start here if you want to consume a stream. You will need
 //! a `BatchHandlerFactory` to consume a stream.
+//!
+//! The consumer instantiates handlers to process events and manages
+//! cursor commits.
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -59,6 +62,10 @@ mod error;
 /// The consumer can be cloned so that that multiple connections to `Nakadi`
 /// can be established. But be aware that in this case the consumers will share their
 /// resources, e.g. the API client, metrics and logger.
+///
+/// The consumer will only return if stopped via a `ConsumerHandle` or if
+/// an error is returned. Note that stopping the `Consumer` from within a
+/// handler is also considered an error case.
 #[derive(Clone)]
 pub struct Consumer {
     inner: Arc<dyn ConsumerInternal + Send + Sync + 'static>,
@@ -132,12 +139,6 @@ impl Consumer {
     }
 }
 
-/*match tokio::spawn(inner.start(consumer_state)).await {
-    Ok(Ok(())) => {}
-    Ok(Err(err)) => outcome.aborted = Some(err),
-    Err(err) => outcome.aborted = Some(err.into()),
-}*/
-
 impl fmt::Debug for Consumer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Consumer({:?})", self.inner)?;
@@ -147,7 +148,8 @@ impl fmt::Debug for Consumer {
 
 /// Returned once a `Consumer` has stopped. It contains the
 /// original consumer and if the `Consumer` was stopped for
-/// other reasons than the stream ending a `ConsumerError`.
+/// other reasons than the stream ending a `ConsumerAbort`
+/// which gives more insight on why the consumer was stopped.
 pub struct ConsumptionOutcome {
     stop_reason: ConsumerAbort,
     consumer: Consumer,
@@ -247,6 +249,10 @@ pub struct ConsumerHandle {
 
 impl ConsumerHandle {
     /// Stops the `Consumer`.
+    ///
+    /// The returned `ConsumptionOutcome` will contain
+    /// `ConsumerAbort::UserInitiated` as the reason stopping
+    /// the `Consumer`
     pub fn stop(&self) {
         self.consumer_state.request_global_cancellation()
     }

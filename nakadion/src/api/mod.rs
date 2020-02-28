@@ -255,6 +255,21 @@ pub trait SubscriptionApi {
     ///
     /// List is ordered by creation date/time descending (newest
     /// subscriptions come first).
+    ///
+    /// Returns a stream of `Subscription`s. The stream contains an error if requesting
+    /// a page from Nakadi fails or if the result could not be deserialized.
+    ///
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_get)
+    ///
+    /// ## Usage
+    ///
+    /// The parameter `offset` does not change its meaning. It can
+    /// be used if streams are created one after the other.
+    ///
+    /// The parameter `limit` is of limited use. It controls the
+    /// page size returned by Nakadi. Since a stream is generated it rather controls
+    /// how many requests (the frequency of calls) are sent to Nakadi to fill the stream.
     fn list_subscriptions<T: Into<FlowId>>(
         &self,
         event_type: Option<&EventTypeName>,
