@@ -1,7 +1,10 @@
 //! Types that are shared throughout the model
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+
+use crate::Error;
 
 new_type! {
 /// Indicator of the application owning this EventType.
@@ -26,6 +29,27 @@ impl AuthorizationAttributes {
 
     pub fn push<T: Into<AuthorizationAttribute>>(&mut self, v: T) {
         self.0.push(v.into());
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &AuthorizationAttribute> {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for AuthorizationAttributes {
+    type Item = AuthorizationAttribute;
+    type IntoIter = std::vec::IntoIter<AuthorizationAttribute>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -71,6 +95,22 @@ impl AuthorizationAttribute {
             data_type: data_type.into(),
             value: value.into(),
         }
+    }
+}
+
+impl FromStr for AuthorizationAttribute {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(':').map(|s| s.trim()).collect();
+
+        if parts.len() != 2 {
+            return Err(Error::new(format!(
+                "{} is not a valid AuthorizationAttribute",
+                s
+            )));
+        }
+
+        Ok(Self::new(parts[0], parts[1]))
     }
 }
 

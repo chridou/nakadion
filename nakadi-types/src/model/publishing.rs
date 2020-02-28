@@ -48,6 +48,19 @@ impl BatchResponse {
             .iter()
             .filter(|item| item.publishing_status == PublishingStatus::Submitted)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        self.batch_items.iter()
+    }
+}
+
+impl IntoIterator for BatchResponse {
+    type Item = BatchItemResponse;
+    type IntoIter = std::vec::IntoIter<BatchItemResponse>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.batch_items.into_iter()
+    }
 }
 
 impl fmt::Display for BatchResponse {

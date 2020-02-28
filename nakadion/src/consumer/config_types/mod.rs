@@ -9,6 +9,7 @@ use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId}
 use crate::Error;
 
 use super::{Config, Consumer, Inner};
+use crate::helpers::mandatory;
 pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 #[cfg(feature = "metrix")]
 pub use crate::instrumentation::{Metrix, MetrixConfig};
@@ -517,11 +518,7 @@ impl Builder {
     }
 
     fn config(&self) -> Result<Config, Error> {
-        let subscription_id = if let Some(subscription_id) = self.subscription_id {
-            subscription_id
-        } else {
-            return Err(Error::new("`subscription_id` is missing"));
-        };
+        let subscription_id = mandatory(self.subscription_id, "subscription_id")?;
 
         let stream_parameters = self
             .stream_parameters

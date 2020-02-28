@@ -444,18 +444,18 @@ pub enum CommitResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionStats {
     #[serde(rename = "items")]
-    pub event_type_stats: Vec<SubscriptionEventTypePartitionStats>,
+    pub event_type_stats: Vec<SubscriptionEventTypeStats>,
 }
 
 impl SubscriptionStats {
     pub fn unconsumed_events(&self) -> usize {
         self.event_type_stats
             .iter()
-            .map(|p| p.unconsumed_events)
+            .map(|set_stats| set_stats.unconsumed_events())
             .sum()
     }
 
-    pub fn all_consumed(&self) -> bool {
+    pub fn all_events_consumed(&self) -> bool {
         self.unconsumed_events() == 0
     }
 }
@@ -473,6 +473,10 @@ pub struct SubscriptionEventTypeStats {
 impl SubscriptionEventTypeStats {
     pub fn unconsumed_events(&self) -> usize {
         self.partitions.iter().map(|p| p.unconsumed_events).sum()
+    }
+
+    pub fn all_events_consumed(&self) -> bool {
+        self.unconsumed_events() == 0
     }
 }
 

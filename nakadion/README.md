@@ -27,7 +27,7 @@ To run this example the following environment variables need to be set:
 
 * `NAKADION_NAKADI_BASE_URL`
 * `NAKADION_SUBSCRIPTION_ID`
-* `NAKADION_ACCESS_TOKEN_FIXED` with a valid token or `NAKADION_ACCESS_TOKEN_ALLOW_NONE` set to `true`
+* `NAKADION_ACCESS_TOKEN_FIXED` with a valid token or `NAKADION_ACCESS_TOKEN_ALLOW_NONE=true`
 
 ```rust
 use nakadion::api::ApiClient;

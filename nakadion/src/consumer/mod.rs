@@ -108,26 +108,44 @@ impl Consumer {
             consumer_state: consumer_state.clone(),
         };
 
-        let f = async move {
+        let kept_inner = Arc::clone(&self.inner);
+        let join = tokio::spawn(async move {
             let inner = Arc::clone(&self.inner);
 
             let mut outcome = ConsumptionOutcome {
                 aborted: None,
-                consumer: self,
+                consumer: Consumer {
+                    inner: Arc::clone(&inner),
+                },
             };
-            match tokio::spawn(inner.start(consumer_state)).await {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => outcome.aborted = Some(err),
-                Err(err) => outcome.aborted = Some(err.into()),
+
+            match inner.start(consumer_state).await {
+                Ok(()) => {}
+                Err(err) => outcome.aborted = Some(err),
             }
 
             outcome
-        }
-        .boxed();
+        });
+
+        let f = async move {
+            match join.await {
+                Ok(outcome) => outcome,
+                Err(join_error) => ConsumptionOutcome {
+                    aborted: Some(join_error.into()),
+                    consumer: Consumer { inner: kept_inner },
+                },
+            }
+        };
 
         (handle, Consuming::new(f))
     }
 }
+
+/*match tokio::spawn(inner.start(consumer_state)).await {
+    Ok(Ok(())) => {}
+    Ok(Err(err)) => outcome.aborted = Some(err),
+    Err(err) => outcome.aborted = Some(err.into()),
+}*/
 
 impl fmt::Debug for Consumer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
