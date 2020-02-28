@@ -8,6 +8,7 @@ use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
 
 use nakadi_types::model::event_type::*;
+use nakadi_types::model::misc::OwningApplication;
 use nakadi_types::model::partition::*;
 use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
@@ -90,6 +91,16 @@ pub trait SchemaRegistryApi {
     ) -> ApiFuture<EventType>;
 
     /// Updates the EventType identified by its name.
+    ///
+    /// Updates the EventType identified by its name. Behaviour is the same as creation of
+    /// EventType (See POST /event-type) except where noted below.
+    ///
+    /// The name field cannot be changed. Attempting to do so will result in a 422 failure.
+    ///
+    /// Modifications to the schema are constrained by the specified compatibility_mode.
+    ///
+    /// Updating the EventType is only allowed for clients that satisfy the authorization admin requirements,
+    /// if it exists.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
     fn update_event_type<T: Into<FlowId>>(
@@ -239,6 +250,20 @@ pub trait SubscriptionApi {
         id: SubscriptionId,
         flow_id: T,
     ) -> ApiFuture<Subscription>;
+
+    /// Lists all subscriptions that exist in a system.
+    ///
+    /// List is ordered by creation date/time descending (newest
+    /// subscriptions come first).
+    fn list_subscriptions<T: Into<FlowId>>(
+        &self,
+        event_type: Option<&EventTypeName>,
+        owning_application: Option<&OwningApplication>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        show_status: bool,
+        flow_id: T,
+    ) -> BoxStream<'static, Result<Subscription, NakadiApiError>>;
 
     /// This endpoint only allows to update the authorization section of a subscription.
     ///

@@ -1,16 +1,8 @@
 //! Extensions to the standard API
-
-use std::error::Error as StdError;
-use std::fmt;
-
-use bytes::Bytes;
 use futures::future::FutureExt;
 
-use nakadi_types::model::event_type::*;
-use nakadi_types::model::partition::*;
-use nakadi_types::model::publishing::*;
 use nakadi_types::model::subscription::*;
-use nakadi_types::{Error, FlowId};
+use nakadi_types::FlowId;
 
 pub use super::ApiFuture;
 

@@ -7,12 +7,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::misc::{AuthorizationAttribute, OwningApplication};
+use crate::model::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
 use crate::model::partition::{Cursor, CursorOffset, PartitionId};
 use crate::Error;
 
-pub mod subscription_builder;
+mod subscription_input;
 pub use crate::model::event_type::EventTypeName;
+pub use subscription_input::*;
 
 new_type! {
 /// Id of a subscription
@@ -220,11 +221,22 @@ pub enum PartitionAssignmentType {
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionAuthorization)
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubscriptionAuthorization {
-    pub admins: Vec<AuthorizationAttribute>,
-    pub readers: Vec<AuthorizationAttribute>,
+    pub admins: AuthorizationAttributes,
+    pub readers: AuthorizationAttributes,
 }
 
 impl SubscriptionAuthorization {
+    pub fn new<A, R>(admins: A, readers: R) -> Self
+    where
+        A: Into<AuthorizationAttributes>,
+        R: Into<AuthorizationAttributes>,
+    {
+        Self {
+            admins: admins.into(),
+            readers: readers.into(),
+        }
+    }
+
     pub fn admin<T: Into<AuthorizationAttribute>>(mut self, admin: T) -> Self {
         self.admins.push(admin.into());
         self
@@ -259,63 +271,6 @@ pub struct Subscription {
     pub consumer_group: Option<ConsumerGroup>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-/// Subscription is a high level consumption unit.
-///
-/// Subscriptions allow applications to easily scale the number of clients by managing
-/// consumed event offsets and distributing load between instances.
-/// The key properties that identify subscription are ‘owning_application’, ‘event_types’ and ‘consumer_group’.
-/// It’s not possible to have two different subscriptions with these properties being the same.
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
-#[derive(Debug, Clone, Serialize)]
-pub struct SubscriptionInput {
-    /// Must be set **if and only** if an updating operation is performed(e.g. Auth)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<SubscriptionId>,
-    pub owning_application: OwningApplication,
-    pub event_types: EventTypeNames,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub consumer_group: Option<ConsumerGroup>,
-    /// Position to start reading events from.
-    ///
-    /// Currently supported values:
-    ///
-    /// * Begin - read from the oldest available event.
-    /// * End - read from the most recent offset.
-    /// * Cursors - read from cursors provided in initial_cursors property.
-    /// Applied when the client starts reading from a subscription.
-    pub read_from: ReadFrom,
-    /// List of cursors to start reading from.
-    ///
-    /// This property is required when `read_from` = `ReadFrom::Cursors`.
-    /// The initial cursors should cover all partitions of subscription.
-    /// Clients will get events starting from next offset positions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
-    pub authorization: SubscriptionAuthorization,
-}
-
-impl SubscriptionInput {
-    pub fn builder() -> subscription_builder::SubscriptionInputBuilder {
-        subscription_builder::SubscriptionInputBuilder::default()
-    }
-}
-/// Position to start reading events from. Currently supported values:
-///
-///  * Begin - read from the oldest available event.
-///  * End - read from the most recent offset.
-///  * Cursors - read from cursors provided in initial_cursors property.
-///  Applied when the client starts reading from a subscription.
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Subscription)
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReadFrom {
-    Begin,
-    End,
-    Cursors,
 }
 
 /// Cursor of a subscription without a `CursorToken`.
@@ -489,18 +444,18 @@ pub enum CommitResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionStats {
     #[serde(rename = "items")]
-    pub event_type_stats: Vec<SubscriptionEventTypePartitionStats>,
+    pub event_type_stats: Vec<SubscriptionEventTypeStats>,
 }
 
 impl SubscriptionStats {
     pub fn unconsumed_events(&self) -> usize {
         self.event_type_stats
             .iter()
-            .map(|p| p.unconsumed_events)
+            .map(|set_stats| set_stats.unconsumed_events())
             .sum()
     }
 
-    pub fn all_consumed(&self) -> bool {
+    pub fn all_events_consumed(&self) -> bool {
         self.unconsumed_events() == 0
     }
 }
@@ -518,6 +473,10 @@ pub struct SubscriptionEventTypeStats {
 impl SubscriptionEventTypeStats {
     pub fn unconsumed_events(&self) -> usize {
         self.partitions.iter().map(|p| p.unconsumed_events).sum()
+    }
+
+    pub fn all_events_consumed(&self) -> bool {
+        self.unconsumed_events() == 0
     }
 }
 

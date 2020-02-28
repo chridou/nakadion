@@ -9,10 +9,13 @@ use http::{
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tokio::sync::mpsc::unbounded_channel;
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;
-use crate::nakadi_types::model::{event_type::*, partition::*, publishing::*, subscription::*};
+use crate::nakadi_types::model::{
+    event_type::*, misc::OwningApplication, partition::*, publishing::*, subscription::*,
+};
 use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
@@ -23,6 +26,8 @@ use urls::Urls;
 
 #[cfg(feature = "reqwest")]
 use crate::api::dispatch_http_request::ReqwestDispatchHttpRequest;
+
+mod get_subscriptions;
 
 const SCHEME_BEARER: &str = "Bearer";
 
@@ -163,7 +168,7 @@ impl ApiClient {
         self.inner.dispatch_http_request.dispatch(req)
     }
 
-    async fn send_receive_payload<R: DeserializeOwned + 'static>(
+    pub(crate) async fn send_receive_payload<R: DeserializeOwned + 'static>(
         &self,
         url: Url,
         method: Method,
@@ -183,7 +188,7 @@ impl ApiClient {
         }
     }
 
-    fn get<'a, R: DeserializeOwned>(
+    pub(crate) fn get<'a, R: DeserializeOwned>(
         &'a self,
         url: Url,
         flow_id: FlowId,
@@ -279,7 +284,7 @@ impl ApiClient {
         Ok(request)
     }
 
-    fn urls(&self) -> &Urls {
+    pub(crate) fn urls(&self) -> &Urls {
         &self.inner.urls
     }
 }
@@ -576,6 +581,26 @@ impl SubscriptionApi for ApiClient {
         self.get(url, flow_id.into()).boxed()
     }
 
+    fn list_subscriptions<T: Into<FlowId>>(
+        &self,
+        event_type: Option<&EventTypeName>,
+        owning_application: Option<&OwningApplication>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        show_status: bool,
+        flow_id: T,
+    ) -> BoxStream<'static, Result<Subscription, NakadiApiError>> {
+        get_subscriptions::paginate_subscriptions(
+            self.clone(),
+            event_type.cloned(),
+            owning_application.cloned(),
+            limit,
+            offset,
+            show_status,
+            flow_id.into(),
+        )
+    }
+
     /// This endpoint only allows to update the authorization section of a subscription.
     ///
     /// All other properties are immutable.
@@ -860,6 +885,10 @@ mod urls {
 
         pub fn subscriptions_update_auth(&self, id: SubscriptionId) -> Url {
             self.subscriptions.join(&id.to_string()).unwrap()
+        }
+
+        pub fn subscriptions_list_subscriptions(&self) -> Url {
+            self.subscriptions.clone()
         }
 
         pub fn subscriptions_get_committed_offsets(&self, id: SubscriptionId) -> Url {

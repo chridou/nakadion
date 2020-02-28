@@ -28,8 +28,8 @@ pub enum PartialFailureStrategy {
     Abort,
     /// Always retry all events
     RetryAll,
-    /// Only retry those events where the publishing status is `PublishingStatus::Failed`
-    RetryFailed,
+    /// Only retry those events where the publishing status is not `PublishingStatus::Submitted`
+    RetryNonSubmitted,
 }
 
 impl PartialFailureStrategy {
@@ -47,7 +47,7 @@ impl fmt::Display for PartialFailureStrategy {
         match self {
             PartialFailureStrategy::Abort => write!(f, "abort")?,
             PartialFailureStrategy::RetryAll => write!(f, "retry_all")?,
-            PartialFailureStrategy::RetryFailed => write!(f, "retry_failed")?,
+            PartialFailureStrategy::RetryNonSubmitted => write!(f, "retry_non_submitted")?,
         }
 
         Ok(())
@@ -67,7 +67,7 @@ impl FromStr for PartialFailureStrategy {
         match s {
             "abort" => Ok(PartialFailureStrategy::Abort),
             "retry_all" => Ok(PartialFailureStrategy::RetryAll),
-            "retry_failed" => Ok(PartialFailureStrategy::RetryFailed),
+            "retry_non_submitted" => Ok(PartialFailureStrategy::RetryNonSubmitted),
             _ => Err(Error::new(format!(
                 "not a valid partial failure strategy: {}",
                 s
@@ -592,7 +592,7 @@ fn get_events_for_retry(
 ) -> Result<Option<Vec<Bytes>>, Error> {
     match strategy {
         PartialFailureStrategy::Abort => Ok(None),
-        PartialFailureStrategy::RetryFailed => {
+        PartialFailureStrategy::RetryNonSubmitted => {
             if events.len() != batch_response.len() {
                 return Err(Error::new(
                     "The number of events did not match the number of batch response items",
@@ -601,7 +601,7 @@ fn get_events_for_retry(
 
             let mut to_retry = Vec::new();
             for (batch_rsp, event_bytes) in batch_response.batch_items.iter().zip(events.iter()) {
-                if batch_rsp.publishing_status == PublishingStatus::Failed {
+                if batch_rsp.publishing_status != PublishingStatus::Submitted {
                     to_retry.push(event_bytes.clone());
                 }
             }

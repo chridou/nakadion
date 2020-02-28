@@ -1,7 +1,10 @@
 //! Types that are shared throughout the model
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+
+use crate::Error;
 
 new_type! {
 /// Indicator of the application owning this EventType.
@@ -11,6 +14,64 @@ new_type! {
     pub struct OwningApplication(String, env="OWNING_APPLICATION");
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthorizationAttributes(Vec<AuthorizationAttribute>);
+
+impl AuthorizationAttributes {
+    pub fn new<T: Into<Vec<AuthorizationAttribute>>>(v: T) -> Self {
+        Self(v.into())
+    }
+
+    pub fn att<T: Into<AuthorizationAttribute>>(mut self, v: T) -> Self {
+        self.0.push(v.into());
+        self
+    }
+
+    pub fn push<T: Into<AuthorizationAttribute>>(&mut self, v: T) {
+        self.0.push(v.into());
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &AuthorizationAttribute> {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for AuthorizationAttributes {
+    type Item = AuthorizationAttribute;
+    type IntoIter = std::vec::IntoIter<AuthorizationAttribute>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<A> From<A> for AuthorizationAttributes
+where
+    A: Into<AuthorizationAttribute>,
+{
+    fn from(k: A) -> Self {
+        Self::new(vec![k.into()])
+    }
+}
+
+impl<A, B, C> From<(A, B, C)> for AuthorizationAttributes
+where
+    A: Into<AuthorizationAttribute>,
+    B: Into<AuthorizationAttribute>,
+    C: Into<AuthorizationAttribute>,
+{
+    fn from((a, b, c): (A, B, C)) -> Self {
+        Self::new(vec![a.into(), b.into(), c.into()])
+    }
+}
 /// An attribute for authorization.
 ///
 /// This object includes a data type, which represents the type of the
@@ -37,19 +98,35 @@ impl AuthorizationAttribute {
     }
 }
 
+impl FromStr for AuthorizationAttribute {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split(':').map(|s| s.trim()).collect();
+
+        if parts.len() != 2 {
+            return Err(Error::new(format!(
+                "{} is not a valid AuthorizationAttribute",
+                s
+            )));
+        }
+
+        Ok(Self::new(parts[0], parts[1]))
+    }
+}
+
 impl<U, V> From<(U, V)> for AuthorizationAttribute
 where
     U: Into<AuthAttDataType>,
     V: Into<AuthAttValue>,
 {
-    fn from(tuple: (U, V)) -> Self {
-        AuthorizationAttribute::new(tuple.0, tuple.1)
+    fn from((u, v): (U, V)) -> Self {
+        AuthorizationAttribute::new(u, v)
     }
 }
 
 impl fmt::Display for AuthorizationAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}->{}", self.data_type, self.value)?;
+        write!(f, "{}:{}", self.data_type, self.value)?;
         Ok(())
     }
 }

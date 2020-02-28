@@ -1,4 +1,4 @@
-use futures::future::{BoxFuture, FutureExt};
+use futures::{future::BoxFuture, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -17,7 +17,7 @@ use nakadi_types::{
     RandomFlowId,
 };
 
-use nakadion::api::{api_ext::SubscriptionApiExt, ApiClient, SchemaRegistryApi, SubscriptionApi};
+use nakadion::api::{api_ext::SubscriptionApiExt, *};
 use nakadion::consumer::*;
 use nakadion::handler::*;
 use nakadion::publisher::*;
@@ -35,6 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_client = ApiClient::builder().finish_from_env()?;
     let mut publisher = Publisher::new(api_client.clone());
     publisher.on_retry(|err, d| println!("Publish attempt failed (retry in {:?}): {}", d, err));
+
+    remove_subscriptions(api_client.clone()).await?;
 
     println!("Query registered event types");
     let registered_event_types = api_client.list_event_types(RandomFlowId).await?;
@@ -76,8 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_from(ReadFrom::Begin)
         .authorization(
             SubscriptionAuthorization::default()
-                .admin(("*", "*"))
-                .reader(("*", "*")),
+                .admin(("user", "adminClientId"))
+                .reader(("user", "adminClientId")),
         )
         .finish_for_create()?;
     let subscription = api_client
@@ -87,6 +89,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subscription_id = subscription.id;
 
     consume_event_type_a(api_client.clone(), subscription_id).await?;
+
+    println!("Delete subscription");
+    api_client
+        .delete_subscription(subscription_id, RandomFlowId)
+        .await?;
 
     println!(
         "Create subscription for {} & {}",
@@ -103,8 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_from(ReadFrom::Begin)
         .authorization(
             SubscriptionAuthorization::default()
-                .admin(("*", "*"))
-                .reader(("*", "*")),
+                .admin(("user", "adminClientId"))
+                .reader(("user", "adminClientId")),
         )
         .finish_for_create()?;
     let subscription = api_client
@@ -114,6 +121,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subscription_id = subscription.id;
 
     consume_event_types_ab(api_client.clone(), subscription_id).await?;
+
+    println!("Delete subscription");
+    api_client
+        .delete_subscription(subscription_id, RandomFlowId)
+        .await?;
 
     println!("FINISHED WITH SUCCESS");
 
@@ -132,7 +144,7 @@ async fn create_event_type_a(api_client: &ApiClient) -> Result<(), Error> {
             r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
-        .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
+        .partition_key_fields("count")
         .cleanup_policy(CleanupPolicy::Delete)
         .default_statistic(EventTypeStatistics::new(100, 1_000, 2, 2))
         .options(EventTypeOptions::default())
@@ -157,7 +169,7 @@ async fn create_event_type_b(api_client: &ApiClient) -> Result<(), Error> {
             r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
         )?)
         .partition_strategy(PartitionStrategy::Hash)
-        .partition_key_fields(PartitionKeyFields::default().partition_key("count"))
+        .partition_key_fields("count")
         .cleanup_policy(CleanupPolicy::Delete)
         .default_statistic(EventTypeStatistics::new(100, 1_000, 4, 4))
         .options(EventTypeOptions::default())
@@ -177,8 +189,8 @@ where
     let name = EventTypeName::new(EVENT_TYPE_A);
     let events: Vec<_> = (0..N_EVENTS)
         .map(|n| Payload { count: n + 1 })
-        .map(|payload| BusinessEventPub {
-            payload,
+        .map(|data| BusinessEventPub {
+            data,
             metadata: EventMetaDataPub::new(Eid),
         })
         .collect();
@@ -210,7 +222,7 @@ where
         })
         .collect();
 
-    for batch in events.chunks(100) {
+    for batch in events.chunks(50) {
         if let Err(err) = publisher.publish_events(&name, batch, ()).await {
             println!("{:#?}", err);
             return Err(Error::from_error(err));
@@ -220,10 +232,6 @@ where
     println!("Published {} events for event type {}", N_EVENTS, name);
 
     Ok(())
-}
-#[cfg(not(feature = "reqwest"))]
-fn main() {
-    panic!("Please enable the `reqwest` feature which is a default feature");
 }
 
 type EventA = BusinessEvent<Payload>;
@@ -272,14 +280,6 @@ async fn consume_event_types_ab(
         subscription_id,
         HandlerABFactory::new(),
         100_010_000,
-        DispatchMode::AllSeq,
-    )
-    .await?;
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerABFactory::new(),
-        100_010_000,
         DispatchMode::EventTypePar,
     )
     .await?;
@@ -314,6 +314,13 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     let consumer = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .dispatch_mode(dispatch_mode)
+        .configure_stream_parameters(|params| {
+            params
+                .batch_limit(23)
+                .stream_limit(967)
+                .batch_flush_timeout_secs(1)
+                .max_uncommitted_events(67)
+        })
         .build_with(api_client.clone(), factory, StdOutLogger::default())?;
 
     println!("Consume");
@@ -323,9 +330,13 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
         subscription_id,
         consumer_handle,
         api_client,
-    ));
+    ))
+    .await
+    .map_err(Error::from_error)??;
 
-    consuming.await.into_result()?;
+    let result = consuming.await.into_result();
+    println!("consumption outcome: {:#?}", result);
+
     println!("Consumed");
 
     assert_eq!(check_value.load(Ordering::SeqCst), target_value);
@@ -343,19 +354,20 @@ async fn wait_for_all_consumed(
             .get_subscription_stats(subscription_id, false, ())
             .await?;
 
-        if stats.all_consumed() {
+        println!("{} unconsumed events", stats.unconsumed_events());
+        if stats.all_events_consumed() {
+            println!("ALL EVENTS CONSUMED");
             handle.stop();
             break;
         }
 
-        delay_for(Duration::from_secs(1)).await;
+        delay_for(Duration::from_secs(3)).await;
     }
     Ok(())
 }
 
 struct HandlerA {
     sum: Arc<AtomicUsize>,
-    last_received: usize,
 }
 
 impl EventsHandler for HandlerA {
@@ -368,11 +380,8 @@ impl EventsHandler for HandlerA {
     ) -> BoxFuture<'a, EventsPostAction> {
         async move {
             for event in events {
-                let n = event.payload.count;
-                if self.last_received < n {
-                    self.sum.fetch_add(n, Ordering::SeqCst);
-                    self.last_received = n;
-                }
+                let n = event.data.count;
+                self.sum.fetch_add(n, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit
@@ -401,7 +410,6 @@ impl BatchHandlerFactory for HandlerAFactory {
         async move {
             Ok(Box::new(HandlerA {
                 sum: Arc::clone(&self.sum),
-                last_received: 0,
             }) as Box<_>)
         }
         .boxed()
@@ -420,7 +428,6 @@ trait GetSum {
 
 struct HandlerB {
     sum: Arc<AtomicUsize>,
-    last_received: usize,
 }
 
 impl EventsHandler for HandlerB {
@@ -434,10 +441,7 @@ impl EventsHandler for HandlerB {
         async move {
             for event in events {
                 let n = event.data.count;
-                if self.last_received < n {
-                    self.sum.fetch_add(n, Ordering::SeqCst);
-                    self.last_received = n;
-                }
+                self.sum.fetch_add(n, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit
@@ -478,12 +482,10 @@ impl BatchHandlerFactory for HandlerABFactory {
                 if *event_type == self.event_type_a {
                     Ok(Box::new(HandlerA {
                         sum: Arc::clone(&self.sum),
-                        last_received: 0,
                     }) as Box<_>)
                 } else if *event_type == self.event_type_b {
                     Ok(Box::new(HandlerB {
                         sum: Arc::clone(&self.sum),
-                        last_received: 0,
                     }) as Box<_>)
                 } else {
                     Err(Error::new(format!("invalid assignment: {}", assignment)))
@@ -499,4 +501,57 @@ impl BatchHandlerFactory for HandlerABFactory {
 #[derive(Debug, Serialize, Deserialize)]
 struct Payload {
     count: usize,
+}
+
+async fn api_check(api_client: ApiClient) -> Result<(), Error> {
+    Ok(())
+}
+
+async fn check_monitoring_api(api_client: ApiClient) -> Result<(), Error> {
+    println!("Monitoring: get event type partitions");
+    let partitions = api_client
+        .get_event_type_partitions(&EventTypeName::new(EVENT_TYPE_A), ())
+        .await?;
+
+    println!("{:#?}", partitions);
+
+    Ok(())
+}
+
+async fn check_schema_registry_api(api_client: ApiClient) -> Result<(), Error> {
+    println!("Schema registry: get event type partitions");
+    let event_type = api_client
+        .get_event_type(&EventTypeName::new(EVENT_TYPE_A), ())
+        .await?;
+
+    println!("{:#?}", event_type);
+
+    Ok(())
+}
+
+async fn remove_subscriptions(api_client: ApiClient) -> Result<(), Error> {
+    for event_type in [EVENT_TYPE_A, EVENT_TYPE_B].iter() {
+        let event_type = EventTypeName::new(*event_type);
+        let mut stream =
+            api_client.list_subscriptions(Some(&event_type), None, None, None, false, RandomFlowId);
+
+        while let Some(r) = stream.next().await {
+            match r {
+                Err(err) => return Err(err.into()),
+                Ok(subscription) => {
+                    println!("Delete subscription:\n{:#?}", subscription);
+                    api_client
+                        .delete_subscription(subscription.id, RandomFlowId)
+                        .await?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "reqwest"))]
+fn main() {
+    panic!("Please enable the `reqwest` feature which is a default feature");
 }
