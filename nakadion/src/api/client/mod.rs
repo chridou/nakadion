@@ -423,9 +423,6 @@ impl SchemaRegistryApi for ApiClient {
         .boxed()
     }
 
-    /// Returns the EventType identified by its name.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_get)
     fn get_event_type<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
@@ -435,9 +432,6 @@ impl SchemaRegistryApi for ApiClient {
         self.get(url, flow_id.into()).boxed()
     }
 
-    /// Updates the EventType identified by its name.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_put)
     fn update_event_type<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,

@@ -12,7 +12,7 @@ pub type BatchHandlerFuture<'a> = BoxFuture<'a, BatchPostAction>;
 use crate::nakadi_types::model::{
     event_type::EventTypeName,
     partition::PartitionId,
-    subscription::{EventTypePartition, EventTypePartitionLike as _, StreamId, SubscriptionCursor},
+    subscription::{EventTypePartition, StreamId, SubscriptionCursor},
 };
 
 pub use crate::nakadi_types::Error;

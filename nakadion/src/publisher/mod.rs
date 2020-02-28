@@ -18,6 +18,9 @@ pub use crate::nakadi_types::{
 
 use crate::nakadi_types::model::publishing::PublishingStatus;
 
+#[cfg(feature = "partitioner")]
+pub mod partitioner;
+
 /// Strategy for handling partial submit failures
 ///
 /// The default is `PartialFailureStrategy::Abort`
