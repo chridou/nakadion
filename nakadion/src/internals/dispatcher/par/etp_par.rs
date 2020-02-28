@@ -76,10 +76,11 @@ where
             async move {
                 let workers_result = join_workers.await;
                 if let Err(err) = committer_join_handle.await {
-                    // TODO: Is this sufficient?
-                    stream_state.warn(format_args!("Committer exited with error: {}", err));
-                };
-                workers_result
+                    stream_state.error(format_args!("Committer exited with JOIN ERROR: {}", err));
+                    Err(EnrichedErr::no_data(err))
+                } else {
+                    workers_result
+                }
             }
             .boxed()
         };
@@ -122,6 +123,10 @@ where
 
         pin_mut!(stream);
         while let Some(next_message) = stream.next().await {
+            if stream_state.cancellation_requested() {
+                stream_state.info(format_args!("Cancellation requested"));
+                break;
+            }
             let (event_type_partition, batch) = match next_message {
                 DispatcherMessage::BatchWithEvents(etp, batch) => (etp, batch),
                 DispatcherMessage::Tick(timestamp) => {
