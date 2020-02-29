@@ -10,7 +10,7 @@ use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
 use crate::logging::Logs;
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 mod all_seq;
 mod par;

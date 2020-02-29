@@ -3,8 +3,8 @@ use http::Method;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-use crate::nakadi_types::model::{event_type::*, misc::OwningApplication, subscription::*};
 use crate::nakadi_types::FlowId;
+use crate::nakadi_types::{event_type::*, misc::OwningApplication, subscription::*};
 
 use super::*;
 

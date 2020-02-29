@@ -12,7 +12,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;
-use crate::nakadi_types::model::{
+use crate::nakadi_types::{
     event_type::*, misc::OwningApplication, partition::*, publishing::*, subscription::*,
 };
 use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
@@ -800,8 +800,8 @@ impl fmt::Debug for Inner {
 mod urls {
     use url::Url;
 
-    use nakadi_types::model::event_type::EventTypeName;
-    use nakadi_types::model::subscription::SubscriptionId;
+    use nakadi_types::event_type::EventTypeName;
+    use nakadi_types::subscription::SubscriptionId;
 
     pub struct Urls {
         pub base_url: Url,

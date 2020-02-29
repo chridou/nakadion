@@ -18,7 +18,7 @@ use crate::internals::{
 };
 use crate::logging::Logs;
 
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 use super::BufferedWorker;
 

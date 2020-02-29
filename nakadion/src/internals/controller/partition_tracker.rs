@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::logging::Logs;
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 pub(crate) struct PartitionTracker {
     partitions: BTreeMap<EventTypePartition, Entry>,

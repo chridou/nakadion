@@ -7,11 +7,11 @@ use std::fmt;
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
 
-use nakadi_types::model::event_type::*;
-use nakadi_types::model::misc::OwningApplication;
-use nakadi_types::model::partition::*;
-use nakadi_types::model::publishing::*;
-use nakadi_types::model::subscription::*;
+use nakadi_types::event_type::*;
+use nakadi_types::misc::OwningApplication;
+use nakadi_types::partition::*;
+use nakadi_types::publishing::*;
+use nakadi_types::subscription::*;
 use nakadi_types::{Error, FlowId};
 
 use dispatch_http_request::RemoteCallError;

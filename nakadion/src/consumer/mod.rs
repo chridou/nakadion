@@ -21,7 +21,7 @@ use crate::internals::{
 };
 use crate::logging::Logs;
 pub use crate::nakadi_types::{
-    model::subscription::{
+    subscription::{
         BatchFlushTimeoutSecs, BatchLimit, BatchTimespanSecs, MaxUncommittedEvents, StreamLimit,
         StreamParameters, StreamTimeoutSecs, SubscriptionId,
     },

@@ -9,12 +9,12 @@ use std::time::Duration;
 use tokio::{spawn, time::delay_for};
 
 use nakadi_types::{
-    model::{
+    RandomFlowId,
+    {
         event::{publishable::*, *},
         event_type::*,
         subscription::*,
     },
-    RandomFlowId,
 };
 
 use nakadion::api::{api_ext::SubscriptionApiExt, *};

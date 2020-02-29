@@ -10,7 +10,7 @@ use tokio::{
 };
 
 use crate::nakadi_types::{
-    model::subscription::{EventTypePartition, SubscriptionCursor},
+    subscription::{EventTypePartition, SubscriptionCursor},
     Error, FlowId,
 };
 

@@ -1,4 +1,4 @@
-use nakadi_types::model::subscription::*;
+use nakadi_types::subscription::*;
 
 use nakadion::api::ApiClient;
 use nakadion::consumer::*;
@@ -47,7 +47,7 @@ fn main() {
 mod handler {
     use futures::future::{BoxFuture, FutureExt};
 
-    use nakadi_types::model::event::DataChangeEvent;
+    use nakadi_types::event::DataChangeEvent;
     use nakadion::handler::*;
 
     pub struct MyHandler {

@@ -5,12 +5,12 @@ use crc::crc64::{Digest, ISO};
 
 use crate::api::{MonitoringApi, NakadiApiError};
 use crate::nakadi_types::{
-    model::{
+    RandomFlowId,
+    {
         event::publishable::{BusinessEventPub, DataChangeEventPub},
         event_type::EventTypeName,
         partition::PartitionId,
     },
-    RandomFlowId,
 };
 
 /// The default hasher used is [crc64::ISO](https://docs.rs/crc/1.9.0/crc/crc64/constant.ISO.html)

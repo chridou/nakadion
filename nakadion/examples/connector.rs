@@ -1,4 +1,4 @@
-use nakadi_types::model::subscription::*;
+use nakadi_types::subscription::*;
 
 use nakadion::api::ApiClient;
 use nakadion::components::{committer::*, connector::*};

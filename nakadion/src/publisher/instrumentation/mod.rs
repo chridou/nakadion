@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::nakadi_types::model::publishing::BatchStats;
+use crate::nakadi_types::publishing::BatchStats;
 
 pub trait Instruments {
     /// All batch items have been successfully submitted

@@ -12,11 +12,11 @@ use tokio::time::{delay_for, timeout};
 
 pub use crate::api::{NakadiApiError, PublishApi, PublishFailure, PublishFuture};
 pub use crate::nakadi_types::{
-    model::{event_type::EventTypeName, publishing::BatchResponse},
     Error, FlowId,
+    {event_type::EventTypeName, publishing::BatchResponse},
 };
 
-use crate::nakadi_types::model::publishing::PublishingStatus;
+use crate::nakadi_types::publishing::PublishingStatus;
 
 #[cfg(feature = "partitioner")]
 pub mod partitioner;

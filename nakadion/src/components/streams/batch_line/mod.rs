@@ -18,7 +18,7 @@ mod line_parser;
 use crate::api::IoError;
 use crate::components::streams::NakadiFrame;
 use crate::instrumentation::{Instrumentation, Instruments};
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 use line_parser::{parse_line, LineItems, ParseLineError};
 
@@ -405,7 +405,7 @@ fn parse_subscription_batch_line_keep_alive_without_info() {
 
 #[test]
 fn deserialize_subscription_cursor() {
-    use crate::nakadi_types::model::subscription::SubscriptionCursor;
+    use crate::nakadi_types::subscription::SubscriptionCursor;
     let line_sample = r#"{"cursor":{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}}"#;

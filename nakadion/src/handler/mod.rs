@@ -9,7 +9,7 @@ use futures::future::BoxFuture;
 
 pub type BatchHandlerFuture<'a> = BoxFuture<'a, BatchPostAction>;
 
-use crate::nakadi_types::model::{
+use crate::nakadi_types::{
     event_type::EventTypeName,
     partition::PartitionId,
     subscription::{EventTypePartition, StreamId, SubscriptionCursor},
@@ -120,7 +120,7 @@ impl InactivityAnswer {
 /// use futures::FutureExt;
 ///
 /// use nakadion::handler::{BatchHandler, BatchPostAction, BatchMeta, Bytes, BatchHandlerFuture};
-/// use nakadion::nakadi_types::model::subscription::EventTypeName;
+/// use nakadion::nakadi_types::subscription::EventTypeName;
 ///
 /// // Use a struct to maintain state
 /// struct MyHandler {

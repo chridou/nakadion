@@ -91,7 +91,7 @@ mod processor {
     use futures::{pin_mut, Stream, StreamExt};
     use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
 
-    use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
+    use crate::nakadi_types::{subscription::SubscriptionCursor, Error};
 
     use crate::components::streams::BatchLine;
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};

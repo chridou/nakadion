@@ -11,7 +11,7 @@ use crate::api::{NakadiApiError, SubscriptionApi};
 use crate::consumer::CommitAttemptTimeoutMillis;
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::nakadi_types::{
-    model::subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
+    subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
     Error, FlowId,
 };
 

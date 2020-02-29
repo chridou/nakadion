@@ -22,7 +22,7 @@ pub use crate::api::{NakadiApiError, SubscriptionApi, SubscriptionStreamChunks};
 pub use crate::consumer::ConnectStreamTimeoutSecs;
 use crate::instrumentation::{Instrumentation, Instruments};
 pub use crate::nakadi_types::{
-    model::subscription::{StreamId, StreamParameters, SubscriptionCursor, SubscriptionId},
+    subscription::{StreamId, StreamParameters, SubscriptionCursor, SubscriptionId},
     Error, FlowId, RandomFlowId,
 };
 

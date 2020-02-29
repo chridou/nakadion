@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::StreamingEssentials;
 use crate::handler::BatchHandlerFactory;
 use crate::logging::LoggingAdapter;
-use crate::nakadi_types::model::subscription::{StreamParameters, SubscriptionId};
+use crate::nakadi_types::subscription::{StreamParameters, SubscriptionId};
 use crate::Error;
 
 use super::{Config, Consumer, Inner};

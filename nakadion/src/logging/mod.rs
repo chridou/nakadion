@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Arguments;
 use std::sync::Arc;
 
-use crate::nakadi_types::model::{
+use crate::nakadi_types::{
     event_type::EventTypeName,
     partition::PartitionId,
     subscription::{StreamId, SubscriptionId},

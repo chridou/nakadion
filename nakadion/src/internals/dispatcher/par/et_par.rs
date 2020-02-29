@@ -18,7 +18,7 @@ use crate::internals::{
 };
 use crate::logging::Logs;
 
-use crate::nakadi_types::model::event_type::EventTypeName;
+use crate::nakadi_types::event_type::EventTypeName;
 
 use super::BufferedWorker;
 

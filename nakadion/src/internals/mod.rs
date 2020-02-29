@@ -7,7 +7,7 @@ use std::sync::{
 
 use crate::consumer::{Config, ConsumerError, Instrumentation};
 use crate::logging::{Logger, Logs};
-use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
+use crate::nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId};
 
 pub mod committer;
 pub mod controller;
