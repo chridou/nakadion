@@ -22,6 +22,14 @@ pub struct BatchResponse {
     pub batch_items: Vec<BatchItemResponse>,
 }
 
+#[derive(Debug, Default)]
+pub struct BatchStats {
+    pub n_items: usize,
+    pub n_submitted: usize,
+    pub n_failed: usize,
+    pub n_aborted: usize,
+}
+
 impl BatchResponse {
     /// Returns true if there are no `BatchItemResponse`s.
     ///
@@ -68,6 +76,21 @@ impl BatchResponse {
     /// Iterate over all `BatchItemResponse`s
     pub fn iter(&self) -> impl Iterator<Item = &BatchItemResponse> {
         self.batch_items.iter()
+    }
+
+    pub fn stats(&self) -> BatchStats {
+        let mut stats = BatchStats::default();
+
+        for item in &self.batch_items {
+            stats.n_items += 1;
+            match item.publishing_status {
+                PublishingStatus::Submitted => stats.n_submitted += 1,
+                PublishingStatus::Failed => stats.n_failed += 1,
+                PublishingStatus::Aborted => stats.n_aborted += 1,
+            }
+        }
+
+        stats
     }
 }
 

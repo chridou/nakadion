@@ -18,7 +18,7 @@ use crate::internals::{
 };
 use crate::logging::Logs;
 
-use crate::nakadi_types::model::{event_type::EventTypeName, subscription::EventTypePartitionLike};
+use crate::nakadi_types::model::event_type::EventTypeName;
 
 use super::BufferedWorker;
 
@@ -76,10 +76,11 @@ where
             async move {
                 let workers_result = join_workers.await;
                 if let Err(err) = committer_join_handle.await {
-                    // TODO: Is this sufficient?
-                    stream_state.warn(format_args!("Committer exited with error: {}", err));
-                };
-                workers_result
+                    stream_state.error(format_args!("Committer exited with error: {}", err));
+                    Err(EnrichedErr::no_data(err))
+                } else {
+                    workers_result
+                }
             }
             .boxed()
         };
@@ -126,8 +127,8 @@ where
                 stream_state.info(format_args!("Cancellation requested"));
                 break;
             }
-            let (event_type_partition, batch) = match next_message {
-                DispatcherMessage::BatchWithEvents(etp, batch) => (etp, batch),
+            let ((event_type, _partition), batch) = match next_message {
+                DispatcherMessage::BatchWithEvents(etp, batch) => (etp.split(), batch),
                 DispatcherMessage::Tick(timestamp) => {
                     activated.values().for_each(|w| {
                         w.process(WorkerMessage::Tick(timestamp));
@@ -142,7 +143,7 @@ where
                 }
             };
 
-            let event_type_str = event_type_partition.event_type().as_str();
+            let event_type_str = event_type.as_str();
             let worker = if let Some(worker) = activated.get(event_type_str) {
                 worker
             } else {

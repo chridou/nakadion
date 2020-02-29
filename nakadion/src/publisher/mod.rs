@@ -21,6 +21,9 @@ use crate::nakadi_types::model::publishing::PublishingStatus;
 #[cfg(feature = "partitioner")]
 pub mod partitioner;
 
+mod instrumentation;
+pub use instrumentation::*;
+
 /// Strategy for handling partial submit failures
 ///
 /// The default is `PartialFailureStrategy::Abort`
@@ -80,7 +83,7 @@ impl FromStr for PartialFailureStrategy {
 }
 
 new_type! {
-    #[doc="The time a publish attempt for the events batch may take.\n\n\
+    #[doc="The time a publish attempt for an events batch may take.\n\n\
     Default is 1000 ms\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct PublishAttemptTimeoutMillis(u64, env="PUBLISH_ATTEMPT_TIMEOUT_MILLIS");
@@ -317,6 +320,7 @@ pub struct Publisher<C> {
     config: PublisherConfig,
     api_client: Arc<C>,
     on_retry: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
+    instrumentation: Instrumentation,
 }
 
 impl<C> Publisher<C>
@@ -332,14 +336,32 @@ where
             config,
             api_client: Arc::new(api_client),
             on_retry: Arc::new(|_, _| {}),
+            instrumentation: Default::default(),
         }
     }
 
-    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
+    pub fn set_on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
         &mut self,
         on_retry: F,
     ) {
         self.on_retry = Arc::new(on_retry);
+    }
+
+    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
+        mut self,
+        on_retry: F,
+    ) -> Self {
+        self.set_on_retry(on_retry);
+        self
+    }
+
+    pub fn instrumentation(mut self, instr: Instrumentation) -> Self {
+        self.set_instrumentation(instr);
+        self
+    }
+
+    pub fn set_instrumentation(&mut self, instr: Instrumentation) {
+        self.instrumentation = instr;
     }
 }
 

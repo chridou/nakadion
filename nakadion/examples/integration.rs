@@ -33,8 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_type_b = EventTypeName::new(EVENT_TYPE_B);
 
     let api_client = ApiClient::builder().finish_from_env()?;
-    let mut publisher = Publisher::new(api_client.clone());
-    publisher.on_retry(|err, d| println!("Publish attempt failed (retry in {:?}): {}", d, err));
+    let publisher = Publisher::new(api_client.clone())
+        .on_retry(|err, d| println!("Publish attempt failed (retry in {:?}): {}", d, err));
 
     remove_subscriptions(api_client.clone()).await?;
 

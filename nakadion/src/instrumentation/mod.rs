@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 mod metrix_impl;
 
 #[cfg(feature = "metrix")]
-pub use self::metrix_impl::{Metrix, MetrixConfig, MetrixTrackingSecs};
+pub use self::metrix_impl::{Metrix, MetrixConfig, MetrixGaugeTrackingSecs};
 #[cfg(feature = "metrix")]
 pub use metrix::{
     driver::{DriverBuilder, TelemetryDriver},
