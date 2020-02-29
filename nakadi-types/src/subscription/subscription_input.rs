@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::helpers::mandatory;
-use crate::model::misc::OwningApplication;
+use crate::misc::OwningApplication;
 use crate::Error;
 
 use super::*;

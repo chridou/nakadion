@@ -6,7 +6,7 @@ use serde::{
 use serde_json::Value;
 
 use crate::helpers::mandatory;
-use crate::model::misc::OwningApplication;
+use crate::misc::OwningApplication;
 use crate::Error;
 
 use super::{

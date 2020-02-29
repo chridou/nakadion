@@ -7,7 +7,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::event::EventId;
+use crate::event::EventId;
 use crate::FlowId;
 
 /// An aggregation of status items corresponding to each individual Event’s publishing attempt.

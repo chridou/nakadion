@@ -7,12 +7,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
-use crate::model::partition::{Cursor, CursorOffset, PartitionId};
+use crate::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
+use crate::partition::{Cursor, CursorOffset, PartitionId};
 use crate::Error;
 
 mod subscription_input;
-pub use crate::model::event_type::EventTypeName;
+pub use crate::event_type::EventTypeName;
 pub use subscription_input::*;
 
 new_type! {
@@ -533,7 +533,7 @@ pub enum SubscriptionPartitionAssignmentType {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::model::partition::CursorOffset;
+    use crate::partition::CursorOffset;
 
     use serde_json::{self, json};
 

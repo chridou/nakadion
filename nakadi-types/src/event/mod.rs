@@ -2,10 +2,7 @@
 //!
 //! Consumable and publishable event templates
 
-pub use crate::{
-    model::{event_type::EventTypeName, partition::PartitionId},
-    FlowId,
-};
+pub use crate::{event_type::EventTypeName, partition::PartitionId, FlowId};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
