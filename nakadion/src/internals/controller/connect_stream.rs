@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use tokio::time::delay_for;
+use tokio::time::{delay_for, timeout};
 
 use crate::nakadi_types::FlowId;
 
@@ -12,6 +12,28 @@ use crate::internals::ConsumerState;
 use crate::logging::Logs;
 
 pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
+    connector_provider: C,
+    consumer_state: ConsumerState,
+) -> Result<SubscriptionStreamChunks, ConsumerAbort> {
+    if let Some(max_connect_time) = consumer_state.config().max_connect_time {
+        match timeout(
+            max_connect_time.into(),
+            connect_with_retries_loop(connector_provider, consumer_state),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(elapsed) => Err(ConsumerError::connect_stream()
+                .with_message("connect to stream timed out")
+                .with_source(elapsed)
+                .into()),
+        }
+    } else {
+        connect_with_retries_loop(connector_provider, consumer_state).await
+    }
+}
+
+pub(crate) async fn connect_with_retries_loop<C: ProvidesConnector>(
     connector_provider: C,
     consumer_state: ConsumerState,
 ) -> Result<SubscriptionStreamChunks, ConsumerAbort> {
@@ -27,20 +49,11 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
 
     let mut backoff = Backoff::new(config.connect_stream_retry_max_delay.into_inner());
 
-    let mut attempts_left = config.max_connect_attempts.into_inner();
-
     let connect_started_at = Instant::now();
     loop {
         if consumer_state.global_cancellation_requested() {
             return Err(ConsumerAbort::UserInitiated);
         }
-
-        if attempts_left == 0 {
-            return Err(ConsumerError::other()
-                .with_message("No connect attempts left. Aborting")
-                .into());
-        }
-        attempts_left -= 1;
 
         match connector.connect(subscription_id).await {
             Ok(stream) => {
@@ -83,8 +96,13 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
                     ConnectErrorKind::Io => {}
                     ConnectErrorKind::Other => {}
                 }
-                consumer_state.warn(format_args!("Failed to connect to Nakadi: {}", err));
                 let delay = backoff.next();
+                consumer_state.warn(format_args!(
+                    "Failed to connect to Nakadi (next attempt in {:?}, elapsed: {:?}): {}",
+                    delay,
+                    connect_started_at.elapsed(),
+                    err
+                ));
                 delay_for(delay).await;
                 continue;
             }
@@ -92,11 +110,16 @@ pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
     }
 }
 
-/// Sequence of backoffs after failed commit attempts
+/// Sequence of backoffs after failed connect attempts
 const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 5, 5, 5, 5, 5, 10, 10, 10, 10, 10, 20, 20, 20, 30,
-    30, 30, 45, 45, 45, 60, 60, 60, 90, 90, 90, 120, 180, 240, 300, 480, 960, 1920, 2400, 3000,
-    3600,
+    0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 10, 10, 10, 10, 10, 20, 20, 20, 20,
+    20, 30, 30, 30, 30, 30, 45, 45, 45, 45, 45, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 90, 90, 90,
+    90, 90, 90, 90, 90, 90, 90, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 180, 180, 180,
+    180, 180, 180, 180, 180, 180, 180, 240, 240, 240, 240, 240, 240, 240, 240, 240, 300, 300, 300,
+    300, 300, 300, 300, 300, 300, 300, 480, 480, 480, 480, 480, 480, 480, 480, 480, 480, 960, 960,
+    960, 960, 960, 960, 960, 960, 960, 960, 960, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920,
+    1920, 1920, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 3000, 3000, 3000, 3000,
+    3000, 3000, 3000, 3000, 3000, 3000, 3600,
 ];
 
 struct Backoff {

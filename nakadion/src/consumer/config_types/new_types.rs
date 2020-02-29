@@ -76,15 +76,12 @@ impl Default for AbortConnectOnSubscriptionNotFound {
     }
 }
 new_type! {
-    #[doc="The maximum number of attempts to be made to connect to a stream.\n"]
+    #[doc="The maximum time for connecting to a stream.\n\n\
+    Default is infinite."]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct MaxConnectAttempts(usize, env="MAX_CONNECT_ATTEMPTS");
+    pub secs struct MaxConnectTimeSecs(u64, env="MAX_CONNECT_TIME_SECS");
 }
-impl Default for MaxConnectAttempts {
-    fn default() -> Self {
-        std::usize::MAX.into()
-    }
-}
+
 new_type! {
     #[doc="The maximum retry delay between failed attempts to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

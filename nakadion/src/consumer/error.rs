@@ -100,6 +100,10 @@ impl ConsumerError {
         Self::new(ConsumerErrorKind::Other)
     }
 
+    pub fn connect_stream() -> Self {
+        Self::new(ConsumerErrorKind::ConnectStreamTimeout)
+    }
+
     pub fn new_with_message<M: fmt::Display>(kind: ConsumerErrorKind, message: M) -> Self {
         Self {
             message: Some(message.to_string()),
@@ -193,6 +197,7 @@ impl From<ConsumerError> for Error {
 #[non_exhaustive]
 pub enum ConsumerErrorKind {
     SubscriptionNotFound,
+    ConnectStreamTimeout,
     AccessDenied,
     Internal,
     HandlerAbort,
@@ -205,6 +210,7 @@ impl fmt::Display for ConsumerErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConsumerErrorKind::SubscriptionNotFound => write!(f, "subscription not found")?,
+            ConsumerErrorKind::ConnectStreamTimeout => write!(f, "connect to stream timed out")?,
             ConsumerErrorKind::Internal => write!(f, "internal")?,
             ConsumerErrorKind::HandlerAbort => write!(f, "handler initiated")?,
             ConsumerErrorKind::HandlerFactory => write!(f, "handler factory")?,

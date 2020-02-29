@@ -2,19 +2,16 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures::{FutureExt, TryFutureExt, TryStreamExt};
+use futures::{FutureExt, TryStreamExt};
 use http::{
     header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
-    Method, Request, Response, StatusCode,
+    Method, Request, Response,
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;
-use crate::nakadi_types::{
-    event_type::*, misc::OwningApplication, partition::*, publishing::*, subscription::*,
-};
 use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
@@ -27,13 +24,103 @@ use urls::Urls;
 use crate::api::dispatch_http_request::ReqwestDispatchHttpRequest;
 
 mod get_subscriptions;
+mod trait_impls;
 
 const SCHEME_BEARER: &str = "Bearer";
 
-#[derive(Debug, Default)]
+new_type! {
+    #[doc="The time a request attempt to Nakadi may take.\n\n\
+    Default is 1000 ms\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub millis struct ApiClientAttemptTimeoutMillis(u64, env="API_CLIENT_ATTEMPT_TIMEOUT_MILLIS");
+}
+
+impl Default for ApiClientAttemptTimeoutMillis {
+    fn default() -> Self {
+        Self(1_000)
+    }
+}
+
+new_type! {
+    #[doc="The a timeout for a complete request including retries.\n\n\
+    Default is 5000 ms.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub millis struct ApiClientTimeoutMillis(u64, env="API_CLIENT_TIMEOUT_MILLIS");
+}
+impl Default for ApiClientTimeoutMillis {
+    fn default() -> Self {
+        Self(5_000)
+    }
+}
+
+new_type! {
+    #[doc="The initial delay between retry attempts.\n\n\
+    Default is 100 ms.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub millis struct ApiClientInitialRetryIntervalMillis(u64, env="API_CLIENT_RETRY_INITIAL_INTERVAL_MILLIS");
+}
+impl Default for ApiClientInitialRetryIntervalMillis {
+    fn default() -> Self {
+        Self(100)
+    }
+}
+new_type! {
+    #[doc="The multiplier for the delay increase between retries.\n\n\
+    Default is 1.5 (+50%).\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+    pub copy struct ApiClientRetryIntervalMultiplier(f64, env="API_CLIENT_RETRY_INTERVAL_MULTIPLIER");
+}
+impl Default for ApiClientRetryIntervalMultiplier {
+    fn default() -> Self {
+        Self(1.5)
+    }
+}
+new_type! {
+    #[doc="The maximum interval between retries.\n\n\
+    Default is 1000 ms.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub millis struct ApiClientMaxRetryIntervalMillis(u64, env="API_CLIENT_MAX_RETRY_INTERVAL_MILLIS");
+}
+impl Default for ApiClientMaxRetryIntervalMillis {
+    fn default() -> Self {
+        Self(1000)
+    }
+}
+new_type! {
+    #[doc="If true, retries are done on auth errors.\n\n\
+    Default is false.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct ApiClientRetryOnAuthErrors(bool, env="API_CLIENT_RETRY_ON_AUTH_ERRORS");
+}
+impl Default for ApiClientRetryOnAuthErrors {
+    fn default() -> Self {
+        Self(false)
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Builder {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nakadi_base_url: Option<NakadiBaseUrl>,
+    /// Timeout for a complete publishing including potential retries
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_millis: Option<ApiClientTimeoutMillis>,
+    /// Timeout for a single request attempt to Nakadi
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt_timeout_millis: Option<ApiClientAttemptTimeoutMillis>,
+    /// Interval length before the first retry attempt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_retry_interval_millis: Option<ApiClientInitialRetryIntervalMillis>,
+    /// Multiplier for the length of of the next retry interval
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_interval_multiplier: Option<ApiClientRetryIntervalMultiplier>,
+    /// Maximum length of an interval before a retry
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_retry_interval_millis: Option<ApiClientMaxRetryIntervalMillis>,
+    /// Retry on authentication/authorization errors if `true`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_on_auth_errors: Option<ApiClientRetryOnAuthErrors>,
 }
 
 impl Builder {
@@ -54,11 +141,51 @@ impl Builder {
         self.nakadi_base_url = Some(url);
         self
     }
+
+    /// Timeout for a complete request including potential retries
+    pub fn timeout_millis<T: Into<ApiClientTimeoutMillis>>(mut self, v: T) -> Self {
+        self.timeout_millis = Some(v.into());
+        self
+    }
+    /// Timeout for a single attempt to get a response from Nakadi
+    pub fn attempt_timeout_millis<T: Into<ApiClientAttemptTimeoutMillis>>(mut self, v: T) -> Self {
+        self.attempt_timeout_millis = Some(v.into());
+        self
+    }
+    /// Interval length before the first retry attempt
+    pub fn initial_retry_interval_millis<T: Into<ApiClientInitialRetryIntervalMillis>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.initial_retry_interval_millis = Some(v.into());
+        self
+    }
+    /// Multiplier for the length of of the next retry interval
+    pub fn retry_interval_multiplier<T: Into<ApiClientRetryIntervalMultiplier>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.retry_interval_multiplier = Some(v.into());
+        self
+    }
+    /// Maximum length of an interval before a retry
+    pub fn max_retry_interval_millis<T: Into<ApiClientMaxRetryIntervalMillis>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.max_retry_interval_millis = Some(v.into());
+        self
+    }
+    /// Retry on authentication/authorization errors if `true`
+    pub fn retry_on_auth_errors<T: Into<ApiClientRetryOnAuthErrors>>(mut self, v: T) -> Self {
+        self.retry_on_auth_errors = Some(v.into());
+        self
+    }
 }
 
 impl Builder {
     pub fn build_with<D, P>(
-        mut self,
+        self,
         dispatch_http_request: D,
         access_token_provider: P,
     ) -> Result<ApiClient, Error>
@@ -66,17 +193,27 @@ impl Builder {
         D: DispatchHttpRequest + Send + Sync + 'static,
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
-        let nakadi_base_url = if let Some(base_url) = self.nakadi_base_url.take() {
-            base_url
-        } else {
-            return Err(Error::new("'nakadi_base_url' is missing"));
-        };
+        let nakadi_base_url = crate::helpers::mandatory(self.nakadi_base_url, "nakadi_base_url")?;
+        let timeout_millis = self.timeout_millis.unwrap_or_default();
+        let attempt_timeout_millis = self.attempt_timeout_millis.unwrap_or_default();
+        let initial_retry_interval_millis = self.initial_retry_interval_millis.unwrap_or_default();
+        let retry_interval_multiplier = self.retry_interval_multiplier.unwrap_or_default();
+        let max_retry_interval_millis = self.max_retry_interval_millis.unwrap_or_default();
+        let retry_on_auth_errors = self.retry_on_auth_errors.unwrap_or_default();
 
-        Ok(ApiClient::new(
-            nakadi_base_url,
-            dispatch_http_request,
-            access_token_provider,
-        ))
+        Ok(ApiClient {
+            inner: Arc::new(Inner {
+                dispatch_http_request: Box::new(dispatch_http_request),
+                access_token_provider: Box::new(access_token_provider),
+                urls: Urls::new(nakadi_base_url.into_inner()),
+                timeout_millis,
+                attempt_timeout_millis,
+                initial_retry_interval_millis,
+                retry_interval_multiplier,
+                max_retry_interval_millis,
+                retry_on_auth_errors,
+            }),
+        })
     }
 
     pub fn build_from_env_with_dispatcher<D>(
@@ -143,24 +280,6 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn builder() -> Builder {
         Builder::default()
-    }
-
-    pub fn new<D, P>(
-        nakadi_base_url: NakadiBaseUrl,
-        dispatch_http_request: D,
-        access_token_provider: P,
-    ) -> Self
-    where
-        D: DispatchHttpRequest + Send + Sync + 'static,
-        P: ProvidesAccessToken + Send + Sync + 'static,
-    {
-        Self {
-            inner: Arc::new(Inner {
-                dispatch_http_request: Box::new(dispatch_http_request),
-                access_token_provider: Box::new(access_token_provider),
-                urls: Urls::new(nakadi_base_url.into_inner()),
-            }),
-        }
     }
 
     fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture {
@@ -351,443 +470,16 @@ impl fmt::Debug for ApiClient {
     }
 }
 
-impl MonitoringApi for ApiClient {
-    fn get_cursor_distances<T: Into<FlowId>>(
-        &self,
-        name: &EventTypeName,
-        query: &CursorDistanceQuery,
-        flow_id: T,
-    ) -> ApiFuture<CursorDistanceResult> {
-        let payload_to_send = serde_json::to_vec(query).unwrap();
-        self.send_receive_payload(
-            self.urls().monitoring_cursor_distances(name),
-            Method::POST,
-            payload_to_send,
-            flow_id.into(),
-        )
-        .boxed()
-    }
-
-    fn get_cursor_lag<T: Into<FlowId>>(
-        &self,
-        name: &EventTypeName,
-        cursors: &[Cursor],
-        flow_id: T,
-    ) -> ApiFuture<Vec<Partition>> {
-        let payload_to_send = serde_json::to_vec(cursors).unwrap();
-        self.send_receive_payload(
-            self.urls().monitoring_cursor_lag(name),
-            Method::POST,
-            payload_to_send,
-            flow_id.into(),
-        )
-        .boxed()
-    }
-
-    fn get_event_type_partitions<T: Into<FlowId>>(
-        &self,
-        event_type: &EventTypeName,
-        flow_id: T,
-    ) -> ApiFuture<Vec<Partition>> {
-        let url = self.urls().monitoring_event_type_partitions(event_type);
-        self.get(url, flow_id.into()).boxed()
-    }
-}
-
-impl SchemaRegistryApi for ApiClient {
-    /// Returns a list of all registered EventTypes
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_get)
-    fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>> {
-        self.get(
-            self.urls().schema_registry_list_event_types(),
-            flow_id.into(),
-        )
-        .boxed()
-    }
-    /// Creates a new EventType.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types_post)
-    fn create_event_type<T: Into<FlowId>>(
-        &self,
-        event_type: &EventTypeInput,
-        flow_id: T,
-    ) -> ApiFuture<()> {
-        let payload_to_send = serde_json::to_vec(event_type).unwrap();
-        self.send_payload(
-            self.urls().schema_registry_create_event_type(),
-            Method::POST,
-            payload_to_send,
-            flow_id.into(),
-        )
-        .boxed()
-    }
-
-    fn get_event_type<T: Into<FlowId>>(
-        &self,
-        name: &EventTypeName,
-        flow_id: T,
-    ) -> ApiFuture<EventType> {
-        let url = self.urls().schema_registry_get_event_type(name);
-        self.get(url, flow_id.into()).boxed()
-    }
-
-    fn update_event_type<T: Into<FlowId>>(
-        &self,
-        name: &EventTypeName,
-        event_type: &EventType,
-        flow_id: T,
-    ) -> ApiFuture<()> {
-        self.send_payload(
-            self.urls().schema_registry_update_event_type(name),
-            Method::PUT,
-            serde_json::to_vec(event_type).unwrap(),
-            flow_id.into(),
-        )
-        .boxed()
-    }
-
-    /// Deletes an EventType identified by its name.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name_delete)
-    fn delete_event_type<T: Into<FlowId>>(
-        &self,
-        name: &EventTypeName,
-        flow_id: T,
-    ) -> ApiFuture<()> {
-        self.delete(
-            self.urls().schema_registry_delete_event_type(name),
-            flow_id.into(),
-        )
-        .boxed()
-    }
-}
-
-impl PublishApi for ApiClient {
-    fn publish_events_batch<'a, B: Into<Bytes>, T: Into<FlowId>>(
-        &'a self,
-        event_type: &'a EventTypeName,
-        events: B,
-        flow_id: T,
-    ) -> PublishFuture<'a> {
-        let url = self.urls().publish_events(event_type);
-
-        let bytes = events.into();
-        let flow_id = flow_id.into();
-        async move {
-            let mut request = self.create_request(&url, bytes, flow_id).await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
-
-            let flow_id = match response.headers().get("x-flow-id") {
-                Some(header_value) => {
-                    let header_bytes = header_value.as_bytes();
-                    let header_str = String::from_utf8_lossy(header_bytes);
-                    Some(FlowId::new(header_str))
-                }
-                None => None,
-            };
-
-            let status = response.status();
-            match status {
-                StatusCode::OK => Ok(()),
-                StatusCode::MULTI_STATUS | StatusCode::UNPROCESSABLE_ENTITY => {
-                    let batch_items = deserialize_stream(response.into_body()).await?;
-                    if status == StatusCode::MULTI_STATUS {
-                        Err(PublishFailure::PartialFailure(BatchResponse {
-                            flow_id,
-                            batch_items,
-                        }))
-                    } else {
-                        Err(PublishFailure::Unprocessable(BatchResponse {
-                            flow_id,
-                            batch_items,
-                        }))
-                    }
-                }
-                _ => {
-                    evaluate_error_for_problem(response)
-                        .map(|err| Err(PublishFailure::Other(err)))
-                        .await
-                }
-            }
-        }
-        .boxed()
-    }
-}
-
-impl SubscriptionApi for ApiClient {
-    /// This endpoint creates a subscription for EventTypes.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_post)
-    fn create_subscription<T: Into<FlowId>>(
-        &self,
-        input: &SubscriptionInput,
-        flow_id: T,
-    ) -> ApiFuture<Subscription> {
-        if let Some(subscription_id) = input.id {
-            return async move {
-                Err(NakadiApiError::other().with_context(format!(
-                    "to create a subscription `input` must not have a `SubscriptionId`(id={}) set",
-                    subscription_id
-                )))
-            }
-            .boxed();
-        }
-        let url = self.urls().subscriptions_create_subscription();
-        let serialized = serde_json::to_vec(input).unwrap();
-
-        let flow_id = flow_id.into();
-        async move {
-            let mut request = self
-                .create_request(&url, serialized, flow_id.clone())
-                .await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.dispatch(request).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let deserialized: Subscription = deserialize_stream(response.into_body()).await?;
-                if status == StatusCode::OK {
-                    Ok(deserialized)
-                } else {
-                    self.get_subscription(deserialized.id, flow_id).await
-                }
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
-        }
-        .boxed()
-    }
-
-    /// Returns a subscription identified by id.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_get)
-    fn get_subscription<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        flow_id: T,
-    ) -> ApiFuture<Subscription> {
-        let url = self.urls().subscriptions_get_subscription(id);
-        self.get(url, flow_id.into()).boxed()
-    }
-
-    fn list_subscriptions<T: Into<FlowId>>(
-        &self,
-        event_type: Option<&EventTypeName>,
-        owning_application: Option<&OwningApplication>,
-        limit: Option<usize>,
-        offset: Option<usize>,
-        show_status: bool,
-        flow_id: T,
-    ) -> BoxStream<'static, Result<Subscription, NakadiApiError>> {
-        get_subscriptions::paginate_subscriptions(
-            self.clone(),
-            event_type.cloned(),
-            owning_application.cloned(),
-            limit,
-            offset,
-            show_status,
-            flow_id.into(),
-        )
-    }
-
-    /// This endpoint only allows to update the authorization section of a subscription.
-    ///
-    /// All other properties are immutable.
-    /// This operation is restricted to subjects with administrative role.
-    /// This call captures the timestamp of the update request.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_put)
-    fn update_auth<T: Into<FlowId>>(&self, input: &SubscriptionInput, flow_id: T) -> ApiFuture<()> {
-        if let Some(id) = input.id {
-            let url = self.urls().subscriptions_update_auth(id);
-            self.send_payload(
-                url,
-                Method::PUT,
-                serde_json::to_vec(input).unwrap(),
-                flow_id.into(),
-            )
-            .boxed()
-        } else {
-            async {
-                Err(NakadiApiError::other().with_context(
-                    "to update the subscription `input` must have a `SubscriptionId`(id) set",
-                ))
-            }
-            .boxed()
-        }
-    }
-
-    /// Deletes a subscription.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id_delete)
-    fn delete_subscription<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        flow_id: T,
-    ) -> ApiFuture<()> {
-        let url = self.urls().subscriptions_delete_subscription(id);
-        self.delete(url, flow_id.into()).boxed()
-    }
-
-    /// Exposes the currently committed offsets of a subscription.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_get)
-    fn get_subscription_cursors<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        flow_id: T,
-    ) -> ApiFuture<Vec<SubscriptionCursor>> {
-        #[derive(Deserialize)]
-        struct EntityWrapper {
-            #[serde(default)]
-            items: Vec<SubscriptionCursor>,
-        };
-
-        let url = self.urls().subscriptions_get_committed_offsets(id);
-        self.get::<EntityWrapper>(url, flow_id.into())
-            .map_ok(|wrapper| wrapper.items)
-            .boxed()
-    }
-
-    fn get_subscription_stats<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        show_time_lag: bool,
-        flow_id: T,
-    ) -> ApiFuture<SubscriptionStats> {
-        let url = self.urls().subscriptions_stats(id, show_time_lag);
-        self.get(url, flow_id.into()).boxed()
-    }
-
-    /// Reset subscription offsets to specified values.
-    ///
-    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_patch)
-    fn reset_subscription_cursors<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        cursors: &[SubscriptionCursorWithoutToken],
-        flow_id: T,
-    ) -> ApiFuture<()> {
-        #[derive(Serialize)]
-        struct EntityWrapper<'b> {
-            items: &'b [SubscriptionCursorWithoutToken],
-        };
-        let data = EntityWrapper { items: cursors };
-        let url = self.urls().subscriptions_reset_subscription_cursors(id);
-        self.send_payload(
-            url,
-            Method::PATCH,
-            serde_json::to_vec(&data).unwrap(),
-            flow_id.into(),
-        )
-        .boxed()
-    }
-
-    fn request_stream<'a, T: Into<FlowId>>(
-        &'a self,
-        subscription_id: SubscriptionId,
-        parameters: &StreamParameters,
-        flow_id: T,
-    ) -> ApiFuture<'a, SubscriptionStreamChunks> {
-        let url = self.urls().subscriptions_request_stream(subscription_id);
-        let parameters = serde_json::to_vec(parameters).unwrap();
-        let flow_id = flow_id.into();
-        async move {
-            let mut request = self
-                .create_request(&url, parameters, flow_id.clone())
-                .await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
-
-            let status = response.status();
-            if status == StatusCode::OK {
-                match response.headers().get("x-nakadi-streamid") {
-                    Some(header_value) => {
-                        let header_bytes = header_value.as_bytes();
-                        let header_str = std::str::from_utf8(header_bytes).map_err(|err| {
-                            NakadiApiError::other().with_context(format!(
-                                "the bytes of header 'x-nakadi-streamid' \
-                                 were not a valid string: {}",
-                                err
-                            ))
-                        })?;
-                        let stream_id = header_str.parse().map_err(|err| {
-                            NakadiApiError::other().with_context(format!(
-                                "the value '{}' of header 'x-nakadi-streamid' \
-                                 was not a valid stream id (UUID): {}",
-                                header_str, err
-                            ))
-                        })?;
-                        Ok(SubscriptionStreamChunks {
-                            stream_id,
-                            chunks: response.into_body(),
-                        })
-                    }
-                    None => {
-                        return Err(NakadiApiError::other().with_context(
-                            "response did not contain the 'x-nakadi-streamid' header",
-                        ))
-                    }
-                }
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
-        }
-        .boxed()
-    }
-
-    fn commit_cursors<T: Into<FlowId>>(
-        &self,
-        id: SubscriptionId,
-        stream: StreamId,
-        cursors: &[SubscriptionCursor],
-        flow_id: T,
-    ) -> ApiFuture<CursorCommitResults> {
-        #[derive(Serialize)]
-        struct ItemsWrapper<'a> {
-            items: &'a [SubscriptionCursor],
-        };
-
-        let wrapped = ItemsWrapper { items: cursors };
-
-        let serialized = serde_json::to_vec(&wrapped).unwrap();
-
-        let flow_id = flow_id.into();
-        async move {
-            let url = self.urls().subscriptions_commit_cursors(id);
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
-            *request.method_mut() = Method::POST;
-
-            request.headers_mut().append(
-                HeaderName::from_static("x-nakadi-streamid"),
-                HeaderValue::from_str(stream.to_string().as_ref())?,
-            );
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
-
-            let status = response.status();
-            match status {
-                StatusCode::NO_CONTENT => Ok(CursorCommitResults::default()),
-                StatusCode::OK => {
-                    let commit_results = deserialize_stream(response.into_body()).await?;
-                    Ok(commit_results)
-                }
-                _ => evaluate_error_for_problem(response).map(Err).await,
-            }
-        }
-        .boxed()
-    }
-}
-
 struct Inner {
     urls: Urls,
     dispatch_http_request: Box<dyn DispatchHttpRequest + Send + Sync + 'static>,
     access_token_provider: Box<dyn ProvidesAccessToken + Send + Sync + 'static>,
+    timeout_millis: ApiClientTimeoutMillis,
+    attempt_timeout_millis: ApiClientAttemptTimeoutMillis,
+    initial_retry_interval_millis: ApiClientInitialRetryIntervalMillis,
+    retry_interval_multiplier: ApiClientRetryIntervalMultiplier,
+    max_retry_interval_millis: ApiClientMaxRetryIntervalMillis,
+    retry_on_auth_errors: ApiClientRetryOnAuthErrors,
 }
 
 impl fmt::Debug for Inner {

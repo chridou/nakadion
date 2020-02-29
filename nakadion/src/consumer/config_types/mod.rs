@@ -114,10 +114,8 @@ pub struct Builder {
     pub abort_connect_on_auth_error: Option<AbortConnectOnAuthError>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
-    /// The maximum number of attempts to be made to connect to a stream.
-    ///
-    /// If `None`: No limit.
-    pub max_connect_attempts: Option<MaxConnectAttempts>,
+    /// The maximum time for until a connection to a stream has to be established.
+    pub max_connect_time_secs: Option<MaxConnectTimeSecs>,
     /// The maximum retry delay between failed attempts to connect to a stream.
     pub connect_stream_retry_max_delay_secs: Option<ConnectStreamRetryMaxDelaySecs>,
     /// The timeout for a request made to Nakadi to connect to a stream.
@@ -205,8 +203,9 @@ impl Builder {
                 AbortConnectOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.max_connect_attempts.is_none() {
-            self.max_connect_attempts = MaxConnectAttempts::try_from_env_prefixed(prefix.as_ref())?;
+        if self.max_connect_time_secs.is_none() {
+            self.max_connect_time_secs =
+                MaxConnectTimeSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.connect_stream_retry_max_delay_secs.is_none() {
@@ -330,14 +329,12 @@ impl Builder {
         self
     }
 
-    /// The maximum number of attempts to be made to connect to a stream.
-    ///
-    /// If `None`: No limit.
-    pub fn max_connect_attempts<T: Into<MaxConnectAttempts>>(
+    /// The maximum time for until a connection to a stream has to be established.
+    pub fn max_connect_time_secs<T: Into<MaxConnectTimeSecs>>(
         mut self,
-        max_connect_attempts: T,
+        max_connect_time_secs: T,
     ) -> Self {
-        self.max_connect_attempts = Some(max_connect_attempts.into());
+        self.max_connect_time_secs = Some(max_connect_time_secs.into());
         self
     }
 
@@ -463,7 +460,7 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_default();
 
-        let max_connect_attempts = self.max_connect_attempts;
+        let max_connect_time = self.max_connect_time_secs;
 
         let connect_stream_retry_max_delay =
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
@@ -484,7 +481,7 @@ impl Builder {
         self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
         self.abort_connect_on_subscription_not_found =
             Some(abort_connect_on_subscription_not_found);
-        self.max_connect_attempts = max_connect_attempts;
+        self.max_connect_time_secs = max_connect_time;
         self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
         self.connect_stream_timeout_secs = Some(connect_stream_timeout);
         self.commit_attempt_timeout_millis = Some(commit_attempt_timeout);
@@ -556,7 +553,12 @@ impl Builder {
             .abort_connect_on_subscription_not_found
             .unwrap_or_default();
 
-        let max_connect_attempts = self.max_connect_attempts.unwrap_or_default();
+        let max_connect_time = self.max_connect_time_secs;
+        if let Some(0) = max_connect_time.map(|t| t.into_inner()) {
+            return Err(Error::new(
+                "'max_connect_time_secs' must be greater than zero",
+            ));
+        }
 
         let connect_stream_retry_max_delay =
             self.connect_stream_retry_max_delay_secs.unwrap_or_default();
@@ -578,7 +580,7 @@ impl Builder {
             commit_strategy,
             abort_connect_on_auth_error,
             abort_connect_on_subscription_not_found,
-            max_connect_attempts,
+            max_connect_time,
             connect_stream_retry_max_delay,
             connect_stream_timeout,
             commit_attempt_timeout,
