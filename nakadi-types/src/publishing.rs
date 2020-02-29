@@ -22,14 +22,6 @@ pub struct BatchResponse {
     pub batch_items: Vec<BatchItemResponse>,
 }
 
-#[derive(Debug, Default)]
-pub struct BatchStats {
-    pub n_items: usize,
-    pub n_submitted: usize,
-    pub n_failed: usize,
-    pub n_aborted: usize,
-}
-
 impl BatchResponse {
     /// Returns true if there are no `BatchItemResponse`s.
     ///
@@ -85,8 +77,14 @@ impl BatchResponse {
             stats.n_items += 1;
             match item.publishing_status {
                 PublishingStatus::Submitted => stats.n_submitted += 1,
-                PublishingStatus::Failed => stats.n_failed += 1,
-                PublishingStatus::Aborted => stats.n_aborted += 1,
+                PublishingStatus::Failed => {
+                    stats.n_failed += 1;
+                    stats.n_not_submitted += 1;
+                }
+                PublishingStatus::Aborted => {
+                    stats.n_aborted += 1;
+                    stats.n_not_submitted += 1;
+                }
             }
         }
 
@@ -118,6 +116,30 @@ impl fmt::Display for BatchResponse {
         )?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct BatchStats {
+    pub n_items: usize,
+    pub n_submitted: usize,
+    pub n_failed: usize,
+    pub n_aborted: usize,
+    pub n_not_submitted: usize,
+}
+
+impl BatchStats {
+    pub fn all_submitted(n: usize) -> Self {
+        let mut me = Self::default();
+        me.n_items = n;
+        me.n_submitted = n;
+        me
+    }
+    pub fn all_not_submitted(n: usize) -> Self {
+        let mut me = Self::default();
+        me.n_items = n;
+        me.n_not_submitted = n;
+        me
     }
 }
 

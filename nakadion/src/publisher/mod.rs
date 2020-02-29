@@ -2,7 +2,7 @@
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
 pub use bytes::Bytes;
@@ -13,7 +13,10 @@ use tokio::time::{delay_for, timeout};
 pub use crate::api::{NakadiApiError, PublishApi, PublishFailure, PublishFuture};
 pub use crate::nakadi_types::{
     Error, FlowId,
-    {event_type::EventTypeName, publishing::BatchResponse},
+    {
+        event_type::EventTypeName,
+        publishing::{BatchResponse, BatchStats},
+    },
 };
 
 use crate::nakadi_types::publishing::PublishingStatus;
@@ -35,7 +38,7 @@ pub enum PartialFailureStrategy {
     /// Always retry all events
     RetryAll,
     /// Only retry those events where the publishing status is not `PublishingStatus::Submitted`
-    RetryNonSubmitted,
+    RetryNotSubmitted,
 }
 
 impl PartialFailureStrategy {
@@ -53,7 +56,7 @@ impl fmt::Display for PartialFailureStrategy {
         match self {
             PartialFailureStrategy::Abort => write!(f, "abort")?,
             PartialFailureStrategy::RetryAll => write!(f, "retry_all")?,
-            PartialFailureStrategy::RetryNonSubmitted => write!(f, "retry_non_submitted")?,
+            PartialFailureStrategy::RetryNotSubmitted => write!(f, "retry_not_submitted")?,
         }
 
         Ok(())
@@ -73,7 +76,7 @@ impl FromStr for PartialFailureStrategy {
         match s {
             "abort" => Ok(PartialFailureStrategy::Abort),
             "retry_all" => Ok(PartialFailureStrategy::RetryAll),
-            "retry_non_submitted" => Ok(PartialFailureStrategy::RetryNonSubmitted),
+            "retry_not_submitted" => Ok(PartialFailureStrategy::RetryNotSubmitted),
             _ => Err(Error::new(format!(
                 "not a valid partial failure strategy: {}",
                 s
@@ -315,6 +318,11 @@ pub trait PublishesEvents {
 /// for publishing no retries are done on partial successes. Retries are
 /// only done on io errors and server errors or on auth errors if
 /// `retry_on_auth_errors` is set to `true`.
+///
+/// ## `on_retry`
+///
+/// A closure to be called before a retry. The error which caused the retry and
+/// the time until the retry will be made is passed.
 #[derive(Clone)]
 pub struct Publisher<C> {
     config: PublisherConfig,
@@ -403,6 +411,7 @@ where
 
         let mut bytes_to_publish = assemble_bytes_to_publish(events);
         let mut events: Vec<Bytes> = events.to_vec();
+        let started = Instant::now();
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
@@ -419,12 +428,20 @@ where
                 )
                 .await
                 {
-                    Ok(()) => break Ok(()),
+                    Ok(()) => {
+                        self.instrumentation.published(started.elapsed());
+                        self.instrumentation
+                            .batch_stats(BatchStats::all_submitted(events.len()));
+                        break Ok(());
+                    }
                     Err(publish_failure) => publish_failure,
                 };
 
                 match publish_failure {
                     PublishFailure::Other(api_error) => {
+                        self.instrumentation
+                            .batch_stats(BatchStats::all_not_submitted(events.len()));
+
                         let retry_allowed =
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
@@ -434,16 +451,21 @@ where
                                 delay_for(delay).await;
                                 continue;
                             } else {
+                                self.instrumentation.publish_failed(started.elapsed());
                                 break Err(api_error.into());
                             }
                         } else {
+                            self.instrumentation.publish_failed(started.elapsed());
                             break Err(api_error.into());
                         }
                     }
                     PublishFailure::Unprocessable(batch_response) => {
-                        break Err(PublishFailure::Unprocessable(batch_response))
+                        self.instrumentation.batch_stats(batch_response.stats());
+                        self.instrumentation.publish_failed(started.elapsed());
+                        break Err(PublishFailure::Unprocessable(batch_response));
                     }
                     PublishFailure::PartialFailure(batch_response) => {
+                        self.instrumentation.batch_stats(batch_response.stats());
                         if let Some(delay) = backoff.next_backoff() {
                             match get_events_for_retry(&batch_response, &events, strategy) {
                                 Ok(Some(to_retry)) => {
@@ -458,13 +480,16 @@ where
                                     continue;
                                 }
                                 Ok(None) => {
-                                    break Err(PublishFailure::PartialFailure(batch_response))
+                                    self.instrumentation.publish_failed(started.elapsed());
+                                    break Err(PublishFailure::PartialFailure(batch_response));
                                 }
                                 Err(_err) => {
-                                    break Err(PublishFailure::PartialFailure(batch_response))
+                                    self.instrumentation.publish_failed(started.elapsed());
+                                    break Err(PublishFailure::PartialFailure(batch_response));
                                 }
                             }
                         } else {
+                            self.instrumentation.publish_failed(started.elapsed());
                             break Err(PublishFailure::PartialFailure(batch_response));
                         }
                     }
@@ -617,7 +642,7 @@ fn get_events_for_retry(
 ) -> Result<Option<Vec<Bytes>>, Error> {
     match strategy {
         PartialFailureStrategy::Abort => Ok(None),
-        PartialFailureStrategy::RetryNonSubmitted => {
+        PartialFailureStrategy::RetryNotSubmitted => {
             if events.len() != batch_response.len() {
                 return Err(Error::new(
                     "The number of events did not match the number of batch response items",
