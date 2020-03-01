@@ -1,14 +1,16 @@
-use std::future::Future;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use backoff::{backoff::Backoff, ExponentialBackoff};
 use bytes::Bytes;
-use futures::{FutureExt, TryStreamExt};
+use futures::{FutureExt, TryFutureExt, TryStreamExt};
 use http::{
-    header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
+    header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
     Method, Request, Response,
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tokio::time::{delay_for, timeout};
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;
@@ -16,7 +18,7 @@ use crate::nakadi_types::{Error, FlowId, NakadiBaseUrl};
 
 use crate::auth::{AccessTokenProvider, ProvidesAccessToken};
 
-use super::dispatch_http_request::{DispatchHttpRequest, ResponseFuture};
+use super::dispatch_http_request::DispatchHttpRequest;
 use super::*;
 use urls::Urls;
 
@@ -194,7 +196,7 @@ impl Builder {
         P: ProvidesAccessToken + Send + Sync + 'static,
     {
         let nakadi_base_url = crate::helpers::mandatory(self.nakadi_base_url, "nakadi_base_url")?;
-        let timeout_millis = self.timeout_millis.unwrap_or_default();
+        let timeout_millis = self.timeout_millis;
         let attempt_timeout_millis = self.attempt_timeout_millis.unwrap_or_default();
         let initial_retry_interval_millis = self.initial_retry_interval_millis.unwrap_or_default();
         let retry_interval_multiplier = self.retry_interval_multiplier.unwrap_or_default();
@@ -213,6 +215,7 @@ impl Builder {
                 max_retry_interval_millis,
                 retry_on_auth_errors,
             }),
+            on_retry_callback: Arc::new(|_, _| {}),
         })
     }
 
@@ -275,6 +278,7 @@ impl Builder {
 #[derive(Clone)]
 pub struct ApiClient {
     inner: Arc<Inner>,
+    on_retry_callback: Arc<dyn Fn(&NakadiApiError, Duration) + Send + Sync + 'static>,
 }
 
 impl ApiClient {
@@ -282,101 +286,194 @@ impl ApiClient {
         Builder::default()
     }
 
-    fn dispatch(&self, req: Request<Bytes>) -> ResponseFuture {
-        self.inner.dispatch_http_request.dispatch(req)
+    pub fn set_on_retry<F: Fn(&NakadiApiError, Duration) + Send + Sync + 'static>(
+        &mut self,
+        on_retry: F,
+    ) {
+        self.on_retry_callback = Arc::new(on_retry);
+    }
+
+    pub fn on_retry<F: Fn(&NakadiApiError, Duration) + Send + Sync + 'static>(
+        mut self,
+        on_retry: F,
+    ) -> Self {
+        self.set_on_retry(on_retry);
+        self
     }
 
     pub(crate) async fn send_receive_payload<R: DeserializeOwned + 'static>(
         &self,
         url: Url,
         method: Method,
-        payload: Vec<u8>,
+        payload: Bytes,
         flow_id: FlowId,
     ) -> Result<R, NakadiApiError> {
-        let mut request = self.create_request(&url, payload, flow_id).await?;
-        *request.method_mut() = method;
+        let response = self
+            .request(&url, method, payload, HeaderMap::default(), true, flow_id)
+            .await?;
 
-        let response = self.dispatch(request).await?;
-
-        if response.status().is_success() {
-            let deserialized = deserialize_stream(response.into_body()).await?;
-            Ok(deserialized)
-        } else {
-            evaluate_error_for_problem(response).map(Err).await
-        }
+        deserialize_stream(response.into_body()).await
     }
 
-    pub(crate) fn get<'a, R: DeserializeOwned>(
-        &'a self,
+    pub(crate) async fn get<R: DeserializeOwned>(
+        &self,
         url: Url,
         flow_id: FlowId,
-    ) -> impl Future<Output = Result<R, NakadiApiError>> + Send + 'a {
-        async move {
-            let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
-            *request.method_mut() = Method::GET;
+    ) -> Result<R, NakadiApiError> {
+        let response = self
+            .request(
+                &url,
+                Method::GET,
+                Bytes::default(),
+                HeaderMap::default(),
+                true,
+                flow_id,
+            )
+            .await?;
 
-            let response = self.dispatch(request).await?;
-
-            if response.status().is_success() {
-                let deserialized = deserialize_stream(response.into_body()).await?;
-                Ok(deserialized)
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
-        }
+        deserialize_stream(response.into_body()).await
     }
 
-    fn send_payload<'a>(
-        &'a self,
+    async fn send_payload(
+        &self,
         url: Url,
         method: Method,
-        payload: Vec<u8>,
+        payload: Bytes,
         flow_id: FlowId,
-    ) -> impl Future<Output = Result<(), NakadiApiError>> + Send + 'a {
-        async move {
-            let mut request = self.create_request(&url, payload, flow_id).await?;
-            *request.method_mut() = method;
-
-            let response = self.dispatch(request).await?;
-
-            if response.status().is_success() {
-                Ok(())
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
-        }
+    ) -> Result<(), NakadiApiError> {
+        self.request(&url, method, payload, HeaderMap::default(), true, flow_id)
+            .map_ok(|_| ())
+            .await
     }
 
-    fn delete<'a>(
-        &'a self,
-        url: Url,
-        flow_id: FlowId,
-    ) -> impl Future<Output = Result<(), NakadiApiError>> + Send + 'a {
-        async move {
-            let mut request = self.create_request(&url, Bytes::default(), flow_id).await?;
-            *request.method_mut() = Method::DELETE;
-
-            let response = self.dispatch(request).await?;
-
-            if response.status().is_success() {
-                Ok(())
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
-        }
+    async fn delete(&self, url: Url, flow_id: FlowId) -> Result<(), NakadiApiError> {
+        self.request(
+            &url,
+            Method::DELETE,
+            Bytes::default(),
+            HeaderMap::default(),
+            true,
+            flow_id,
+        )
+        .map_ok(|_| ())
+        .await
     }
 
-    async fn create_request<B: Into<Bytes>>(
+    async fn request(
         &self,
         url: &Url,
-        body_bytes: B,
+        method: Method,
+        body_bytes: Bytes,
+        headers: HeaderMap,
+        retry: bool,
         flow_id: FlowId,
-    ) -> Result<Request<Bytes>, NakadiApiError> {
-        let body_bytes = body_bytes.into();
+    ) -> Result<Response<BytesStream>, NakadiApiError> {
+        let attempt_timeout = self.inner.attempt_timeout_millis.into();
+        if retry {
+            let mut backoff = ExponentialBackoff::default();
+            backoff.max_elapsed_time = self.inner.timeout_millis.map(|t| t.into());
+            backoff.max_interval = self.inner.max_retry_interval_millis.into();
+            backoff.multiplier = self.inner.retry_interval_multiplier.into();
+            backoff.initial_interval = self.inner.initial_retry_interval_millis.into();
+            let retry_on_auth_errors: bool = self.inner.retry_on_auth_errors.into();
+
+            loop {
+                let result: Result<Response<BytesStream>, RemoteCallError> = self
+                    .remote(
+                        url,
+                        method.clone(),
+                        body_bytes.clone(),
+                        headers.clone(),
+                        flow_id.clone(),
+                        Some(attempt_timeout),
+                    )
+                    .await;
+
+                let response = match result {
+                    Ok(response) => response,
+                    Err(err) => {
+                        if err.is_io() {
+                            if let Some(delay) = backoff.next_backoff() {
+                                let as_api_error = err.into();
+                                (self.on_retry_callback)(&as_api_error, delay);
+                                delay_for(delay).await;
+                                continue;
+                            } else {
+                                return Err(err.into());
+                            }
+                        } else {
+                            return Err(err.into());
+                        }
+                    }
+                };
+
+                if response.status().is_success() {
+                    return Ok(response);
+                } else {
+                    let api_error = evaluate_error_for_problem(response).await;
+
+                    let retry = api_error.is_io_error()
+                        || api_error.is_server_error()
+                        || (api_error.is_auth_error() && retry_on_auth_errors);
+
+                    if retry {
+                        if let Some(delay) = backoff.next_backoff() {
+                            (self.on_retry_callback)(&api_error, delay);
+                            delay_for(delay).await;
+                            continue;
+                        } else {
+                            return Err(api_error);
+                        }
+                    } else {
+                        return Err(api_error);
+                    }
+                }
+            }
+        } else {
+            let rsp = self
+                .remote(
+                    url,
+                    method,
+                    body_bytes,
+                    headers,
+                    flow_id,
+                    Some(attempt_timeout),
+                )
+                .await?;
+
+            if rsp.status().is_success() {
+                Ok(rsp)
+            } else {
+                evaluate_error_for_problem(rsp).map(Err).await
+            }
+        }
+    }
+
+    async fn remote(
+        &self,
+        url: &Url,
+        method: Method,
+        body_bytes: Bytes,
+        headers: HeaderMap,
+        flow_id: FlowId,
+        remote_call_timeout: Option<Duration>,
+    ) -> Result<Response<BytesStream>, RemoteCallError> {
         let content_length = body_bytes.len();
         let mut request = Request::new(body_bytes);
 
-        if let Some(token) = self.inner.access_token_provider.get_token().await? {
+        *request.method_mut() = method;
+
+        if let Some(token) = self
+            .inner
+            .access_token_provider
+            .get_token()
+            .await
+            .map_err(|err| {
+                RemoteCallError::new_other()
+                    .with_message("failed to get a token")
+                    .with_cause(err)
+            })?
+        {
             request
                 .headers_mut()
                 .append(AUTHORIZATION, construct_authorization_bearer_value(token)?);
@@ -386,6 +483,12 @@ impl ApiClient {
             HeaderName::from_static("x-flow-id"),
             HeaderValue::from_str(flow_id.as_ref())?,
         );
+
+        for (k, v) in headers.into_iter() {
+            if let Some(k) = k {
+                let _ = request.headers_mut().append(k, v);
+            }
+        }
 
         if content_length > 0 {
             request
@@ -399,7 +502,25 @@ impl ApiClient {
 
         *request.uri_mut() = url.as_str().parse()?;
 
-        Ok(request)
+        if let Some(remote_call_timeout) = remote_call_timeout {
+            let started = Instant::now();
+            match timeout(
+                remote_call_timeout,
+                self.inner.dispatch_http_request.dispatch(request),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(elapsed) => Err(RemoteCallError::new_io()
+                    .with_message(format!(
+                        "call to Nakadi timed out after {:?}",
+                        started.elapsed()
+                    ))
+                    .with_cause(elapsed)),
+            }
+        } else {
+            self.inner.dispatch_http_request.dispatch(request).await
+        }
     }
 
     pub(crate) fn urls(&self) -> &Urls {
@@ -409,7 +530,7 @@ impl ApiClient {
 
 fn construct_authorization_bearer_value<T: AsRef<str>>(
     token: T,
-) -> Result<HeaderValue, NakadiApiError> {
+) -> Result<HeaderValue, RemoteCallError> {
     let value_string = format!("{} {}", SCHEME_BEARER, token.as_ref());
     let value = HeaderValue::from_str(&value_string)?;
     Ok(value)
@@ -474,7 +595,7 @@ struct Inner {
     urls: Urls,
     dispatch_http_request: Box<dyn DispatchHttpRequest + Send + Sync + 'static>,
     access_token_provider: Box<dyn ProvidesAccessToken + Send + Sync + 'static>,
-    timeout_millis: ApiClientTimeoutMillis,
+    timeout_millis: Option<ApiClientTimeoutMillis>,
     attempt_timeout_millis: ApiClientAttemptTimeoutMillis,
     initial_retry_interval_millis: ApiClientInitialRetryIntervalMillis,
     retry_interval_multiplier: ApiClientRetryIntervalMultiplier,

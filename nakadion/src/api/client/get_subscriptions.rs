@@ -110,7 +110,7 @@ async fn get_first_page(
     let url = api_client.urls().subscriptions_list_subscriptions();
     let serialized = serde_json::to_vec(&params)?;
     api_client
-        .send_receive_payload(url, Method::GET, serialized, flow_id)
+        .send_receive_payload(url, Method::GET, serialized.into(), flow_id)
         .await
 }
 

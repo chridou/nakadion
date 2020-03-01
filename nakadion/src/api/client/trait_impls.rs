@@ -24,7 +24,7 @@ impl MonitoringApi for ApiClient {
         self.send_receive_payload(
             self.urls().monitoring_cursor_distances(name),
             Method::POST,
-            payload_to_send,
+            payload_to_send.into(),
             flow_id.into(),
         )
         .boxed()
@@ -40,7 +40,7 @@ impl MonitoringApi for ApiClient {
         self.send_receive_payload(
             self.urls().monitoring_cursor_lag(name),
             Method::POST,
-            payload_to_send,
+            payload_to_send.into(),
             flow_id.into(),
         )
         .boxed()
@@ -79,7 +79,7 @@ impl SchemaRegistryApi for ApiClient {
         self.send_payload(
             self.urls().schema_registry_create_event_type(),
             Method::POST,
-            payload_to_send,
+            payload_to_send.into(),
             flow_id.into(),
         )
         .boxed()
@@ -103,7 +103,7 @@ impl SchemaRegistryApi for ApiClient {
         self.send_payload(
             self.urls().schema_registry_update_event_type(name),
             Method::PUT,
-            serde_json::to_vec(event_type).unwrap(),
+            serde_json::to_vec(event_type).unwrap().into(),
             flow_id.into(),
         )
         .boxed()
@@ -134,13 +134,19 @@ impl PublishApi for ApiClient {
     ) -> PublishFuture<'a> {
         let url = self.urls().publish_events(event_type);
 
-        let bytes = events.into();
+        let body_bytes = events.into();
         let flow_id = flow_id.into();
         async move {
-            let mut request = self.create_request(&url, bytes, flow_id).await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
+            let response = self
+                .remote(
+                    &url,
+                    Method::POST,
+                    body_bytes,
+                    HeaderMap::default(),
+                    flow_id,
+                    None,
+                )
+                .await?;
 
             let flow_id = match response.headers().get("x-flow-id") {
                 Some(header_value) => {
@@ -197,29 +203,13 @@ impl SubscriptionApi for ApiClient {
             }
             .boxed();
         }
-        let url = self.urls().subscriptions_create_subscription();
+        let url = self.urls().subscriptions_create_subscription().clone();
         let serialized = serde_json::to_vec(input).unwrap();
 
         let flow_id = flow_id.into();
         async move {
-            let mut request = self
-                .create_request(&url, serialized, flow_id.clone())
-                .await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.dispatch(request).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let deserialized: Subscription = deserialize_stream(response.into_body()).await?;
-                if status == StatusCode::OK {
-                    Ok(deserialized)
-                } else {
-                    self.get_subscription(deserialized.id, flow_id).await
-                }
-            } else {
-                evaluate_error_for_problem(response).map(Err).await
-            }
+            self.send_receive_payload(url, Method::POST, serialized.into(), flow_id)
+                .await
         }
         .boxed()
     }
@@ -269,7 +259,7 @@ impl SubscriptionApi for ApiClient {
             self.send_payload(
                 url,
                 Method::PUT,
-                serde_json::to_vec(input).unwrap(),
+                serde_json::to_vec(input).unwrap().into(),
                 flow_id.into(),
             )
             .boxed()
@@ -343,7 +333,7 @@ impl SubscriptionApi for ApiClient {
         self.send_payload(
             url,
             Method::PATCH,
-            serde_json::to_vec(&data).unwrap(),
+            serde_json::to_vec(&data).unwrap().into(),
             flow_id.into(),
         )
         .boxed()
@@ -359,12 +349,16 @@ impl SubscriptionApi for ApiClient {
         let parameters = serde_json::to_vec(parameters).unwrap();
         let flow_id = flow_id.into();
         async move {
-            let mut request = self
-                .create_request(&url, parameters, flow_id.clone())
+            let response = self
+                .remote(
+                    &url,
+                    Method::POST,
+                    parameters.into(),
+                    Default::default(),
+                    flow_id,
+                    None,
+                )
                 .await?;
-            *request.method_mut() = Method::POST;
-
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
 
             let status = response.status();
             if status == StatusCode::OK {
@@ -422,15 +416,23 @@ impl SubscriptionApi for ApiClient {
         let flow_id = flow_id.into();
         async move {
             let url = self.urls().subscriptions_commit_cursors(id);
-            let mut request = self.create_request(&url, serialized, flow_id).await?;
-            *request.method_mut() = Method::POST;
 
-            request.headers_mut().append(
+            let mut headers = HeaderMap::default();
+            headers.append(
                 HeaderName::from_static("x-nakadi-streamid"),
                 HeaderValue::from_str(stream.to_string().as_ref())?,
             );
 
-            let response = self.inner.dispatch_http_request.dispatch(request).await?;
+            let response = self
+                .request(
+                    &url,
+                    Method::POST,
+                    serialized.into(),
+                    headers,
+                    true,
+                    flow_id,
+                )
+                .await?;
 
             let status = response.status();
             match status {

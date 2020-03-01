@@ -327,7 +327,7 @@ pub trait PublishesEvents {
 pub struct Publisher<C> {
     config: PublisherConfig,
     api_client: Arc<C>,
-    on_retry: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
+    on_retry_callback: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
     instrumentation: Instrumentation,
 }
 
@@ -343,7 +343,7 @@ where
         Self {
             config,
             api_client: Arc::new(api_client),
-            on_retry: Arc::new(|_, _| {}),
+            on_retry_callback: Arc::new(|_, _| {}),
             instrumentation: Default::default(),
         }
     }
@@ -352,7 +352,7 @@ where
         &mut self,
         on_retry: F,
     ) {
-        self.on_retry = Arc::new(on_retry);
+        self.on_retry_callback = Arc::new(on_retry);
     }
 
     pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
@@ -415,9 +415,9 @@ where
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry = Arc::clone(&self.on_retry);
-            let on_retry =
-                (on_retry.as_ref()) as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
+            let on_retry_callback = Arc::clone(&self.on_retry_callback);
+            let on_retry_callback = (on_retry_callback.as_ref())
+                as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -447,7 +447,7 @@ where
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
                                 let failure = PublishFailure::Other(api_error);
-                                on_retry(&failure, delay);
+                                on_retry_callback(&failure, delay);
                                 delay_for(delay).await;
                                 continue;
                             } else {
@@ -569,9 +569,9 @@ where
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry = Arc::clone(&self.on_retry);
-            let on_retry =
-                (on_retry.as_ref()) as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
+            let on_retry_callback = Arc::clone(&self.on_retry_callback);
+            let on_retry_callback = (on_retry_callback.as_ref())
+                as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -593,7 +593,7 @@ where
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
                                 let failure = PublishFailure::Other(api_error);
-                                on_retry(&failure, delay);
+                                on_retry_callback(&failure, delay);
                                 delay_for(delay).await;
                                 continue;
                             } else {
