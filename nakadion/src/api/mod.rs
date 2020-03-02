@@ -323,7 +323,9 @@ pub trait SubscriptionApi {
         cursors: &[SubscriptionCursorWithoutToken],
         flow_id: T,
     ) -> ApiFuture<()>;
+}
 
+pub trait SubscriptionStreamApi {
     /// Starts a new stream for reading events from this subscription.
     ///
     /// Starts a new stream for reading events from this subscription. The minimal consumption unit is a partition, so
@@ -359,7 +361,9 @@ pub trait SubscriptionApi {
         parameters: &StreamParameters,
         flow_id: T,
     ) -> ApiFuture<SubscriptionStreamChunks>;
+}
 
+pub trait SubscriptionCommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)

@@ -110,7 +110,13 @@ async fn get_first_page(
     let url = api_client.urls().subscriptions_list_subscriptions();
     let serialized = serde_json::to_vec(&params)?;
     api_client
-        .send_receive_payload(url, Method::GET, serialized.into(), flow_id)
+        .send_receive_payload(
+            url,
+            Method::GET,
+            serialized.into(),
+            RequestMode::RetryAndTimeout,
+            flow_id,
+        )
         .await
 }
 
@@ -124,5 +130,7 @@ async fn get_next_page(
             .with_context("get subscriptions: failed to parse url from Nakadi")
             .caused_by(err)
     })?;
-    api_client.get(url, flow_id).await
+    api_client
+        .get(url, RequestMode::RetryAndTimeout, flow_id)
+        .await
 }

@@ -1,16 +1,18 @@
 //! A connector to directly consume Nakadi Streams
 use std::error::Error as StdError;
 use std::fmt;
-use std::time::Instant;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::{
-    future::{BoxFuture, FutureExt},
+    future::FutureExt,
     stream::{BoxStream, StreamExt},
 };
 use http::StatusCode;
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json;
-use tokio::time::timeout;
+use tokio::time::{delay_for, timeout};
 
 pub use crate::components::{
     streams::{BatchLine, BatchLineError, NakadiFrame},
@@ -18,156 +20,313 @@ pub use crate::components::{
 };
 
 pub use crate::api::BytesStream;
-pub use crate::api::{NakadiApiError, SubscriptionApi, SubscriptionStreamChunks};
-pub use crate::consumer::ConnectStreamTimeoutSecs;
+pub use crate::api::{NakadiApiError, SubscriptionStreamApi, SubscriptionStreamChunks};
 use crate::instrumentation::{Instrumentation, Instruments};
 pub use crate::nakadi_types::{
     subscription::{StreamId, StreamParameters, SubscriptionCursor, SubscriptionId},
     Error, FlowId, RandomFlowId,
 };
 
-pub type ConnectResult<T> = Result<T, ConnectError>;
-pub type ConnectFuture<'a, T> = BoxFuture<'a, ConnectResult<T>>;
-
 pub type EventsStream<E> = BoxStream<'static, Result<(StreamedBatchMeta, Option<Vec<E>>), Error>>;
 pub type FramesStream = BoxStream<'static, Result<NakadiFrame, IoError>>;
 pub type BatchStream = BoxStream<'static, Result<BatchLine, BatchLineError>>;
 
-/// Gives a `Connects`
-pub trait ProvidesConnector {
-    fn connector(&self) -> Box<dyn Connects + Send + Sync + 'static>;
+new_type! {
+    #[doc="If `true` abort the consumer when an auth error occurs while connecting to a stream.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct ConnectorAbortOnAuthError(bool, env="CONNECTOR_ABORT_ON_AUTH_ERROR");
+}
+impl Default for ConnectorAbortOnAuthError {
+    fn default() -> Self {
+        false.into()
+    }
+}
+new_type! {
+    #[doc="If `true` abort the consumer when a subscription does not exist when connection to a stream.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct ConnectorAbortOnSubscriptionNotFound(bool, env="CONNECTOR_ABORT_ON_SUBSCRIPTION_NOT_FOUND");
+}
+impl Default for ConnectorAbortOnSubscriptionNotFound {
+    fn default() -> Self {
+        true.into()
+    }
+}
+new_type! {
+    #[doc="The maximum time for connecting to a stream.\n\n\
+    Default is infinite."]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct ConnectorTimeoutSecs(u64, env="CONNECTOR_TIMEOUT_SECS");
 }
 
-impl<T> ProvidesConnector for T
+new_type! {
+    #[doc="The maximum retry delay between failed attempts to connect to a stream.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct ConnectorMaxRetryDelaySecs(u64, env="CONNECTOR_MAX_RETRY_DELAY_SECS");
+}
+impl Default for ConnectorMaxRetryDelaySecs {
+    fn default() -> Self {
+        300.into()
+    }
+}
+new_type! {
+    #[doc="The timeout for a request made to Nakadi to connect to a stream.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct ConnectorAttemptTimeoutSecs(u64, env="CONNECTOR_ATTEMPT_TIMEOUT_SECS");
+}
+impl Default for ConnectorAttemptTimeoutSecs {
+    fn default() -> Self {
+        10.into()
+    }
+}
+
+/// The timeout for a request made to Nakadi to connect to a stream including retries
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ConnectorTimeout {
+    Infinite,
+    Seconds(u64),
+}
+
+impl ConnectorTimeout {
+    env_funs!("CONNECTOR_TIMEOUT");
+
+    pub fn into_duration_opt(self) -> Option<Duration> {
+        match self {
+            ConnectorTimeout::Infinite => None,
+            ConnectorTimeout::Seconds(secs) => Some(Duration::from_secs(secs)),
+        }
+    }
+}
+
+impl Default for ConnectorTimeout {
+    fn default() -> Self {
+        Self::Infinite
+    }
+}
+
+impl<T> From<T> for ConnectorTimeout
 where
-    T: SubscriptionApi + Sync + Send + 'static + Clone,
+    T: Into<u64>,
 {
-    fn connector(&self) -> Box<dyn Connects + Send + Sync + 'static> {
-        Box::new(Connector::from_client(self.clone()))
+    fn from(v: T) -> Self {
+        Self::Seconds(v.into())
     }
 }
 
-/// Can connect to a Nakadi Stream
-pub trait Connects {
-    /// Return instrumentation.
-    ///
-    /// Returns `Instrumentation::default()` by default.
-    fn instrumentation(&self) -> Instrumentation {
-        Instrumentation::default()
+impl fmt::Display for ConnectorTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnectorTimeout::Infinite => write!(f, "infinite")?,
+            ConnectorTimeout::Seconds(secs) => write!(f, "{}", secs)?,
+        }
+
+        Ok(())
     }
+}
 
-    /// Get a stream of chunks directly from Nakadi.
-    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks>;
+impl FromStr for ConnectorTimeout {
+    type Err = Error;
 
-    fn set_flow_id(&mut self, flow_id: FlowId);
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn parse_after(s: &str) -> Result<ConnectorTimeout, Error> {
+            let s = s.trim();
 
-    fn set_connect_stream_timeout_secs(&mut self, connect_stream_timeout: ConnectStreamTimeoutSecs);
+            if s.starts_with('{') {
+                return Ok(serde_json::from_str(s)?);
+            }
 
-    fn set_instrumentation(&mut self, instrumentation: Instrumentation);
-
-    fn stream_parameters_mut(&mut self) -> &mut StreamParameters;
+            match s {
+                "infinite" => Ok(ConnectorTimeout::Infinite),
+                x => {
+                    let seconds: u64 = x.parse().map_err(|err| {
+                        Error::new(format!("{} is not a connector timeout", s)).caused_by(err)
+                    })?;
+                    Ok(ConnectorTimeout::Seconds(seconds))
+                }
+            }
+        }
+    }
 }
 
 /// Parameters to configure the `Connector`
-#[derive(Default, Debug, Clone)]
-pub struct ConnectorParams {
-    pub stream_params: StreamParameters,
-    pub connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
-    pub instrumentation: Instrumentation,
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectorConfig {
+    pub stream_params: Option<StreamParameters>,
+    pub abort_on_auth_error: Option<ConnectorAbortOnAuthError>,
+    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
+    pub abort_connect_on_subscription_not_found: Option<ConnectorAbortOnSubscriptionNotFound>,
+    /// The maximum time for until a connection to a stream has to be established.
+    ///
+    /// Default is to retry indefinitely
+    pub timeout_secs: Option<ConnectorTimeout>,
+    /// The maximum retry delay between failed attempts to connect to a stream.
+    pub max_retry_delay_secs: Option<ConnectorMaxRetryDelaySecs>,
+    /// The timeout for a request made to Nakadi to connect to a stream.
+    pub attempt_timeout_secs: Option<ConnectorAttemptTimeoutSecs>,
+}
+
+impl ConnectorConfig {
+    pub fn from_env() -> Result<Self, Error> {
+        let mut me = Self::default();
+        me.update_from_env()?;
+        Ok(me)
+    }
+
+    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
+        let mut me = Self::default();
+        me.update_from_env_prefixed(prefix)?;
+        Ok(me)
+    }
+
+    pub fn update_from_env(&mut self) -> Result<(), Error> {
+        self.update_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
+    }
+
+    pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+        if self.timeout_millis.is_none() {
+            self.stream_params(StreamParameters::from_env_prefixed(prefix)?);
+        }
+        if self.abort_on_auth_error.is_none() {
+            self.abort_on_auth_error(ConnectorAbortOnAuthError::from_env_prefixed(prefix)?);
+        }
+        if self.abort_connect_on_subscription_not_found.is_none() {
+            self.abort_connect_on_subscription_not_found(
+                ConnectorAbortOnSubscriptionNotFound::from_env_prefixed(prefix)?,
+            );
+        }
+        if self.timeout_secs.is_none() {
+            self.timeout_secs(ConnectorTimeout::from_env_prefixed(prefix)?);
+        }
+        if self.max_retry_delay_secs.is_none() {
+            self.max_retry_delay_secs(ConnectorMaxRetryDelaySecs::from_env_prefixed(prefix)?);
+        }
+        if self.attempt_timeout_secs.is_none() {
+            self.attempt_timeout_secs(ConnectorAttemptTimeoutSecs::from_env_prefixed(prefix)?);
+        }
+
+        Ok(())
+    }
+
+    pub fn stream_params<T: Into<StreamParameters>>(mut self, v: T) -> Self {
+        self.stream_params = Some(v.into());
+        self
+    }
+    pub fn abort_on_auth_error<T: Into<ConnectorAbortOnAuthError>>(mut self, v: T) -> Self {
+        self.abort_on_auth_error = Some(v.into());
+        self
+    }
+    pub fn abort_connect_on_subscription_not_found<
+        T: Into<ConnectorAbortOnSubscriptionNotFound>,
+    >(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.abort_connect_on_subscription_not_found = Some(v.into());
+        self
+    }
+    pub fn timeout_secs<T: Into<ConnectorTimeout>>(mut self, v: T) -> Self {
+        self.timeout_secs = Some(v.into());
+        self
+    }
+    pub fn max_retry_delay_secs<T: Into<ConnectorMaxRetryDelaySecs>>(mut self, v: T) -> Self {
+        self.max_retry_delay_secs = Some(v.into());
+        self
+    }
+    pub fn attempt_timeout_secs<T: Into<ConnectorAttemptTimeoutSecs>>(mut self, v: T) -> Self {
+        self.attempt_timeout_secs = Some(v.into());
+        self
+    }
 }
 
 /// A `Connector` to connect to a Nakadi Stream
+///
+/// ## `on_retry`
+///
+/// A closure to be called before a retry. The error which caused the retry and
+/// the time until the retry will be made is passed. This closure overrides the current one
+/// and will be used for all subsequent clones of this instance. This allows
+/// users to give context on the call site.
 pub struct Connector<C> {
     stream_client: C,
-    params: ConnectorParams,
+    config: ConnectorConfig,
     flow_id: Option<FlowId>,
+    on_retry_callback: Arc<dyn Fn(&ConnectError, Duration) + Send + Sync + 'static>,
+    instrumentation: Instrumentation,
 }
 
 impl<C> Connector<C>
 where
-    C: SubscriptionApi + Send + Sync + 'static,
+    C: SubscriptionStreamApi + Send + Sync + 'static,
 {
-    pub fn new(stream_client: C, params: ConnectorParams) -> Self {
+    pub fn new_with_config(stream_client: C, config: ConnectorConfig) -> Self {
         Self {
             stream_client,
-            params,
+            config,
             flow_id: None,
+            on_retry_callback: Arc::new(|_, _| {}),
+            instrumentation: Instrumentation::default(),
         }
     }
 
-    pub fn from_client(stream_client: C) -> Self {
+    pub fn new(stream_client: C) -> Self {
         Self {
             stream_client,
-            params: ConnectorParams::default(),
+            config: ConnectorConfig::default(),
             flow_id: None,
+            on_retry_callback: Arc::new(|_, _| {}),
+            instrumentation: Instrumentation::default(),
         }
     }
-}
 
-impl<C> From<C> for Connector<C>
-where
-    C: SubscriptionApi + Send + Sync + 'static,
-{
-    fn from(c: C) -> Self {
-        Self::from_client(c)
-    }
-}
-
-impl<C> Connects for Connector<C>
-where
-    C: SubscriptionApi + Sync + Send + 'static,
-{
-    fn instrumentation(&self) -> Instrumentation {
+    pub fn instrumentation(&self) -> Instrumentation {
         self.params.instrumentation.clone()
     }
-    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks> {
-        async move {
-            let flow_id = self.flow_id.clone().unwrap_or_else(|| RandomFlowId.into());
-            let f = self.stream_client.request_stream(
-                subscription_id,
-                &self.params.stream_params,
-                flow_id,
-            );
-            let connect_timeout = self.params.connect_stream_timeout_secs.into_duration();
-            let started = Instant::now();
-            match timeout(connect_timeout, f).await {
-                Ok(Ok(stream)) => {
-                    self.params
-                        .instrumentation
-                        .stream_connect_attempt_success(started.elapsed());
-                    Ok(stream)
-                }
-                Ok(Err(api_error)) => {
-                    self.params
-                        .instrumentation
-                        .stream_connect_attempt_failed(started.elapsed());
-                    Err(api_error.into())
-                }
-                Err(err) => {
-                    self.params
-                        .instrumentation
-                        .stream_connect_attempt_failed(started.elapsed());
-                    Err(ConnectError::io()
-                        .context(format!(
-                            "Connecting to Nakadi for a stream timed ot after {:?}.",
-                            started.elapsed()
-                        ))
-                        .caused_by(err))
-                }
-            }
-        }
-        .boxed()
+
+    pub async fn connect(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> Result<SubscriptionStreamChunks, ConnectError> {
+        self.connect_abortable(subscription_id, || false).await
+    }
+
+    pub async fn connect_abortable<F>(
+        &self,
+        subscription_id: SubscriptionId,
+        abort: F,
+    ) -> Result<SubscriptionStreamChunks, ConnectError>
+    where
+        F: FnMut() -> bool + Send,
+    {
+        let flow_id = self.flow_id.clone().unwrap_or_else(FlowId::random);
+        self.connect_to_stream(subscription_id, flow_id, abort)
+            .await
+    }
+
+    pub fn set_on_retry<F: Fn(&ConnectError, Duration) + Send + Sync + 'static>(
+        &mut self,
+        on_retry: F,
+    ) {
+        self.on_retry_callback = Arc::new(on_retry);
+    }
+
+    pub fn on_retry<F: Fn(&ConnectError, Duration) + Send + Sync + 'static>(
+        mut self,
+        on_retry: F,
+    ) -> Self {
+        self.set_on_retry(on_retry);
+        self
     }
 
     fn set_flow_id(&mut self, flow_id: FlowId) {
         self.flow_id = Some(flow_id);
     }
 
-    fn set_connect_stream_timeout_secs(
-        &mut self,
-        connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
-    ) {
-        self.params.connect_stream_timeout_secs = connect_stream_timeout_secs;
+    fn configure(mut self, config: ConnectorConfig) -> Self {
+        self.set_config(config);
+        self
+    }
+
+    fn set_config(&mut self, config: ConnectorConfig) {
+        self.config = config;
     }
 
     fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
@@ -175,7 +334,139 @@ where
     }
 
     fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
-        &mut self.params.stream_params
+        &mut self.config.stream_params
+    }
+
+    fn config(&self) -> &ConnectorConfig {
+        &self.config
+    }
+
+    fn config_mut(&self) -> &mut ConnectorConfig {
+        &mut self.config
+    }
+
+    async fn connect_to_stream<F>(
+        &self,
+        subscription_id: SubscriptionId,
+        flow_id: FlowId,
+        check_abort: F,
+    ) -> Result<SubscriptionStreamChunks, ConnectError>
+    where
+        F: FnMut() -> bool + Send,
+    {
+        if let Some(connect_timeout) = self
+            .config()
+            .timeout_secs
+            .unwrap_or_default()
+            .into_duration_opt()
+        {
+            timeout(
+                connect_timeout,
+                self.connect_to_stream_with_retries(subscription_id, flow_id, check_abort),
+            )
+            .await?
+        } else {
+            self.connect_to_stream_with_retries(subscription_id, flow_id, check_abort)
+                .await
+        }
+    }
+
+    async fn connect_to_stream_with_retries<F>(
+        &self,
+        subscription_id: SubscriptionId,
+        flow_id: FlowId,
+        check_abort: F,
+    ) -> Result<SubscriptionStreamChunks, ConnectError>
+    where
+        F: FnMut() -> bool + Send,
+    {
+        let instrumentation = self.instrumentation.clone();
+        let stream_params = self.config.stream_params.unwrap_or_default();
+        let abort_connect_on_subscription_not_found: bool = self
+            .config()
+            .abort_connect_on_subscription_not_found
+            .unwrap_or_default()
+            .into();
+        let abort_on_auth_error: bool = self.config.abort_on_auth_error.unwrap_or_default().into();
+
+        let mut backoff = Backoff::new(self.config.max_retry_delay_secs.unwrap_or_default().into());
+
+        let connect_started_at = Instant::now();
+        loop {
+            if check_abort() {
+                return Err(ConnectError::aborted());
+            }
+
+            match self
+                .connect_single_attempt(subscription_id, flow_id.clone())
+                .await
+            {
+                Ok(stream) => {
+                    instrumentation.stream_connected(connect_started_at.elapsed());
+
+                    return Ok(stream);
+                }
+                Err(err) => {
+                    let retry_allowed = match err.kind() {
+                        ConnectErrorKind::Aborted => false,
+                        ConnectErrorKind::AccessDenied => !abort_on_auth_error,
+                        ConnectErrorKind::BadRequest => false,
+                        ConnectErrorKind::Io => true,
+                        ConnectErrorKind::NakadiError => true,
+                        ConnectErrorKind::Other => false,
+                        ConnectErrorKind::Unprocessable => false,
+                        ConnectErrorKind::Conflict => true,
+                    };
+                    if retry_allowed {
+                        let delay = backoff.next();
+                        (self.on_retry_callback)(&err, delay);
+                        delay_for(delay).await;
+                        continue;
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn connect_single_attempt(
+        &self,
+        subscription_id: SubscriptionId,
+        flow_id: FlowId,
+    ) -> Result<SubscriptionStreamChunks, ConnectError> {
+        let stream_params = self.config.stream_params.unwrap_or_default();
+        let f = self
+            .stream_client
+            .request_stream(subscription_id, &stream_params, flow_id);
+        let started = Instant::now();
+        let attempt_timeout = self
+            .config
+            .attempt_timeout_secs
+            .unwrap_or_default()
+            .into_duration();
+        match timeout(attempt_timeout, f).await {
+            Ok(Ok(stream)) => {
+                self.instrumentation
+                    .stream_connect_attempt_success(started.elapsed());
+                Ok(stream)
+            }
+            Ok(Err(api_error)) => {
+                self.instrumentation
+                    .stream_connect_attempt_failed(started.elapsed());
+                Err(api_error.into())
+            }
+            Err(err) => {
+                self.instrumentation
+                    .stream_connect_attempt_failed(started.elapsed());
+                Err(ConnectError::io()
+                    .context(format!(
+                        "Connecting to Nakadi for a stream timed ot after {:?}.",
+                        started.elapsed()
+                    ))
+                    .caused_by(err))
+            }
+        }
     }
 }
 
@@ -213,6 +504,18 @@ impl ConnectError {
     }
     pub fn other() -> Self {
         Self::new(ConnectErrorKind::Other)
+    }
+
+    pub fn nakadi() -> Self {
+        Self::new(ConnectErrorKind::NakadiError)
+    }
+
+    pub fn aborted() -> Self {
+        Self::new(ConnectErrorKind::Aborted)
+    }
+
+    pub fn conflict() -> Self {
+        Self::new(ConnectErrorKind::Conflict)
     }
 
     pub fn context<T: Into<String>>(mut self, context: T) -> Self {
@@ -255,6 +558,14 @@ impl From<ConnectError> for Error {
     }
 }
 
+impl From<tokio::time::Elapsed> for ConnectError {
+    fn from(err: tokio::time::Elapsed) -> Self {
+        ConnectError::io()
+            .context("request to nakadi timed out")
+            .caused_by(err)
+    }
+}
+
 impl From<NakadiApiError> for ConnectError {
     fn from(api_error: NakadiApiError) -> Self {
         if let Some(status) = api_error.status() {
@@ -267,6 +578,7 @@ impl From<NakadiApiError> for ConnectError {
                 StatusCode::UNPROCESSABLE_ENTITY => {
                     ConnectError::unprocessable().caused_by(api_error)
                 }
+                StatusCode::CONFLICT => ConnectError::conflict().caused_by(api_error),
                 _ => ConnectError::other().caused_by(api_error),
             }
         } else if api_error.is_io_error() {
@@ -285,6 +597,9 @@ pub enum ConnectErrorKind {
     BadRequest,
     Io,
     Other,
+    Aborted,
+    Conflict,
+    NakadiError,
 }
 
 impl fmt::Display for ConnectErrorKind {
@@ -296,6 +611,9 @@ impl fmt::Display for ConnectErrorKind {
             ConnectErrorKind::BadRequest => write!(f, "bad request")?,
             ConnectErrorKind::Io => write!(f, "io")?,
             ConnectErrorKind::Other => write!(f, "other")?,
+            ConnectErrorKind::Aborted => write!(f, "connect aborted")?,
+            ConnectErrorKind::Conflict => write!(f, "conflict")?,
+            ConnectErrorKind::ServerError => write!(f, "nakadi error")?,
         }
         Ok(())
     }
@@ -309,6 +627,7 @@ pub struct StreamedBatchMeta {
     pub frame_id: usize,
 }
 
+/*
 /// `Connects` with extensions
 pub trait ConnectsExt: Connects + Sync {
     /// Get a stream of frames(lines) directly from Nakadi.
@@ -375,36 +694,40 @@ pub trait ConnectsExt: Connects + Sync {
         .boxed()
     }
 }
+*/
 
-impl<T> ConnectsExt for T where T: Connects + Sync {}
+// Sequence of backoffs after failed connect attempts
+const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
+    0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 10, 10, 10, 10, 10, 20, 20, 20, 20,
+    20, 30, 30, 30, 30, 30, 45, 45, 45, 45, 45, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 90, 90, 90,
+    90, 90, 90, 90, 90, 90, 90, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 180, 180, 180,
+    180, 180, 180, 180, 180, 180, 180, 240, 240, 240, 240, 240, 240, 240, 240, 240, 300, 300, 300,
+    300, 300, 300, 300, 300, 300, 300, 480, 480, 480, 480, 480, 480, 480, 480, 480, 480, 960, 960,
+    960, 960, 960, 960, 960, 960, 960, 960, 960, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920,
+    1920, 1920, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400, 3000, 3000, 3000, 3000,
+    3000, 3000, 3000, 3000, 3000, 3000, 3600,
+];
 
-impl Connects for Box<dyn Connects + Send + Sync> {
-    fn instrumentation(&self) -> Instrumentation {
-        self.as_ref().instrumentation()
+struct Backoff {
+    max: u64,
+    iter: Box<dyn Iterator<Item = u64> + Send + 'static>,
+}
+
+impl Backoff {
+    pub fn new(max: u64) -> Self {
+        let iter = Box::new(CONNECT_RETRY_BACKOFF_SECS.iter().copied());
+        Backoff { iter, max }
     }
 
-    /// Get a stream of chunks directly from Nakadi.
-    fn connect(&self, subscription_id: SubscriptionId) -> ConnectFuture<SubscriptionStreamChunks> {
-        self.as_ref().connect(subscription_id)
-    }
+    pub fn next(&mut self) -> Duration {
+        let d = if let Some(next) = self.iter.next() {
+            next
+        } else {
+            self.max
+        };
 
-    fn set_flow_id(&mut self, flow_id: FlowId) {
-        self.as_mut().set_flow_id(flow_id);
-    }
+        let d = std::cmp::min(d, self.max);
 
-    fn set_connect_stream_timeout_secs(
-        &mut self,
-        connect_stream_timeout_secs: ConnectStreamTimeoutSecs,
-    ) {
-        self.as_mut()
-            .set_connect_stream_timeout_secs(connect_stream_timeout_secs)
-    }
-
-    fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
-        self.as_mut().set_instrumentation(instrumentation)
-    }
-
-    fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
-        self.as_mut().stream_parameters_mut()
+        Duration::from_secs(d)
     }
 }

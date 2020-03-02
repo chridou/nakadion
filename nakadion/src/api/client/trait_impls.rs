@@ -25,6 +25,7 @@ impl MonitoringApi for ApiClient {
             self.urls().monitoring_cursor_distances(name),
             Method::POST,
             payload_to_send.into(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -41,6 +42,7 @@ impl MonitoringApi for ApiClient {
             self.urls().monitoring_cursor_lag(name),
             Method::POST,
             payload_to_send.into(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -52,7 +54,8 @@ impl MonitoringApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<Vec<Partition>> {
         let url = self.urls().monitoring_event_type_partitions(event_type);
-        self.get(url, flow_id.into()).boxed()
+        self.get(url, RequestMode::RetryAndTimeout, flow_id.into())
+            .boxed()
     }
 }
 
@@ -63,6 +66,7 @@ impl SchemaRegistryApi for ApiClient {
     fn list_event_types<T: Into<FlowId>>(&self, flow_id: T) -> ApiFuture<Vec<EventType>> {
         self.get(
             self.urls().schema_registry_list_event_types(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -80,6 +84,7 @@ impl SchemaRegistryApi for ApiClient {
             self.urls().schema_registry_create_event_type(),
             Method::POST,
             payload_to_send.into(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -91,7 +96,8 @@ impl SchemaRegistryApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<EventType> {
         let url = self.urls().schema_registry_get_event_type(name);
-        self.get(url, flow_id.into()).boxed()
+        self.get(url, RequestMode::RetryAndTimeout, flow_id.into())
+            .boxed()
     }
 
     fn update_event_type<T: Into<FlowId>>(
@@ -104,6 +110,7 @@ impl SchemaRegistryApi for ApiClient {
             self.urls().schema_registry_update_event_type(name),
             Method::PUT,
             serde_json::to_vec(event_type).unwrap().into(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -119,6 +126,7 @@ impl SchemaRegistryApi for ApiClient {
     ) -> ApiFuture<()> {
         self.delete(
             self.urls().schema_registry_delete_event_type(name),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
@@ -208,8 +216,14 @@ impl SubscriptionApi for ApiClient {
 
         let flow_id = flow_id.into();
         async move {
-            self.send_receive_payload(url, Method::POST, serialized.into(), flow_id)
-                .await
+            self.send_receive_payload(
+                url,
+                Method::POST,
+                serialized.into(),
+                RequestMode::RetryAndTimeout,
+                flow_id,
+            )
+            .await
         }
         .boxed()
     }
@@ -223,7 +237,8 @@ impl SubscriptionApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<Subscription> {
         let url = self.urls().subscriptions_get_subscription(id);
-        self.get(url, flow_id.into()).boxed()
+        self.get(url, RequestMode::RetryAndTimeout, flow_id.into())
+            .boxed()
     }
 
     fn list_subscriptions<T: Into<FlowId>>(
@@ -260,6 +275,7 @@ impl SubscriptionApi for ApiClient {
                 url,
                 Method::PUT,
                 serde_json::to_vec(input).unwrap().into(),
+                RequestMode::RetryAndTimeout,
                 flow_id.into(),
             )
             .boxed()
@@ -282,7 +298,8 @@ impl SubscriptionApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<()> {
         let url = self.urls().subscriptions_delete_subscription(id);
-        self.delete(url, flow_id.into()).boxed()
+        self.delete(url, RequestMode::RetryAndTimeout, flow_id.into())
+            .boxed()
     }
 
     /// Exposes the currently committed offsets of a subscription.
@@ -300,7 +317,7 @@ impl SubscriptionApi for ApiClient {
         };
 
         let url = self.urls().subscriptions_get_committed_offsets(id);
-        self.get::<EntityWrapper>(url, flow_id.into())
+        self.get::<EntityWrapper>(url, RequestMode::RetryAndTimeout, flow_id.into())
             .map_ok(|wrapper| wrapper.items)
             .boxed()
     }
@@ -312,7 +329,8 @@ impl SubscriptionApi for ApiClient {
         flow_id: T,
     ) -> ApiFuture<SubscriptionStats> {
         let url = self.urls().subscriptions_stats(id, show_time_lag);
-        self.get(url, flow_id.into()).boxed()
+        self.get(url, RequestMode::RetryAndTimeout, flow_id.into())
+            .boxed()
     }
 
     /// Reset subscription offsets to specified values.
@@ -334,11 +352,14 @@ impl SubscriptionApi for ApiClient {
             url,
             Method::PATCH,
             serde_json::to_vec(&data).unwrap().into(),
+            RequestMode::RetryAndTimeout,
             flow_id.into(),
         )
         .boxed()
     }
+}
 
+impl SubscriptionStreamApi for ApiClient {
     fn request_stream<'a, T: Into<FlowId>>(
         &'a self,
         subscription_id: SubscriptionId,
@@ -396,7 +417,9 @@ impl SubscriptionApi for ApiClient {
         }
         .boxed()
     }
+}
 
+impl SubscriptionCommitApi for ApiClient {
     fn commit_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
@@ -429,7 +452,7 @@ impl SubscriptionApi for ApiClient {
                     Method::POST,
                     serialized.into(),
                     headers,
-                    true,
+                    RequestMode::Simple,
                     flow_id,
                 )
                 .await?;

@@ -87,26 +87,82 @@ impl FromStr for PartialFailureStrategy {
 
 new_type! {
     #[doc="The time a publish attempt for an events batch may take.\n\n\
-    Default is 1000 ms\n"]
+    Default is 30 seconds\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct PublishAttemptTimeoutMillis(u64, env="PUBLISH_ATTEMPT_TIMEOUT_MILLIS");
 }
 
 impl Default for PublishAttemptTimeoutMillis {
     fn default() -> Self {
-        Self(1_000)
+        Self(30_000)
     }
 }
 
-new_type! {
-    #[doc="The a publishing the events batch including retries may take.\n\n\
-    Default is 5000 ms.\n"]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub millis struct PublishTimeoutMillis(u64, env="PUBLISH_TIMEOUT_MILLIS");
+/// The timeout for a complete publishing of events to Nakadi including retries
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PublishTimeout {
+    Infinite,
+    Millis(u64),
 }
-impl Default for PublishTimeoutMillis {
+
+impl PublishTimeout {
+    env_funs!("PUBLISH_TIMEOUT");
+
+    pub fn into_duration_opt(self) -> Option<Duration> {
+        match self {
+            PublishTimeout::Infinite => None,
+            PublishTimeout::Seconds(semilliscs) => Some(Duration::millis(millis)),
+        }
+    }
+}
+
+impl Default for PublishTimeout {
     fn default() -> Self {
-        Self(5_000)
+        Self::Infinite
+    }
+}
+
+impl<T> From<T> for PublishTimeout
+where
+    T: Into<u64>,
+{
+    fn from(v: T) -> Self {
+        Self::Seconds(v.into())
+    }
+}
+
+impl fmt::Display for PublishTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PublishTimeout::Infinite => write!(f, "infinite")?,
+            PublishTimeout::Seconds(secs) => write!(f, "{}", secs)?,
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for PublishTimeout {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn parse_after(s: &str) -> Result<PublishTimeout, Error> {
+            let s = s.trim();
+
+            if s.starts_with('{') {
+                return Ok(serde_json::from_str(s)?);
+            }
+
+            match s {
+                "infinite" => Ok(PublishTimeout::Infinite),
+                x => {
+                    let seconds: u64 = x.parse().map_err(|err| {
+                        Error::new(format!("{} is not a Publish timeout", s)).caused_by(err)
+                    })?;
+                    Ok(PublishTimeout::Seconds(seconds))
+                }
+            }
+        }
     }
 }
 
@@ -147,9 +203,9 @@ new_type! {
     #[doc="If true, retries are done on auth errors.\n\n\
     Default is false.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct PublishRetryOnAuthErrors(bool, env="PUBLISH_RETRY_ON_AUTH_ERRORS");
+    pub copy struct PublishRetryOnAuthError(bool, env="PUBLISH_RETRY_ON_AUTH_ERROR");
 }
-impl Default for PublishRetryOnAuthErrors {
+impl Default for PublishRetryOnAuthError {
     fn default() -> Self {
         Self(false)
     }
@@ -160,7 +216,7 @@ impl Default for PublishRetryOnAuthErrors {
 pub struct PublisherConfig {
     /// Timeout for a complete publishing including potential retries
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_millis: Option<PublishTimeoutMillis>,
+    pub timeout: Option<PublishTimeout>,
     /// Timeout for a single publish request with Nakadi
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt_timeout_millis: Option<PublishAttemptTimeoutMillis>,
@@ -175,7 +231,7 @@ pub struct PublisherConfig {
     pub max_retry_interval_millis: Option<PublishMaxRetryIntervalMillis>,
     /// Retry on authentication/authorization errors if `true`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry_on_auth_errors: Option<PublishRetryOnAuthErrors>,
+    pub retry_on_auth_error: Option<PublishRetryOnAuthError>,
     /// Strategy for handling partial failures
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partial_failure_strategy: Option<PartialFailureStrategy>,
@@ -207,8 +263,8 @@ impl PublisherConfig {
     ///
     /// All the env vars are prefixed with `<prefix>_`.
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
-        if self.timeout_millis.is_none() {
-            self.timeout_millis = PublishTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
+        if self.timeout.is_none() {
+            self.timeout = PublishTimeout::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.attempt_timeout_millis.is_none() {
@@ -240,8 +296,8 @@ impl PublisherConfig {
     }
 
     /// Timeout for a complete publishing including potential retries
-    pub fn timeout_millis<T: Into<PublishTimeoutMillis>>(mut self, v: T) -> Self {
-        self.timeout_millis = Some(v.into());
+    pub fn timeout<T: Into<PublishTimeout>>(mut self, v: T) -> Self {
+        self.timeout = Some(v.into());
         self
     }
     /// Timeout for a single publish request with Nakadi
@@ -274,8 +330,8 @@ impl PublisherConfig {
         self
     }
     /// Retry on authentication/authorization errors if `true`
-    pub fn retry_on_auth_errors<T: Into<PublishRetryOnAuthErrors>>(mut self, v: T) -> Self {
-        self.retry_on_auth_errors = Some(v.into());
+    pub fn retry_on_auth_error<T: Into<PublishRetryOnAuthError>>(mut self, v: T) -> Self {
+        self.retry_on_auth_error = Some(v.into());
         self
     }
     /// Strategy for handling partial failures
@@ -322,7 +378,9 @@ pub trait PublishesEvents {
 /// ## `on_retry`
 ///
 /// A closure to be called before a retry. The error which caused the retry and
-/// the time until the retry will be made is passed.
+/// the time until the retry will be made is passed. This closure overrides the current one
+/// and will be used for all subsequent clones of this instance. This allows
+/// users to give context on the call site.
 #[derive(Clone)]
 pub struct Publisher<C> {
     config: PublisherConfig,
@@ -384,7 +442,7 @@ where
         flow_id: FlowId,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(self.config.timeout_millis.unwrap_or_default().into());
+        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
@@ -405,7 +463,7 @@ where
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
-        let retry_on_auth_errors = self.config.retry_on_auth_errors.unwrap_or_default().into();
+        let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
 
         let strategy = self.config.partial_failure_strategy.unwrap_or_default();
 
@@ -542,7 +600,7 @@ where
         flow_id: T,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(self.config.timeout_millis.unwrap_or_default().into());
+        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
@@ -563,7 +621,7 @@ where
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
-        let retry_on_auth_errors = self.config.retry_on_auth_errors.unwrap_or_default().into();
+        let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
         let bytes = events.into();
         let flow_id = flow_id.into();
         async move {

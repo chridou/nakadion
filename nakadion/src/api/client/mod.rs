@@ -30,6 +30,13 @@ mod trait_impls;
 
 const SCHEME_BEARER: &str = "Bearer";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RequestMode {
+    RetryAndTimeout,
+    Timeout,
+    Simple,
+}
+
 new_type! {
     #[doc="The time a request attempt to Nakadi may take.\n\n\
     Default is 1000 ms\n"]
@@ -274,7 +281,19 @@ impl Builder {
 ///
 /// The actual HTTP client is pluggable via the `DispatchHttpRequest` trait.
 ///
-/// The `ApiClient` does not do any retry or timeout management.
+/// The `ApiClient` does retries with exponential backoff and jitter except
+/// for the following trait methods:
+///
+/// * `SubscriptionApi::request_stream`
+/// * `SubscriptionApi::commit_cursors`
+/// * `PublishApi::publish_events_batch`
+///
+/// ## `on_retry`
+///
+/// A closure to be called before a retry. The error which caused the retry and
+/// the time until the retry will be made is passed. This closure overrides the current one
+/// and will be used for all subsequent clones of this instance. This allows
+/// users to give context on the call site.
 #[derive(Clone)]
 pub struct ApiClient {
     inner: Arc<Inner>,
@@ -306,10 +325,11 @@ impl ApiClient {
         url: Url,
         method: Method,
         payload: Bytes,
+        mode: RequestMode,
         flow_id: FlowId,
     ) -> Result<R, NakadiApiError> {
         let response = self
-            .request(&url, method, payload, HeaderMap::default(), true, flow_id)
+            .request(&url, method, payload, HeaderMap::default(), mode, flow_id)
             .await?;
 
         deserialize_stream(response.into_body()).await
@@ -318,6 +338,7 @@ impl ApiClient {
     pub(crate) async fn get<R: DeserializeOwned>(
         &self,
         url: Url,
+        mode: RequestMode,
         flow_id: FlowId,
     ) -> Result<R, NakadiApiError> {
         let response = self
@@ -326,7 +347,7 @@ impl ApiClient {
                 Method::GET,
                 Bytes::default(),
                 HeaderMap::default(),
-                true,
+                mode,
                 flow_id,
             )
             .await?;
@@ -339,20 +360,26 @@ impl ApiClient {
         url: Url,
         method: Method,
         payload: Bytes,
+        mode: RequestMode,
         flow_id: FlowId,
     ) -> Result<(), NakadiApiError> {
-        self.request(&url, method, payload, HeaderMap::default(), true, flow_id)
+        self.request(&url, method, payload, HeaderMap::default(), mode, flow_id)
             .map_ok(|_| ())
             .await
     }
 
-    async fn delete(&self, url: Url, flow_id: FlowId) -> Result<(), NakadiApiError> {
+    async fn delete(
+        &self,
+        url: Url,
+        mode: RequestMode,
+        flow_id: FlowId,
+    ) -> Result<(), NakadiApiError> {
         self.request(
             &url,
             Method::DELETE,
             Bytes::default(),
             HeaderMap::default(),
-            true,
+            mode,
             flow_id,
         )
         .map_ok(|_| ())
@@ -365,11 +392,11 @@ impl ApiClient {
         method: Method,
         body_bytes: Bytes,
         headers: HeaderMap,
-        retry: bool,
+        mode: RequestMode,
         flow_id: FlowId,
     ) -> Result<Response<BytesStream>, NakadiApiError> {
         let attempt_timeout = self.inner.attempt_timeout_millis.into();
-        if retry {
+        if mode == RequestMode::RetryAndTimeout {
             let mut backoff = ExponentialBackoff::default();
             backoff.max_elapsed_time = self.inner.timeout_millis.map(|t| t.into());
             backoff.max_interval = self.inner.max_retry_interval_millis.into();
@@ -430,15 +457,13 @@ impl ApiClient {
                 }
             }
         } else {
+            let timeout = if mode == RequestMode::Timeout {
+                Some(attempt_timeout)
+            } else {
+                None
+            };
             let rsp = self
-                .remote(
-                    url,
-                    method,
-                    body_bytes,
-                    headers,
-                    flow_id,
-                    Some(attempt_timeout),
-                )
+                .remote(url, method, body_bytes, headers, flow_id, timeout)
                 .await?;
 
             if rsp.status().is_success() {
