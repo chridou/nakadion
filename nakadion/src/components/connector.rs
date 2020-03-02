@@ -34,9 +34,9 @@ pub type BatchStream = BoxStream<'static, Result<BatchLine, BatchLineError>>;
 new_type! {
     #[doc="If `true` abort the consumer when an auth error occurs while connecting to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct ConnectorAbortOnAuthError(bool, env="CONNECTOR_ABORT_ON_AUTH_ERROR");
+    pub copy struct ConnectAbortOnAuthError(bool, env="CONNECT_ABORT_ON_AUTH_ERROR");
 }
-impl Default for ConnectorAbortOnAuthError {
+impl Default for ConnectAbortOnAuthError {
     fn default() -> Self {
         false.into()
     }
@@ -44,9 +44,9 @@ impl Default for ConnectorAbortOnAuthError {
 new_type! {
     #[doc="If `true` abort the consumer when a subscription does not exist when connection to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct ConnectorAbortOnSubscriptionNotFound(bool, env="CONNECTOR_ABORT_ON_SUBSCRIPTION_NOT_FOUND");
+    pub copy struct ConnectAbortOnSubscriptionNotFound(bool, env="CONNECT_ABORT_ON_SUBSCRIPTION_NOT_FOUND");
 }
-impl Default for ConnectorAbortOnSubscriptionNotFound {
+impl Default for ConnectAbortOnSubscriptionNotFound {
     fn default() -> Self {
         true.into()
     }
@@ -55,15 +55,15 @@ new_type! {
     #[doc="The maximum time for connecting to a stream.\n\n\
     Default is infinite."]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct ConnectorTimeoutSecs(u64, env="CONNECTOR_TIMEOUT_SECS");
+    pub secs struct ConnectTimeoutSecs(u64, env="CONNECT_TIMEOUT_SECS");
 }
 
 new_type! {
     #[doc="The maximum retry delay between failed attempts to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct ConnectorMaxRetryDelaySecs(u64, env="CONNECTOR_MAX_RETRY_DELAY_SECS");
+    pub secs struct ConnectMaxRetryDelaySecs(u64, env="CONNECT_MAX_RETRY_DELAY_SECS");
 }
-impl Default for ConnectorMaxRetryDelaySecs {
+impl Default for ConnectMaxRetryDelaySecs {
     fn default() -> Self {
         300.into()
     }
@@ -71,9 +71,9 @@ impl Default for ConnectorMaxRetryDelaySecs {
 new_type! {
     #[doc="The timeout for a request made to Nakadi to connect to a stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct ConnectorAttemptTimeoutSecs(u64, env="CONNECTOR_ATTEMPT_TIMEOUT_SECS");
+    pub secs struct ConnectAttemptTimeoutSecs(u64, env="CONNECT_ATTEMPT_TIMEOUT_SECS");
 }
-impl Default for ConnectorAttemptTimeoutSecs {
+impl Default for ConnectAttemptTimeoutSecs {
     fn default() -> Self {
         10.into()
     }
@@ -81,29 +81,29 @@ impl Default for ConnectorAttemptTimeoutSecs {
 
 /// The timeout for a request made to Nakadi to connect to a stream including retries
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum ConnectorTimeout {
+pub enum ConnectTimeout {
     Infinite,
     Seconds(u64),
 }
 
-impl ConnectorTimeout {
-    env_funs!("CONNECTOR_TIMEOUT");
+impl ConnectTimeout {
+    env_funs!("CONNECT_TIMEOUT");
 
     pub fn into_duration_opt(self) -> Option<Duration> {
         match self {
-            ConnectorTimeout::Infinite => None,
-            ConnectorTimeout::Seconds(secs) => Some(Duration::from_secs(secs)),
+            ConnectTimeout::Infinite => None,
+            ConnectTimeout::Seconds(secs) => Some(Duration::from_secs(secs)),
         }
     }
 }
 
-impl Default for ConnectorTimeout {
+impl Default for ConnectTimeout {
     fn default() -> Self {
         Self::Infinite
     }
 }
 
-impl<T> From<T> for ConnectorTimeout
+impl<T> From<T> for ConnectTimeout
 where
     T: Into<u64>,
 {
@@ -112,22 +112,22 @@ where
     }
 }
 
-impl fmt::Display for ConnectorTimeout {
+impl fmt::Display for ConnectTimeout {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConnectorTimeout::Infinite => write!(f, "infinite")?,
-            ConnectorTimeout::Seconds(secs) => write!(f, "{}", secs)?,
+            ConnectTimeout::Infinite => write!(f, "infinite")?,
+            ConnectTimeout::Seconds(secs) => write!(f, "{} s", secs)?,
         }
 
         Ok(())
     }
 }
 
-impl FromStr for ConnectorTimeout {
+impl FromStr for ConnectTimeout {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fn parse_after(s: &str) -> Result<ConnectorTimeout, Error> {
+        fn parse_after(s: &str) -> Result<ConnectTimeout, Error> {
             let s = s.trim();
 
             if s.starts_with('{') {
@@ -135,12 +135,12 @@ impl FromStr for ConnectorTimeout {
             }
 
             match s {
-                "infinite" => Ok(ConnectorTimeout::Infinite),
+                "infinite" => Ok(ConnectTimeout::Infinite),
                 x => {
                     let seconds: u64 = x.parse().map_err(|err| {
                         Error::new(format!("{} is not a connector timeout", s)).caused_by(err)
                     })?;
-                    Ok(ConnectorTimeout::Seconds(seconds))
+                    Ok(ConnectTimeout::Seconds(seconds))
                 }
             }
         }
@@ -149,22 +149,22 @@ impl FromStr for ConnectorTimeout {
 
 /// Parameters to configure the `Connector`
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectorConfig {
+pub struct ConnectConfig {
     pub stream_params: Option<StreamParameters>,
-    pub abort_on_auth_error: Option<ConnectorAbortOnAuthError>,
+    pub abort_on_auth_error: Option<ConnectAbortOnAuthError>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
-    pub abort_connect_on_subscription_not_found: Option<ConnectorAbortOnSubscriptionNotFound>,
+    pub abort_connect_on_subscription_not_found: Option<ConnectAbortOnSubscriptionNotFound>,
     /// The maximum time for until a connection to a stream has to be established.
     ///
     /// Default is to retry indefinitely
-    pub timeout_secs: Option<ConnectorTimeout>,
+    pub timeout_secs: Option<ConnectTimeout>,
     /// The maximum retry delay between failed attempts to connect to a stream.
-    pub max_retry_delay_secs: Option<ConnectorMaxRetryDelaySecs>,
+    pub max_retry_delay_secs: Option<ConnectMaxRetryDelaySecs>,
     /// The timeout for a request made to Nakadi to connect to a stream.
-    pub attempt_timeout_secs: Option<ConnectorAttemptTimeoutSecs>,
+    pub attempt_timeout_secs: Option<ConnectAttemptTimeoutSecs>,
 }
 
-impl ConnectorConfig {
+impl ConnectConfig {
     pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.update_from_env()?;
@@ -186,21 +186,21 @@ impl ConnectorConfig {
             self.stream_params(StreamParameters::from_env_prefixed(prefix)?);
         }
         if self.abort_on_auth_error.is_none() {
-            self.abort_on_auth_error(ConnectorAbortOnAuthError::from_env_prefixed(prefix)?);
+            self.abort_on_auth_error(ConnectAbortOnAuthError::from_env_prefixed(prefix)?);
         }
         if self.abort_connect_on_subscription_not_found.is_none() {
             self.abort_connect_on_subscription_not_found(
-                ConnectorAbortOnSubscriptionNotFound::from_env_prefixed(prefix)?,
+                ConnectAbortOnSubscriptionNotFound::from_env_prefixed(prefix)?,
             );
         }
         if self.timeout_secs.is_none() {
-            self.timeout_secs(ConnectorTimeout::from_env_prefixed(prefix)?);
+            self.timeout_secs(ConnectTimeout::from_env_prefixed(prefix)?);
         }
         if self.max_retry_delay_secs.is_none() {
-            self.max_retry_delay_secs(ConnectorMaxRetryDelaySecs::from_env_prefixed(prefix)?);
+            self.max_retry_delay_secs(ConnectMaxRetryDelaySecs::from_env_prefixed(prefix)?);
         }
         if self.attempt_timeout_secs.is_none() {
-            self.attempt_timeout_secs(ConnectorAttemptTimeoutSecs::from_env_prefixed(prefix)?);
+            self.attempt_timeout_secs(ConnectAttemptTimeoutSecs::from_env_prefixed(prefix)?);
         }
 
         Ok(())
@@ -210,28 +210,26 @@ impl ConnectorConfig {
         self.stream_params = Some(v.into());
         self
     }
-    pub fn abort_on_auth_error<T: Into<ConnectorAbortOnAuthError>>(mut self, v: T) -> Self {
+    pub fn abort_on_auth_error<T: Into<ConnectAbortOnAuthError>>(mut self, v: T) -> Self {
         self.abort_on_auth_error = Some(v.into());
         self
     }
-    pub fn abort_connect_on_subscription_not_found<
-        T: Into<ConnectorAbortOnSubscriptionNotFound>,
-    >(
+    pub fn abort_connect_on_subscription_not_found<T: Into<ConnectAbortOnSubscriptionNotFound>>(
         mut self,
         v: T,
     ) -> Self {
         self.abort_connect_on_subscription_not_found = Some(v.into());
         self
     }
-    pub fn timeout_secs<T: Into<ConnectorTimeout>>(mut self, v: T) -> Self {
+    pub fn timeout_secs<T: Into<ConnectTimeout>>(mut self, v: T) -> Self {
         self.timeout_secs = Some(v.into());
         self
     }
-    pub fn max_retry_delay_secs<T: Into<ConnectorMaxRetryDelaySecs>>(mut self, v: T) -> Self {
+    pub fn max_retry_delay_secs<T: Into<ConnectMaxRetryDelaySecs>>(mut self, v: T) -> Self {
         self.max_retry_delay_secs = Some(v.into());
         self
     }
-    pub fn attempt_timeout_secs<T: Into<ConnectorAttemptTimeoutSecs>>(mut self, v: T) -> Self {
+    pub fn attempt_timeout_secs<T: Into<ConnectAttemptTimeoutSecs>>(mut self, v: T) -> Self {
         self.attempt_timeout_secs = Some(v.into());
         self
     }
@@ -247,7 +245,7 @@ impl ConnectorConfig {
 /// users to give context on the call site.
 pub struct Connector<C> {
     stream_client: C,
-    config: ConnectorConfig,
+    config: ConnectConfig,
     flow_id: Option<FlowId>,
     on_retry_callback: Arc<dyn Fn(&ConnectError, Duration) + Send + Sync + 'static>,
     instrumentation: Instrumentation,
@@ -257,7 +255,7 @@ impl<C> Connector<C>
 where
     C: SubscriptionStreamApi + Send + Sync + 'static,
 {
-    pub fn new_with_config(stream_client: C, config: ConnectorConfig) -> Self {
+    pub fn new_with_config(stream_client: C, config: ConnectConfig) -> Self {
         Self {
             stream_client,
             config,
@@ -270,7 +268,7 @@ where
     pub fn new(stream_client: C) -> Self {
         Self {
             stream_client,
-            config: ConnectorConfig::default(),
+            config: ConnectConfig::default(),
             flow_id: None,
             on_retry_callback: Arc::new(|_, _| {}),
             instrumentation: Instrumentation::default(),
@@ -320,12 +318,12 @@ where
         self.flow_id = Some(flow_id);
     }
 
-    fn configure(mut self, config: ConnectorConfig) -> Self {
+    fn configure(mut self, config: ConnectConfig) -> Self {
         self.set_config(config);
         self
     }
 
-    fn set_config(&mut self, config: ConnectorConfig) {
+    fn set_config(&mut self, config: ConnectConfig) {
         self.config = config;
     }
 
@@ -337,11 +335,11 @@ where
         &mut self.config.stream_params
     }
 
-    fn config(&self) -> &ConnectorConfig {
+    fn config(&self) -> &ConnectConfig {
         &self.config
     }
 
-    fn config_mut(&self) -> &mut ConnectorConfig {
+    fn config_mut(&self) -> &mut ConnectConfig {
         &mut self.config
     }
 

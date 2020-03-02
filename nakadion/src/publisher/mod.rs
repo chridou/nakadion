@@ -111,7 +111,7 @@ impl PublishTimeout {
     pub fn into_duration_opt(self) -> Option<Duration> {
         match self {
             PublishTimeout::Infinite => None,
-            PublishTimeout::Seconds(semilliscs) => Some(Duration::millis(millis)),
+            PublishTimeout::Millis(millis) => Some(Duration::millis(millis)),
         }
     }
 }
@@ -135,7 +135,7 @@ impl fmt::Display for PublishTimeout {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PublishTimeout::Infinite => write!(f, "infinite")?,
-            PublishTimeout::Seconds(secs) => write!(f, "{}", secs)?,
+            PublishTimeout::Millis(millis) => write!(f, "{} ms", millis)?,
         }
 
         Ok(())
@@ -156,10 +156,10 @@ impl FromStr for PublishTimeout {
             match s {
                 "infinite" => Ok(PublishTimeout::Infinite),
                 x => {
-                    let seconds: u64 = x.parse().map_err(|err| {
-                        Error::new(format!("{} is not a Publish timeout", s)).caused_by(err)
+                    let millis: u64 = x.parse().map_err(|err| {
+                        Error::new(format!("{} is not a publish timeout", s)).caused_by(err)
                     })?;
-                    Ok(PublishTimeout::Seconds(seconds))
+                    Ok(PublishTimeout::Millis(millis))
                 }
             }
         }

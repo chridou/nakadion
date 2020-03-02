@@ -40,11 +40,20 @@ pub use crate::logging::slog_adapter::SlogLogger;
 use crate::logging::Logger;
 pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogger};
 pub use config_types::{
-    AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder,
-    CommitAttemptTimeoutMillis, CommitRetryDelayMillis, CommitStrategy,
-    ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs, DispatchMode,
-    HandlerInactivityTimeoutSecs, MaxConnectTimeSecs, PartitionInactivityTimeoutSecs,
-    StreamDeadPolicy, TickIntervalMillis, WarnStreamStalledSecs,
+    Builder, CommitStrategy, DispatchMode, HandlerInactivityTimeoutSecs,
+    PartitionInactivityTimeoutSecs, StreamDeadPolicy, TickIntervalMillis, WarnStreamStalledSecs,
+};
+
+use crate::components::{
+    committer::{
+        CommitAttemptTimeoutMillis, CommitConfig, CommitInitialRetryIntervalMillis,
+        CommitMaxRetryIntervalMillis, CommitRetryIntervalMultiplier, CommitRetryOnAuthError,
+        CommitTimeoutMillis,
+    },
+    connector::{
+        ConnectAbortOnAuthError, ConnectAbortOnSubscriptionNotFound, ConnectAttemptTimeoutSecs,
+        ConnectConfig, ConnectMaxRetryDelaySecs, ConnectTimeout, ConnectTimeoutSecs,
+    },
 };
 pub use error::*;
 
@@ -313,7 +322,6 @@ where
 #[derive(Debug, Clone)]
 pub(crate) struct Config {
     pub subscription_id: SubscriptionId,
-    pub stream_parameters: StreamParameters,
     pub instrumentation: Instrumentation,
     pub tick_interval: TickIntervalMillis,
     pub handler_inactivity_timeout: HandlerInactivityTimeoutSecs,
@@ -322,11 +330,6 @@ pub(crate) struct Config {
     pub warn_stream_stalled: Option<WarnStreamStalledSecs>,
     pub dispatch_mode: DispatchMode,
     pub commit_strategy: CommitStrategy,
-    pub abort_connect_on_auth_error: AbortConnectOnAuthError,
-    pub abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
-    pub max_connect_time: Option<MaxConnectTimeSecs>,
-    pub connect_stream_retry_max_delay: ConnectStreamRetryMaxDelaySecs,
-    pub connect_stream_timeout: ConnectStreamTimeoutSecs,
-    pub commit_attempt_timeout: CommitAttemptTimeoutMillis,
-    pub commit_retry_delay: CommitRetryDelayMillis,
+    pub connect_config: ConnectConfig,
+    pub commit_config: CommitConfig,
 }

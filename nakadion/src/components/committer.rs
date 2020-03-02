@@ -89,7 +89,7 @@ impl Default for CommitRetryOnAuthError {
 
 /// Configuration for a publisher
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct CommitterConfig {
+pub struct CommitConfig {
     /// Timeout for a complete commit including potential retries
     #[serde(default)]
     pub timeout_millis: Option<CommitTimeoutMillis>,
@@ -110,7 +110,7 @@ pub struct CommitterConfig {
     pub retry_on_auth_error: Option<CommitRetryOnAuthError>,
 }
 
-impl CommitterConfig {
+impl CommitConfig {
     pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.update_from_env()?;
@@ -208,8 +208,8 @@ pub struct Committer<C> {
     subscription_id: SubscriptionId,
     stream_id: StreamId,
     instrumentation: Instrumentation,
-    config: CommitterConfig,
-    on_retry_callback: Arc<dyn Fn(&CommitError, Duration) + Send + Sync + 'static>,
+    config: CommitConfig,
+    logger: Arc<dyn LoggingAdapter + Send + Sync + 'static>,
 }
 
 impl<C> Committer<C>
@@ -225,7 +225,7 @@ where
             stream_id,
             instrumentation: Instrumentation::default(),
             timeout_millis: CommitAttemptTimeoutMillis::default(),
-            config: CommitterConfig::default(),
+            config: CommitConfig::default(),
         }
     }
 
@@ -271,7 +271,7 @@ where
         self.flow_id = Some(flow_id);
     }
 
-    fn set_config(&mut self, config: CommitterConfig) {
+    fn set_config(&mut self, config: CommitConfig) {
         self.config = config
     }
 
@@ -287,7 +287,7 @@ where
         self.stream_id
     }
 
-    fn config(&self) -> &CommitterConfig {
+    fn config(&self) -> &CommitConfig {
         &self.config
     }
 

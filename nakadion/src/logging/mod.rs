@@ -8,7 +8,7 @@ use crate::nakadi_types::{
     subscription::{StreamId, SubscriptionId},
 };
 
-pub(crate) trait Logs {
+pub trait Logs {
     fn debug(&self, args: Arguments);
     fn info(&self, args: Arguments);
     fn warn(&self, args: Arguments);
