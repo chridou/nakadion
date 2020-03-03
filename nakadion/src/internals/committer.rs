@@ -18,7 +18,7 @@ use crate::components::committer::ProvidesCommitter;
 
 use crate::consumer::CommitStrategy;
 use crate::internals::StreamState;
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 pub struct CommitData {
     pub cursor: SubscriptionCursor,

@@ -19,7 +19,7 @@ use crate::internals::{
     controller::{types::ControllerParams, Controller},
     ConsumerState,
 };
-use crate::logging::Logs;
+use crate::logging::Logger;
 pub use crate::nakadi_types::{
     subscription::{
         BatchFlushTimeoutSecs, BatchLimit, BatchTimespanSecs, MaxUncommittedEvents, StreamLimit,

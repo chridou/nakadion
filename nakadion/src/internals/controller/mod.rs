@@ -21,7 +21,7 @@ use crate::internals::{
     dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},
     EnrichedErr, EnrichedOk, StreamState,
 };
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 mod connect_stream;
 mod partition_tracker;

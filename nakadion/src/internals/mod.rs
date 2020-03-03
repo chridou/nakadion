@@ -6,7 +6,7 @@ use std::sync::{
 };
 
 use crate::consumer::{Config, ConsumerError, Instrumentation};
-use crate::logging::{Logger, Logs};
+use crate::logging::{ContextualLogger, Logs};
 use crate::nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId};
 
 pub mod committer;
@@ -21,12 +21,12 @@ pub mod worker;
 pub(crate) struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
     config: Arc<Config>,
-    logger: Logger,
+    logger: ContextualLogger,
     instrumentation: Instrumentation,
 }
 
 impl ConsumerState {
-    pub fn new(config: Config, logger: Logger) -> Self {
+    pub fn new(config: Config, logger: ContextualLogger) -> Self {
         let subscription_id = config.subscription_id;
         let instrumentation = config.instrumentation.clone();
         Self {
@@ -77,7 +77,7 @@ impl ConsumerState {
     }
 }
 
-impl Logs for ConsumerState {
+impl Logger for ConsumerState {
     #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);
@@ -107,7 +107,7 @@ pub(crate) struct StreamState {
     config: Arc<Config>,
     is_cancelled: Arc<AtomicBool>,
     is_globally_cancelled: Weak<AtomicBool>,
-    logger: Logger,
+    logger: ContextualLogger,
     instrumentation: Instrumentation,
 }
 
@@ -116,7 +116,7 @@ impl StreamState {
         stream_id: StreamId,
         config: Arc<Config>,
         is_globally_cancelled: Weak<AtomicBool>,
-        logger: Logger,
+        logger: ContextualLogger,
         instrumentation: Instrumentation,
     ) -> Self {
         Self {
@@ -168,7 +168,7 @@ impl StreamState {
         self.config().subscription_id
     }
 
-    pub fn logger(&self) -> &Logger {
+    pub fn logger(&self) -> &ContextualLogger {
         &self.logger
     }
 
@@ -177,7 +177,7 @@ impl StreamState {
     }
 }
 
-impl Logs for StreamState {
+impl Logger for StreamState {
     #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);

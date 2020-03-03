@@ -16,7 +16,7 @@ use crate::internals::{
     committer::*, dispatcher::DispatcherMessage, worker::*, EnrichedErr, EnrichedOk,
     EnrichedResult, StreamState,
 };
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 use crate::nakadi_types::event_type::EventTypeName;
 

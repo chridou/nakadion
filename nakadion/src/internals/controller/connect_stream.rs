@@ -9,7 +9,7 @@ use crate::components::connector::{ConnectErrorKind, ProvidesConnector};
 use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::ConsumerState;
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 pub(crate) async fn connect_with_retries<C: ProvidesConnector>(
     connector_provider: C,

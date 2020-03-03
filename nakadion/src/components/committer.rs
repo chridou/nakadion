@@ -12,6 +12,7 @@ use tokio::time::{delay_for, timeout};
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
+use crate::logging::Logger;
 use crate::nakadi_types::{
     subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
     Error, FlowId,
@@ -209,7 +210,7 @@ pub struct Committer<C> {
     stream_id: StreamId,
     instrumentation: Instrumentation,
     config: CommitConfig,
-    logger: Arc<dyn LoggingAdapter + Send + Sync + 'static>,
+    logger: Arc<dyn Logger>,
 }
 
 impl<C> Committer<C>

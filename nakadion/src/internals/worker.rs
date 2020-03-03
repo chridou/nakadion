@@ -101,7 +101,7 @@ mod processor {
     };
     use crate::instrumentation::Instruments;
     use crate::internals::{committer::CommitData, EnrichedOk, EnrichedResult, StreamState};
-    use crate::logging::{Logger, Logs};
+    use crate::logging::{ContextualLogger, Logger};
 
     use super::WorkerMessage;
 
@@ -306,7 +306,7 @@ mod processor {
         pub assignment: HandlerAssignment,
         pub inactivity_after: HandlerInactivityTimeoutSecs,
         pub notified_on_inactivity: bool,
-        pub logger: Option<Logger>,
+        pub logger: Option<ContextualLogger>,
     }
 
     impl HandlerSlot {
@@ -399,14 +399,14 @@ mod processor {
 
         pub fn with_logger<F>(&self, f: F)
         where
-            F: Fn(&Logger),
+            F: Fn(&ContextualLogger),
         {
             if let Some(ref logger) = self.logger {
                 f(logger)
             }
         }
 
-        pub fn set_logger(&mut self, logger: &Logger) {
+        pub fn set_logger(&mut self, logger: &ContextualLogger) {
             let logger = match self.assignment.event_type_and_partition() {
                 (Some(e), Some(p)) => logger
                     .with_event_type(e.clone())

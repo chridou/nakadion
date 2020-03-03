@@ -9,7 +9,7 @@ use crate::components::streams::BatchLine;
 use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
-use crate::logging::Logs;
+use crate::logging::Logger;
 use crate::nakadi_types::subscription::EventTypePartition;
 
 mod all_seq;

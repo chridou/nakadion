@@ -6,7 +6,7 @@ use crate::components::committer::ProvidesCommitter;
 use crate::consumer::Config;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{committer::*, worker::*, EnrichedResult, StreamState};
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 use super::DispatcherMessage;
 
