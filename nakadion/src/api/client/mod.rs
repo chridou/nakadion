@@ -579,7 +579,7 @@ async fn deserialize_stream<'a, T: DeserializeOwned>(
                         .caused_by(err)
                 })?
                 .chars()
-                .take(20)
+                .take(50)
                 .collect();
             let message = format!("Could not deserialize '{}' (maybe more)", not_deserialized);
             Err(NakadiApiError::other().with_context(message).caused_by(err))

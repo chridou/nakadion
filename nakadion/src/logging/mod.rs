@@ -15,14 +15,22 @@ pub trait Logger: Send + Sync + 'static {
     fn error(&self, args: Arguments);
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct DevNullLogger;
-
-impl Logger for DevNullLogger {
-    fn debug(&self, _args: Arguments) {}
-    fn info(&self, _args: Arguments) {}
-    fn warn(&self, _args: Arguments) {}
-    fn error(&self, _args: Arguments) {}
+impl<T> Logger for T
+where
+    T: LoggingAdapter,
+{
+    fn debug(&self, args: Arguments) {
+        LoggingAdapter::debug(self, &LoggingContext::default(), args)
+    }
+    fn info(&self, args: Arguments) {
+        LoggingAdapter::info(self, &LoggingContext::default(), args)
+    }
+    fn warn(&self, args: Arguments) {
+        LoggingAdapter::warn(self, &LoggingContext::default(), args)
+    }
+    fn error(&self, args: Arguments) {
+        LoggingAdapter::error(self, &LoggingContext::default(), args)
+    }
 }
 
 #[derive(Clone)]

@@ -37,9 +37,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nakadi_base_url(nakadi_base_url)
         .finish(NoAuthAccessTokenProvider)?;
 
-    let publisher = Publisher::new(api_client.clone());
-
     remove_subscriptions(api_client.clone()).await?;
+
+    api_check(&api_client).await?;
+
+    let publisher = Publisher::new(api_client.clone());
 
     println!("Query registered event types");
     let registered_event_types = api_client.list_event_types(RandomFlowId).await?;
@@ -359,7 +361,7 @@ async fn wait_for_all_consumed(
             .get_subscription_stats(subscription_id, false, ())
             .await?;
 
-        println!("{} unconsumed events", stats.unconsumed_events());
+        println!("{:?} unconsumed events", stats.unconsumed_events());
         if stats.all_events_consumed() {
             println!("ALL EVENTS CONSUMED");
             handle.stop();
@@ -508,32 +510,6 @@ struct Payload {
     count: usize,
 }
 
-async fn api_check(api_client: ApiClient) -> Result<(), Error> {
-    Ok(())
-}
-
-async fn check_monitoring_api(api_client: ApiClient) -> Result<(), Error> {
-    println!("Monitoring: get event type partitions");
-    let partitions = api_client
-        .get_event_type_partitions(&EventTypeName::new(EVENT_TYPE_A), ())
-        .await?;
-
-    println!("{:#?}", partitions);
-
-    Ok(())
-}
-
-async fn check_schema_registry_api(api_client: ApiClient) -> Result<(), Error> {
-    println!("Schema registry: get event type partitions");
-    let event_type = api_client
-        .get_event_type(&EventTypeName::new(EVENT_TYPE_A), ())
-        .await?;
-
-    println!("{:#?}", event_type);
-
-    Ok(())
-}
-
 async fn remove_subscriptions(api_client: ApiClient) -> Result<(), Error> {
     for event_type in [EVENT_TYPE_A, EVENT_TYPE_B].iter() {
         let event_type = EventTypeName::new(*event_type);
@@ -556,13 +532,174 @@ async fn remove_subscriptions(api_client: ApiClient) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(not(feature = "reqwest"))]
-fn main() {
-    panic!("Please enable the `reqwest` feature which is a default feature");
+async fn api_check(api_client: &ApiClient) -> Result<(), Error> {
+    println!("======= API CHECK START ======");
+    let event_type_name = EventTypeName::new("api_test_event");
+
+    if let Err(err) = api_client.delete_event_type(&event_type_name, ()).await {
+        println!("Event not deleted: {}", err);
+    }
+
+    println!("Create event type {}", event_type_name);
+    let event_type = EventTypeInput::builder()
+        .name(event_type_name.clone())
+        .owning_application("test-app")
+        .category(Category::Business)
+        .enrichment_strategy(EnrichmentStrategy::MetadataEnrichment)
+        .compatibility_mode(CompatibilityMode::None)
+        .schema(EventTypeSchemaInput::json_schema_parsed(
+            r#"{"description":"test event b","properties":{"count":{"type":"integer"}},"required":["count"]}"#
+        )?)
+        .partition_strategy(PartitionStrategy::Hash)
+        .partition_key_fields("count")
+        .cleanup_policy(CleanupPolicy::Delete)
+        .default_statistic(EventTypeStatistics::new(100, 1_000, 5, 5))
+        .options(EventTypeOptions::default())
+        .audience(EventTypeAudience::CompanyInternal)
+        .build()?;
+
+    api_client
+        .create_event_type(&event_type, RandomFlowId)
+        .await?;
+
+    println!("Publish api check events");
+    let events: Vec<_> = (0..1_000)
+        .map(|n| Payload { count: n + 1 })
+        .map(|data| BusinessEventPub {
+            data,
+            metadata: EventMetaDataPub::new(Eid),
+        })
+        .collect();
+
+    let publisher = Publisher::new(api_client.clone());
+    for batch in events.chunks(100) {
+        if let Err(err) = publisher.publish_events(&event_type_name, batch, ()).await {
+            println!("{:#?}", err);
+            return Err(Error::from_error(err));
+        }
+    }
+
+    check_monitoring_api(api_client, &event_type_name).await?;
+    check_schema_registry_api(api_client, &event_type_name).await?;
+    check_subscription_api(api_client, &event_type_name).await?;
+
+    api_client.delete_event_type(&event_type_name, ()).await?;
+
+    println!("======= API CHECK END ======");
+
+    Ok(())
+}
+
+async fn check_monitoring_api(
+    api_client: &ApiClient,
+    event_type_name: &EventTypeName,
+) -> Result<(), Error> {
+    use nakadi_types::partition::{CursorDistanceQuery, CursorOffset};
+    println!("Monitoring: get event type partitions");
+    let partitions = api_client
+        .get_event_type_partitions(&event_type_name, ())
+        .await?;
+
+    assert_eq!(partitions.len(), 5);
+    /*
+        let mut queries = Vec::new();
+        for partition in partitions {
+            let partition_id = partition.into_partition_id();
+            let query = CursorDistanceQuery::new(
+                partition_id.clone().join_into_cursor(CursorOffset::Begin),
+                partition_id.join_into_cursor(CursorOffset::Begin),
+            );
+            queries.push(query);
+        }
+        println!("Monitoring: get cursor distances");
+        let res = api_client
+            .get_cursor_distances(event_type_name, &queries, ())
+            .await?;
+        println!("Cursor distances: {:?}", res);
+
+        println!("Monitoring: get cursor lag");
+        let cursors = queries
+            .into_iter()
+            .map(|q| q.initial_cursor)
+            .collect::<Vec<_>>();
+        let res = api_client
+            .get_cursor_lag(event_type_name, &cursors, ())
+            .await?;
+        println!("Cursor lag: {:?}", res);
+    */
+    Ok(())
+}
+
+async fn check_schema_registry_api(
+    api_client: &ApiClient,
+    event_type_name: &EventTypeName,
+) -> Result<(), Error> {
+    println!("Schema registry: get event type");
+    let event_type = api_client.get_event_type(&event_type_name, ()).await?;
+
+    println!("{:#?}", event_type);
+
+    Ok(())
+}
+
+async fn check_subscription_api(
+    api_client: &ApiClient,
+    event_type_name: &EventTypeName,
+) -> Result<(), Error> {
+    let subscription_input = SubscriptionInput::builder()
+        .owning_application("nakadi_test")
+        .consumer_group("test_app_2")
+        .event_types(EventTypeNames::default().event_type_name(event_type_name.clone()))
+        .read_from(ReadFrom::Begin)
+        .authorization(
+            SubscriptionAuthorization::default()
+                .admin(("user", get_nakadi_user()))
+                .reader(("user", get_nakadi_user())),
+        )
+        .finish_for_create()?;
+
+    println!("Create subscription");
+    let subscription = api_client
+        .create_subscription(&subscription_input, ())
+        .await?;
+
+    let subscription_id = subscription.id;
+
+    println!("Get subscription");
+    let subscription = api_client
+        .get_subscription(subscription_id, RandomFlowId)
+        .await?;
+
+    println!("Subscription:\n {:#?}\n", subscription);
+
+    println!("Get subscription cursors");
+    let subscription = api_client
+        .get_subscription_cursors(subscription_id, RandomFlowId)
+        .await?;
+
+    println!("Committed offsets:\n {:#?}\n", subscription);
+
+    println!("Get subscription stats");
+    let stats = api_client
+        .get_subscription_stats(subscription_id, false, RandomFlowId)
+        .await?;
+
+    println!("Stats:\n {:#?}\n", stats);
+
+    println!("Delete subscription");
+    api_client
+        .delete_subscription(subscription_id, RandomFlowId)
+        .await?;
+
+    Ok(())
 }
 
 fn get_nakadi_user() -> String {
     std::env::var("NAKADI_USER")
         .ok()
         .unwrap_or_else(|| "adminClientId".to_owned())
+}
+#[cfg(not(feature = "reqwest"))]
+fn main() {
+    panic!("Please enable the `reqwest` feature which is a default feature");
 }

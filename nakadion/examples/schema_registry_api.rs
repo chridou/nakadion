@@ -7,10 +7,6 @@ use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ApiClient::builder().finish_from_env()?;
 
-    //    let mut event_types = client.list_event_types(FlowId::default()).await?;
-
-    //    println!("Event types: {}", event_types.len());
-
     let event_type_name = EventTypeName::from_env()?;
 
     let event_type = client

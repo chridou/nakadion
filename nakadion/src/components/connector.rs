@@ -14,7 +14,7 @@ pub use crate::components::{
     streams::{BatchLine, BatchLineError, NakadiFrame},
     IoError,
 };
-use crate::logging::{DevNullLogger, Logger};
+use crate::logging::{DevNullLoggingAdapter, Logger};
 
 pub use crate::api::BytesStream;
 pub use crate::api::{NakadiApiError, SubscriptionStreamApi, SubscriptionStreamChunks};
@@ -293,7 +293,7 @@ where
             stream_client,
             config,
             flow_id: None,
-            logger: Box::new(DevNullLogger),
+            logger: Box::new(DevNullLoggingAdapter),
             instrumentation: Instrumentation::default(),
         }
     }
@@ -303,7 +303,7 @@ where
             stream_client,
             config: ConnectConfig::default(),
             flow_id: None,
-            logger: Box::new(DevNullLogger),
+            logger: Box::new(DevNullLoggingAdapter),
             instrumentation: Instrumentation::default(),
         }
     }

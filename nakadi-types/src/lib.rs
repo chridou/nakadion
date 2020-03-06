@@ -126,11 +126,17 @@ impl FromStr for FlowId {
 
 /// An error for cases where further investigation is not necessary
 #[derive(Debug)]
-pub struct Error(String);
+pub struct Error {
+    message: Option<String>,
+    source: Option<Box<dyn StdError + Send + 'static>>,
+}
 
 impl Error {
     pub fn new<T: fmt::Display>(msg: T) -> Self {
-        Self(msg.to_string())
+        Self {
+            message: Some(msg.to_string()),
+            source: None,
+        }
     }
 
     pub fn from_error<E: StdError + Send + 'static>(err: E) -> Self {
@@ -140,15 +146,15 @@ impl Error {
     pub fn boxed(self) -> Box<dyn StdError + Send + 'static> {
         Box::new(self)
     }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)?;
+        match (self.message.as_ref(), self.source().as_ref()) {
+            (Some(msg), _) => write!(f, "{}", msg)?,
+            (_, Some(err)) => write!(f, "{}", err)?,
+            _ => write!(f, "some unspecified error occurred")?,
+        }
 
         Ok(())
     }
@@ -156,7 +162,7 @@ impl fmt::Display for Error {
 
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        None
+        self.source.as_ref().map(|p| &**p as &dyn StdError)
     }
 }
 

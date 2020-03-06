@@ -35,9 +35,9 @@ pub trait MonitoringApi {
     fn get_cursor_distances<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
-        query: &CursorDistanceQuery,
+        query: &[CursorDistanceQuery],
         flow_id: T,
-    ) -> ApiFuture<CursorDistanceResult>;
+    ) -> ApiFuture<Vec<CursorDistanceResult>>;
 
     /// Used when a consumer wants to know how far behind
     /// in the stream its application is lagging.

@@ -14,6 +14,52 @@ new_type! {
     pub struct PartitionId(String, env="PARTITION_ID");
 }
 
+impl PartitionId {
+    pub fn join_into_cursor(self, offset: CursorOffset) -> Cursor {
+        Cursor::new(self, offset)
+    }
+}
+
+impl From<Partition> for PartitionId {
+    fn from(p: Partition) -> Self {
+        p.into_partition_id()
+    }
+}
+
+/// Partition information. Can be helpful when trying to start a stream using an unmanaged API.
+///
+/// This information is not related to the state of the consumer clients.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Partition)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Partition {
+    pub partition: PartitionId,
+    /// An offset of the oldest available Event in that partition. This value will be changing
+    /// upon removal of Events from the partition by the background archiving/cleanup mechanism.
+    pub oldest_available_offset: CursorOffset,
+    /// An offset of the newest available Event in that partition. This value will be changing
+    /// upon reception of new events for this partition by Nakadi.
+    ///
+    /// This value can be used to construct a cursor when opening streams (see
+    /// GET /event-type/{name}/events for details).
+    ///
+    /// Might assume the special name BEGIN, meaning a pointer to the offset of the oldest
+    /// available event in the partition.
+    pub newest_available_offset: CursorOffset,
+    /// Approximate number of events unconsumed by the client. This is also known as consumer lag and is used for
+    /// monitoring purposes by consumers interested in keeping an eye on the number of unconsumed events.
+    ///
+    /// If the event type uses ‘compact’ cleanup policy - then the actual number of unconsumed events in this
+    /// partition can be lower than the one reported in this field.
+    pub unconsumed_events: Option<u64>,
+}
+
+impl Partition {
+    pub fn into_partition_id(self) -> PartitionId {
+        self.partition
+    }
+}
+
 /// A cursor with an offset
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_Cursor)
@@ -21,6 +67,15 @@ new_type! {
 pub struct Cursor {
     pub partition: PartitionId,
     pub offset: CursorOffset,
+}
+
+impl Cursor {
+    pub fn new<A: Into<PartitionId>, B: Into<CursorOffset>>(partition: A, offset: B) -> Self {
+        Cursor {
+            partition: partition.into(),
+            offset: offset.into(),
+        }
+    }
 }
 
 /// Offset of the event being pointed to.
@@ -100,6 +155,15 @@ impl<'de> Deserialize<'de> for CursorOffset {
 pub struct CursorDistanceQuery {
     pub initial_cursor: Cursor,
     pub final_cursor: Cursor,
+}
+
+impl CursorDistanceQuery {
+    pub fn new<A: Into<Cursor>, B: Into<Cursor>>(initial_cursor: A, final_cursor: B) -> Self {
+        CursorDistanceQuery {
+            initial_cursor: initial_cursor.into(),
+            final_cursor: final_cursor.into(),
+        }
+    }
 }
 
 /// A result for `CursorDistanceQuery`
