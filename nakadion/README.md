@@ -2,8 +2,6 @@
 
 ![CI](https://github.com/chridou/nakadion/workflows/CI/badge.svg)
 
-** THIS IS A PREVIEW VERSION, BREAKING CHANGES WITHOUT FURTHER NOTICE **
-
 A client for the [Nakadi](http://nakadi.io) Event Broker.
 
 ## Summary
