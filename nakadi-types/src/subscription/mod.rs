@@ -456,15 +456,29 @@ pub struct SubscriptionStats {
 }
 
 impl SubscriptionStats {
-    pub fn unconsumed_events(&self) -> usize {
-        self.event_type_stats
+    pub fn unconsumed_events(&self) -> Option<usize> {
+        let mut is_sum = false;
+        let sum = self
+            .event_type_stats
             .iter()
-            .map(|set_stats| set_stats.unconsumed_events())
-            .sum()
+            .filter_map(|set_stats| {
+                if set_stats.unconsumed_events().is_some() {
+                    is_sum = true;
+                }
+
+                set_stats.unconsumed_events()
+            })
+            .sum();
+
+        if is_sum {
+            Some(sum)
+        } else {
+            None
+        }
     }
 
     pub fn all_events_consumed(&self) -> bool {
-        self.unconsumed_events() == 0
+        self.unconsumed_events() == Some(0)
     }
 }
 
@@ -479,12 +493,29 @@ pub struct SubscriptionEventTypeStats {
 }
 
 impl SubscriptionEventTypeStats {
-    pub fn unconsumed_events(&self) -> usize {
-        self.partitions.iter().map(|p| p.unconsumed_events).sum()
+    pub fn unconsumed_events(&self) -> Option<usize> {
+        let mut is_sum = false;
+        let sum = self
+            .partitions
+            .iter()
+            .filter_map(|p| {
+                if p.unconsumed_events.is_some() {
+                    is_sum = true;
+                }
+
+                p.unconsumed_events
+            })
+            .sum();
+
+        if is_sum {
+            Some(sum)
+        } else {
+            None
+        }
     }
 
     pub fn all_events_consumed(&self) -> bool {
-        self.unconsumed_events() == 0
+        self.unconsumed_events() == Some(0)
     }
 }
 
@@ -494,14 +525,32 @@ impl SubscriptionEventTypeStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionEventTypePartitionStats {
     partition: PartitionId,
-    unconsumed_events: usize,
+    /// The amount of events in this partition that are not yet consumed within this subscription.
+    /// The property may be absent at the moment when no events were yet consumed from the partition in this
+    /// subscription (In case of read_from is BEGIN or END)
+    ///
+    /// If the event type uses ‘compact’ cleanup policy - then the actual number of unconsumed events can be
+    /// lower than the one reported in this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unconsumed_events: Option<usize>,
+    /// Subscription consumer lag for this partition in seconds. Measured as the age of the oldest event of
+    /// this partition that is not yet consumed within this subscription.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    consumer_lag_seconds: Option<u64>,
+    /// The id of the stream that consumes data from this partition
     #[serde(deserialize_with = "crate::deserialize_empty_string_is_none")]
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_id: Option<StreamId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    consumer_lag_seconds: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// * direct: partition can’t be transferred to another stream until the stream is closed;
+    /// * auto: partition can be transferred to another stream in case of rebalance, or if another stream
+    /// requests to read from this partition.
     assignment_type: Option<String>,
+    /// The state of this partition in current subscription. Currently following values are possible:
+    ///
+    /// * unassigned: the partition is currently not assigned to any client;
+    /// * reassigning: the partition is currently reassigning from one client to another;
+    /// * assigned: the partition is assigned to a client.
     state: SubscriptionPartitionState,
 }
 

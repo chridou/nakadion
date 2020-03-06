@@ -19,7 +19,7 @@ pub use crate::nakadi_types::{
     },
 };
 
-use crate::logging::{DevNullLogger, Logger};
+use crate::logging::{DevNullLoggingAdapter, Logger};
 use crate::nakadi_types::publishing::PublishingStatus;
 
 #[cfg(feature = "partitioner")]
@@ -394,7 +394,7 @@ where
         Self {
             config,
             api_client: Arc::new(api_client),
-            logger: Arc::new(DevNullLogger),
+            logger: Arc::new(DevNullLoggingAdapter),
             instrumentation: Default::default(),
         }
     }

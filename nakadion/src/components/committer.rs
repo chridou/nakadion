@@ -15,7 +15,7 @@ use tokio::{
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
-use crate::logging::{DevNullLogger, Logger};
+use crate::logging::{DevNullLoggingAdapter, Logger};
 use crate::nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs};
 use crate::nakadi_types::{
     subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
@@ -568,7 +568,7 @@ where
             stream_id,
             instrumentation: Instrumentation::default(),
             config: CommitConfig::default(),
-            logger: Box::new(DevNullLogger),
+            logger: Box::new(DevNullLoggingAdapter),
         }
     }
 

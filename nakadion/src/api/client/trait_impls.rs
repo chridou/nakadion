@@ -17,9 +17,9 @@ impl MonitoringApi for ApiClient {
     fn get_cursor_distances<T: Into<FlowId>>(
         &self,
         name: &EventTypeName,
-        query: &CursorDistanceQuery,
+        query: &[CursorDistanceQuery],
         flow_id: T,
-    ) -> ApiFuture<CursorDistanceResult> {
+    ) -> ApiFuture<Vec<CursorDistanceResult>> {
         let payload_to_send = serde_json::to_vec(query).unwrap();
         self.send_receive_payload(
             self.urls().monitoring_cursor_distances(name),

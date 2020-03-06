@@ -49,7 +49,7 @@ pub use crate::components::{
     },
 };
 pub use crate::logging::{
-    DevNullLogger, LoggingAdapter, StdErrLoggingAdapter, StdOutLoggingAdapter,
+    DevNullLoggingAdapter, LoggingAdapter, StdErrLoggingAdapter, StdOutLoggingAdapter,
 };
 pub use config_types::*;
 pub use error::*;
