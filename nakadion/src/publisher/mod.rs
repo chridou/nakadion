@@ -156,9 +156,9 @@ impl FromStr for PublishTimeout {
         match s {
             "infinite" => Ok(PublishTimeout::Infinite),
             x => {
-                let millis: u64 = x
-                    .parse()
-                    .map_err(|err| Error::new(format!("{} is not a publish timeout", s)))?;
+                let millis: u64 = x.parse().map_err(|err| {
+                    Error::new(format!("{} is not a publish timeout: {}", s, err))
+                })?;
                 Ok(PublishTimeout::Millis(millis))
             }
         }

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::time::Instant;
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::BoxFuture;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -631,7 +631,7 @@ where
             Err(err) => {
                 self.instrumentation()
                     .committer_cursors_not_committed(cursors.len(), started.elapsed());
-                Err(err.into())
+                Err(err)
             }
         }
     }
@@ -895,11 +895,7 @@ mod background {
 
         let join_handle = spawn(run_committer(to_commit, committer));
 
-        let f = async move {
-            join_handle.await.map_err(|err| Error::new(err))?;
-            Ok(())
-        }
-        .boxed();
+        let f = async move { join_handle.await.map_err(Error::new)? }.boxed();
 
         (CommitHandle { sender: tx }, f)
     }

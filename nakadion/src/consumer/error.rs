@@ -98,9 +98,6 @@ impl From<ConnectError> for ConsumerAbort {
             ConnectErrorKind::Other => ConsumerAbort::error(
                 ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
             ),
-            ConnectErrorKind::Aborted => ConsumerAbort::error(
-                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
-            ),
             ConnectErrorKind::Conflict => ConsumerAbort::error(
                 ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
             ),

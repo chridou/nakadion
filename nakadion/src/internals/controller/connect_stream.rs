@@ -1,5 +1,3 @@
-use crate::nakadi_types::FlowId;
-
 use crate::api::{SubscriptionStreamApi, SubscriptionStreamChunks};
 use crate::components::connector::Connector;
 use crate::consumer::ConsumerAbort;

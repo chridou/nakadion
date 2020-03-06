@@ -11,7 +11,6 @@ use tokio::{
 
 use crate::api::{BytesStream, SubscriptionCommitApi};
 use crate::components::{
-    committer::Committer,
     streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
     StreamingEssentials,
 };

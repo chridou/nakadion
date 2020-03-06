@@ -2,13 +2,9 @@
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::{
-    future::FutureExt,
-    stream::{BoxStream, StreamExt},
-};
+use futures::stream::{BoxStream, StreamExt};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -137,9 +133,9 @@ impl FromStr for ConnectTimeout {
         match s {
             "infinite" => Ok(ConnectTimeout::Infinite),
             x => {
-                let seconds: u64 = x
-                    .parse()
-                    .map_err(|err| Error::new(format!("{} is not a connector timeout", s)))?;
+                let seconds: u64 = x.parse().map_err(|err| {
+                    Error::new(format!("{} is not a connector timeout: {}", s, err))
+                })?;
                 Ok(ConnectTimeout::Seconds(seconds))
             }
         }
