@@ -382,38 +382,34 @@ impl CommitConfig {
 
     pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.timeout_millis.is_none() {
-            self.timeout_millis = Some(CommitTimeoutMillis::from_env_prefixed(prefix.as_ref())?);
+            self.timeout_millis = CommitTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.attempt_timeout_millis.is_none() {
-            self.attempt_timeout_millis = Some(CommitAttemptTimeoutMillis::from_env_prefixed(
-                prefix.as_ref(),
-            )?);
+            self.attempt_timeout_millis =
+                CommitAttemptTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.initial_retry_interval_millis.is_none() {
-            self.initial_retry_interval_millis = Some(
-                CommitInitialRetryIntervalMillis::from_env_prefixed(prefix.as_ref())?,
-            );
+            self.initial_retry_interval_millis =
+                CommitInitialRetryIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.retry_interval_multiplier.is_none() {
-            self.retry_interval_multiplier = Some(
-                CommitRetryIntervalMultiplier::from_env_prefixed(prefix.as_ref())?,
-            );
+            self.retry_interval_multiplier =
+                CommitRetryIntervalMultiplier::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.max_retry_interval_millis.is_none() {
-            self.max_retry_interval_millis = Some(CommitMaxRetryIntervalMillis::from_env_prefixed(
-                prefix.as_ref(),
-            )?);
+            self.max_retry_interval_millis =
+                CommitMaxRetryIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.retry_on_auth_error.is_none() {
             self.retry_on_auth_error =
-                Some(CommitRetryOnAuthError::from_env_prefixed(prefix.as_ref())?);
+                CommitRetryOnAuthError::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.commit_strategy.is_none() {
-            self.commit_strategy = Some(CommitStrategy::from_env_prefixed(prefix.as_ref())?);
+            self.commit_strategy = CommitStrategy::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.stream_commit_timeout_secs.is_none() {
             self.stream_commit_timeout_secs =
-                Some(StreamCommitTimeoutSecs::from_env_prefixed(prefix.as_ref())?);
+                StreamCommitTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())

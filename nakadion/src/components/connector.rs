@@ -181,25 +181,22 @@ impl ConnectConfig {
 
         if self.abort_on_auth_error.is_none() {
             self.abort_on_auth_error =
-                Some(ConnectAbortOnAuthError::from_env_prefixed(prefix.as_ref())?);
+                ConnectAbortOnAuthError::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.abort_connect_on_subscription_not_found.is_none() {
-            self.abort_connect_on_subscription_not_found = Some(
-                ConnectAbortOnSubscriptionNotFound::from_env_prefixed(prefix.as_ref())?,
-            );
+            self.abort_connect_on_subscription_not_found =
+                ConnectAbortOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.timeout_secs.is_none() {
-            self.timeout_secs = Some(ConnectTimeout::from_env_prefixed(prefix.as_ref())?);
+            self.timeout_secs = ConnectTimeout::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.max_retry_delay_secs.is_none() {
-            self.max_retry_delay_secs = Some(ConnectMaxRetryDelaySecs::from_env_prefixed(
-                prefix.as_ref(),
-            )?);
+            self.max_retry_delay_secs =
+                ConnectMaxRetryDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.attempt_timeout_secs.is_none() {
-            self.attempt_timeout_secs = Some(ConnectAttemptTimeoutSecs::from_env_prefixed(
-                prefix.as_ref(),
-            )?);
+            self.attempt_timeout_secs =
+                ConnectAttemptTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())
