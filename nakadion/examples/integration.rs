@@ -23,7 +23,7 @@ use nakadion::consumer::*;
 use nakadion::handler::*;
 use nakadion::publisher::*;
 
-const N_EVENTS: usize = 10_000;
+const N_EVENTS: usize = 100_000;
 const EVENT_TYPE_A: &str = "Event_Type_A";
 const EVENT_TYPE_B: &str = "Event_Type_B";
 
@@ -41,7 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     api_check(&api_client).await?;
 
-    let publisher = Publisher::new(api_client.clone());
+    let mut publisher = Publisher::new(api_client.clone());
+    publisher.set_logger(StdOutLoggingAdapter::default());
 
     println!("Query registered event types");
     let registered_event_types = api_client.list_event_types(RandomFlowId).await?;
@@ -203,7 +204,7 @@ where
         })
         .collect();
 
-    for batch in events.chunks(100) {
+    for batch in events.chunks(500) {
         if let Err(err) = publisher.publish_events(&name, batch, ()).await {
             println!("{:#?}", err);
             return Err(Error::from_error(err));
@@ -249,32 +250,48 @@ async fn consume_event_type_a(
     api_client: ApiClient,
     subscription_id: SubscriptionId,
 ) -> Result<(), Error> {
-    println!("Consume event type {}", EVENT_TYPE_A);
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerAFactory::new(),
-        50_005_000,
-        DispatchMode::AllSeq,
-    )
-    .await?;
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerAFactory::new(),
-        50_005_000,
-        DispatchMode::EventTypePar,
-    )
-    .await?;
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerAFactory::new(),
-        50_005_000,
-        DispatchMode::EventTypePartitionPar,
-    )
-    .await?;
+    let sp1 = StreamParameters::default()
+        .batch_limit(100)
+        .stream_limit(18_793)
+        .batch_flush_timeout_secs(1)
+        .max_uncommitted_events(10_000);
 
+    let sp2 = StreamParameters::default()
+        .batch_limit(100)
+        .batch_flush_timeout_secs(1)
+        .max_uncommitted_events(10_000);
+    let params = vec![sp1, sp2];
+
+    for param in params {
+        println!("Consume event type {}", EVENT_TYPE_A);
+        consume_subscription(
+            api_client.clone(),
+            subscription_id,
+            HandlerAFactory::new(),
+            N_EVENTS,
+            DispatchMode::AllSeq,
+            param.clone(),
+        )
+        .await?;
+        consume_subscription(
+            api_client.clone(),
+            subscription_id,
+            HandlerAFactory::new(),
+            N_EVENTS,
+            DispatchMode::EventTypePar,
+            param.clone(),
+        )
+        .await?;
+        consume_subscription(
+            api_client.clone(),
+            subscription_id,
+            HandlerAFactory::new(),
+            N_EVENTS,
+            DispatchMode::EventTypePartitionPar,
+            param,
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -282,24 +299,39 @@ async fn consume_event_types_ab(
     api_client: ApiClient,
     subscription_id: SubscriptionId,
 ) -> Result<(), Error> {
-    println!("Consume event types {} & {}", EVENT_TYPE_A, EVENT_TYPE_B);
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerABFactory::new(),
-        100_010_000,
-        DispatchMode::EventTypePar,
-    )
-    .await?;
-    consume_subscription(
-        api_client.clone(),
-        subscription_id,
-        HandlerABFactory::new(),
-        100_010_000,
-        DispatchMode::EventTypePartitionPar,
-    )
-    .await?;
+    let sp1 = StreamParameters::default()
+        .batch_limit(100)
+        .stream_limit(22_763)
+        .batch_flush_timeout_secs(1)
+        .max_uncommitted_events(10_000);
 
+    let sp2 = StreamParameters::default()
+        .batch_limit(100)
+        .batch_flush_timeout_secs(1)
+        .max_uncommitted_events(10_000);
+    let params = vec![sp1, sp2];
+
+    for param in params {
+        println!("Consume event types {} & {}", EVENT_TYPE_A, EVENT_TYPE_B);
+        consume_subscription(
+            api_client.clone(),
+            subscription_id,
+            HandlerABFactory::new(),
+            2 * N_EVENTS,
+            DispatchMode::EventTypePar,
+            param.clone(),
+        )
+        .await?;
+        consume_subscription(
+            api_client.clone(),
+            subscription_id,
+            HandlerABFactory::new(),
+            2 * N_EVENTS,
+            DispatchMode::EventTypePartitionPar,
+            param,
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -309,6 +341,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     factory: F,
     target_value: usize,
     dispatch_mode: DispatchMode,
+    params: StreamParameters,
 ) -> Result<(), Error> {
     println!("Consume with dispatch mode {}", dispatch_mode);
 
@@ -322,13 +355,8 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
     let consumer = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .dispatch_mode(dispatch_mode)
-        .configure_stream_parameters(|params| {
-            params
-                .batch_limit(23)
-                .stream_limit(967)
-                .batch_flush_timeout_secs(1)
-                .max_uncommitted_events(67)
-        })
+        .stream_parameters(params)
+        .configure_committer(|cfg| cfg.commit_strategy(CommitStrategy::after_seconds(1)))
         .build_with(api_client.clone(), factory, StdOutLoggingAdapter::default())?;
 
     println!("Consume");
@@ -387,8 +415,8 @@ impl EventsHandler for HandlerA {
     ) -> BoxFuture<'a, EventsPostAction> {
         async move {
             for event in events {
-                let n = event.data.count;
-                self.sum.fetch_add(n, Ordering::SeqCst);
+                let _ = event.data.count;
+                self.sum.fetch_add(1, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit
@@ -447,8 +475,8 @@ impl EventsHandler for HandlerB {
     ) -> BoxFuture<'a, EventsPostAction> {
         async move {
             for event in events {
-                let n = event.data.count;
-                self.sum.fetch_add(n, Ordering::SeqCst);
+                let _ = event.data.count;
+                self.sum.fetch_add(1, Ordering::SeqCst);
             }
 
             EventsPostAction::Commit

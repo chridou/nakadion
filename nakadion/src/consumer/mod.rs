@@ -41,7 +41,7 @@ pub use crate::components::{
     committer::{
         CommitAttemptTimeoutMillis, CommitConfig, CommitInitialRetryIntervalMillis,
         CommitMaxRetryIntervalMillis, CommitRetryIntervalMultiplier, CommitRetryOnAuthError,
-        CommitTimeoutMillis,
+        CommitStrategy, CommitTimeoutMillis,
     },
     connector::{
         ConnectAbortOnAuthError, ConnectAbortOnSubscriptionNotFound, ConnectAttemptTimeoutSecs,

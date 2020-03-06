@@ -197,7 +197,7 @@ impl Builder {
     /// This are within the `connect_config` so that these will be created
     /// with defaults if not already there
     pub fn stream_parameters(mut self, params: StreamParameters) -> Self {
-        self.connect_config.stream_params = params;
+        self.connect_config.stream_parameters = params;
         self
     }
 
@@ -395,8 +395,9 @@ impl Builder {
         self.connect_config.apply_defaults();
 
         if self.commit_config.commit_strategy.is_none() {
-            self.commit_config.commit_strategy =
-                Some(guess_commit_strategy(&self.connect_config.stream_params))
+            self.commit_config.commit_strategy = Some(guess_commit_strategy(
+                &self.connect_config.stream_parameters,
+            ))
         }
 
         self.commit_config.apply_defaults();
@@ -464,7 +465,7 @@ impl Builder {
             commit_strategy.validate()?;
         } else {
             commit_config.commit_strategy =
-                Some(guess_commit_strategy(&connect_config.stream_params));
+                Some(guess_commit_strategy(&connect_config.stream_parameters));
         }
         commit_config.apply_defaults();
 

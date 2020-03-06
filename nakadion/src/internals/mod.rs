@@ -69,7 +69,7 @@ impl ConsumerState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().connect_config.stream_params
+        &self.config().connect_config.stream_parameters
     }
 
     pub fn instrumentation(&self) -> &Instrumentation {
@@ -157,7 +157,7 @@ impl StreamState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().connect_config.stream_params
+        &self.config().connect_config.stream_parameters
     }
 
     pub fn stream_id(&self) -> StreamId {

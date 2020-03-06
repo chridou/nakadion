@@ -145,7 +145,7 @@ impl FromStr for ConnectTimeout {
 /// Parameters to configure the `Connector`
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectConfig {
-    pub stream_params: StreamParameters,
+    pub stream_parameters: StreamParameters,
     pub abort_on_auth_error: Option<ConnectAbortOnAuthError>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub abort_connect_on_subscription_not_found: Option<ConnectAbortOnSubscriptionNotFound>,
@@ -177,7 +177,8 @@ impl ConnectConfig {
     }
 
     pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
-        self.stream_params.fill_from_env_prefixed(prefix.as_ref())?;
+        self.stream_parameters
+            .fill_from_env_prefixed(prefix.as_ref())?;
 
         if self.abort_on_auth_error.is_none() {
             self.abort_on_auth_error =
@@ -203,6 +204,7 @@ impl ConnectConfig {
     }
 
     pub fn apply_defaults(&mut self) {
+        self.stream_parameters.apply_defaults();
         if self.abort_on_auth_error.is_none() {
             self.abort_on_auth_error = Some(ConnectAbortOnAuthError::default());
         }
@@ -221,8 +223,8 @@ impl ConnectConfig {
         }
     }
 
-    pub fn stream_params<T: Into<StreamParameters>>(mut self, v: T) -> Self {
-        self.stream_params = v.into();
+    pub fn stream_parameters<T: Into<StreamParameters>>(mut self, v: T) -> Self {
+        self.stream_parameters = v.into();
         self
     }
     pub fn abort_on_auth_error<T: Into<ConnectAbortOnAuthError>>(mut self, v: T) -> Self {
@@ -263,7 +265,7 @@ impl ConnectConfig {
     where
         F: FnMut(StreamParameters) -> Result<StreamParameters, Error>,
     {
-        self.stream_params = f(self.stream_params)?;
+        self.stream_parameters = f(self.stream_parameters)?;
         Ok(self)
     }
 }
@@ -359,7 +361,7 @@ where
     }
 
     pub fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
-        &mut self.config.stream_params
+        &mut self.config.stream_parameters
     }
 
     pub fn config(&self) -> &ConnectConfig {
@@ -466,7 +468,7 @@ where
         subscription_id: SubscriptionId,
         flow_id: FlowId,
     ) -> Result<SubscriptionStreamChunks, ConnectError> {
-        let stream_params = &self.config.stream_params;
+        let stream_params = &self.config.stream_parameters;
         let f = self
             .stream_client
             .request_stream(subscription_id, &stream_params, flow_id);

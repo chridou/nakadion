@@ -183,13 +183,15 @@ pub enum CommitStrategy {
     },
 }
 
-impl Default for CommitStrategy {
-    fn default() -> Self {
-        Self::Immediately
-    }
-}
-
 impl CommitStrategy {
+    pub fn after_seconds(seconds: u32) -> Self {
+        Self::After {
+            seconds: Some(seconds),
+            cursors: None,
+            events: None,
+        }
+    }
+
     env_funs!("COMMIT_STRATEGY");
 
     pub fn validate(&self) -> Result<(), Error> {
@@ -223,6 +225,12 @@ impl CommitStrategy {
             }
             _ => Ok(()),
         }
+    }
+}
+
+impl Default for CommitStrategy {
+    fn default() -> Self {
+        Self::Immediately
     }
 }
 

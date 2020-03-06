@@ -41,7 +41,7 @@ use crate::Error;
 /// # Environment variables
 ///
 /// Fetching values from the environment uses `FromStr` for parsing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "strategy")]
