@@ -19,6 +19,7 @@ pub use crate::nakadi_types::{
     },
 };
 
+use crate::logging::{DevNullLogger, Logger};
 use crate::nakadi_types::publishing::PublishingStatus;
 
 #[cfg(feature = "partitioner")]
@@ -111,7 +112,7 @@ impl PublishTimeout {
     pub fn into_duration_opt(self) -> Option<Duration> {
         match self {
             PublishTimeout::Infinite => None,
-            PublishTimeout::Millis(millis) => Some(Duration::millis(millis)),
+            PublishTimeout::Millis(millis) => Some(Duration::from_millis(millis)),
         }
     }
 }
@@ -127,7 +128,7 @@ where
     T: Into<u64>,
 {
     fn from(v: T) -> Self {
-        Self::Seconds(v.into())
+        Self::Millis(v.into())
     }
 }
 
@@ -146,21 +147,19 @@ impl FromStr for PublishTimeout {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fn parse_after(s: &str) -> Result<PublishTimeout, Error> {
-            let s = s.trim();
+        let s = s.trim();
 
-            if s.starts_with('{') {
-                return Ok(serde_json::from_str(s)?);
-            }
+        if s.starts_with('{') {
+            return Ok(serde_json::from_str(s)?);
+        }
 
-            match s {
-                "infinite" => Ok(PublishTimeout::Infinite),
-                x => {
-                    let millis: u64 = x.parse().map_err(|err| {
-                        Error::new(format!("{} is not a publish timeout", s)).caused_by(err)
-                    })?;
-                    Ok(PublishTimeout::Millis(millis))
-                }
+        match s {
+            "infinite" => Ok(PublishTimeout::Infinite),
+            x => {
+                let millis: u64 = x
+                    .parse()
+                    .map_err(|err| Error::new(format!("{} is not a publish timeout", s)))?;
+                Ok(PublishTimeout::Millis(millis))
             }
         }
     }
@@ -375,17 +374,11 @@ pub trait PublishesEvents {
 /// only done on io errors and server errors or on auth errors if
 /// `retry_on_auth_errors` is set to `true`.
 ///
-/// ## `on_retry`
-///
-/// A closure to be called before a retry. The error which caused the retry and
-/// the time until the retry will be made is passed. This closure overrides the current one
-/// and will be used for all subsequent clones of this instance. This allows
-/// users to give context on the call site.
 #[derive(Clone)]
 pub struct Publisher<C> {
     config: PublisherConfig,
     api_client: Arc<C>,
-    on_retry_callback: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
+    logger: Arc<dyn Logger>,
     instrumentation: Instrumentation,
 }
 
@@ -401,23 +394,17 @@ where
         Self {
             config,
             api_client: Arc::new(api_client),
-            on_retry_callback: Arc::new(|_, _| {}),
+            logger: Arc::new(DevNullLogger),
             instrumentation: Default::default(),
         }
     }
 
-    pub fn set_on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
-        &mut self,
-        on_retry: F,
-    ) {
-        self.on_retry_callback = Arc::new(on_retry);
+    pub fn set_logger<L: Logger>(&mut self, logger: L) {
+        self.logger = Arc::new(logger);
     }
 
-    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
-        mut self,
-        on_retry: F,
-    ) -> Self {
-        self.set_on_retry(on_retry);
+    pub fn logger<L: Logger>(mut self, logger: L) -> Self {
+        self.set_logger(logger);
         self
     }
 
@@ -473,9 +460,6 @@ where
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry_callback = Arc::clone(&self.on_retry_callback);
-            let on_retry_callback = (on_retry_callback.as_ref())
-                as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -504,8 +488,10 @@ where
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
-                                let failure = PublishFailure::Other(api_error);
-                                on_retry_callback(&failure, delay);
+                                self.logger.warn(format_args!(
+                                    "publish attempt failed (retry in {:?}: {}",
+                                    delay, api_error
+                                ));
                                 delay_for(delay).await;
                                 continue;
                             } else {
@@ -627,9 +613,6 @@ where
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry_callback = Arc::clone(&self.on_retry_callback);
-            let on_retry_callback = (on_retry_callback.as_ref())
-                as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -650,8 +633,10 @@ where
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
-                                let failure = PublishFailure::Other(api_error);
-                                on_retry_callback(&failure, delay);
+                                self.logger.warn(format_args!(
+                                    "connect publish failed (retry in {:?}: {}",
+                                    delay, api_error
+                                ));
                                 delay_for(delay).await;
                                 continue;
                             } else {

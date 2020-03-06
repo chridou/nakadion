@@ -18,7 +18,11 @@ pub use metrix::{processor::ProcessorMount, AggregatesProcessors};
 
 mod new_types;
 pub use new_types::*;
-mod complex_types;
+pub mod complex_types;
+use crate::components::{
+    committer::{CommitConfig, CommitStrategy},
+    connector::ConnectConfig,
+};
 pub use complex_types::*;
 
 /// Creates a `Consumer`
@@ -73,8 +77,6 @@ pub struct Builder {
     ///
     /// This value **must** be set.
     pub subscription_id: Option<SubscriptionId>,
-    /// Parameters that configure the stream to be consumed.
-    pub stream_parameters: Option<StreamParameters>,
     /// The instrumentation to be used to generate metrics
     #[serde(skip)]
     pub instrumentation: Option<Instrumentation>,
@@ -109,21 +111,8 @@ pub struct Builder {
     ///
     /// It is recommended to set this value instead of letting Nakadion
     /// determine defaults.
-    pub commit_strategy: Option<CommitStrategy>,
-    /// If `true` abort the consumer when an auth error occurs while connecting to a stream.
-    pub abort_connect_on_auth_error: Option<AbortConnectOnAuthError>,
-    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
-    pub abort_connect_on_subscription_not_found: Option<AbortConnectOnSubscriptionNotFound>,
-    /// The maximum time for until a connection to a stream has to be established.
-    pub max_connect_time_secs: Option<MaxConnectTimeSecs>,
-    /// The maximum retry delay between failed attempts to connect to a stream.
-    pub connect_stream_retry_max_delay_secs: Option<ConnectStreamRetryMaxDelaySecs>,
-    /// The timeout for a request made to Nakadi to connect to a stream.
-    pub connect_stream_timeout_secs: Option<ConnectStreamTimeoutSecs>,
-    /// The timeout for a request made to Nakadi to commit cursors.
-    pub commit_attempt_timeout_millis: Option<CommitAttemptTimeoutMillis>,
-    /// The delay between failed attempts to commit cursors.
-    pub commit_retry_delay_millis: Option<CommitRetryDelayMillis>,
+    pub commit_config: CommitConfig,
+    pub connect_config: ConnectConfig,
 }
 
 impl Builder {
@@ -154,12 +143,6 @@ impl Builder {
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.subscription_id.is_none() {
             self.subscription_id = SubscriptionId::try_from_env_prefixed(prefix.as_ref())?;
-        }
-
-        if let Some(ref mut stream_parameters) = self.stream_parameters {
-            stream_parameters.fill_from_env_prefixed(prefix.as_ref())?;
-        } else {
-            self.stream_parameters = Some(StreamParameters::from_env_prefixed(prefix.as_ref())?);
         }
 
         if self.instrumentation.is_none() {
@@ -193,30 +176,10 @@ impl Builder {
             self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.abort_connect_on_auth_error.is_none() {
-            self.abort_connect_on_auth_error =
-                AbortConnectOnAuthError::try_from_env_prefixed(prefix.as_ref())?;
-        }
-
-        if self.abort_connect_on_subscription_not_found.is_none() {
-            self.abort_connect_on_subscription_not_found =
-                AbortConnectOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
-        }
-
-        if self.max_connect_time_secs.is_none() {
-            self.max_connect_time_secs =
-                MaxConnectTimeSecs::try_from_env_prefixed(prefix.as_ref())?;
-        }
-
-        if self.connect_stream_retry_max_delay_secs.is_none() {
-            self.connect_stream_retry_max_delay_secs =
-                ConnectStreamRetryMaxDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
-        }
-
-        if self.connect_stream_timeout_secs.is_none() {
-            self.connect_stream_timeout_secs =
-                ConnectStreamTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
-        }
+        self.commit_config
+            .update_from_env_prefixed(prefix.as_ref())?;
+        self.connect_config
+            .update_from_env_prefixed(prefix.as_ref())?;
 
         Ok(())
     }
@@ -230,8 +193,11 @@ impl Builder {
     }
 
     /// Parameters that configure the stream to be consumed.
+    ///
+    /// This are within the `connect_config` so that these will be created
+    /// with defaults if not already there
     pub fn stream_parameters(mut self, params: StreamParameters) -> Self {
-        self.stream_parameters = Some(params);
+        self.connect_config.stream_params = params;
         self
     }
 
@@ -301,90 +267,81 @@ impl Builder {
         self
     }
 
-    /// Defines when to commit cursors.
+    /// Defines how connect to nakadi to consume events.
+    pub fn commit_config(mut self, connect_config: ConnectConfig) -> Self {
+        self.connect_config = connect_config;
+        self
+    }
+
+    /// Defines how connect to Nakadi.
+    pub fn connect_config(mut self, connect_config: ConnectConfig) -> Self {
+        self.connect_config = connect_config;
+        self
+    }
+
+    /// Modify the current `ConnectConfig` with a closure.
     ///
-    /// It is recommended to set this value instead of letting Nakadion
-    /// determine defaults.
-    pub fn commit_strategy(mut self, commit_strategy: CommitStrategy) -> Self {
-        self.commit_strategy = Some(commit_strategy);
-        self
+    /// If these have not been set `ConnectConfig::default()` will
+    /// be passed into the closure.
+    pub fn configure_connector<F>(self, mut f: F) -> Self
+    where
+        F: FnMut(ConnectConfig) -> ConnectConfig,
+    {
+        self.try_configure_connector(|config| Ok(f(config)))
+            .unwrap()
     }
 
-    /// If `true` abort the consumer when an auth error occurs while connecting to a stream.
-    pub fn abort_connect_on_auth_error<T: Into<AbortConnectOnAuthError>>(
-        mut self,
-        abort_connect_on_auth_error: T,
-    ) -> Self {
-        self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error.into());
-        self
+    /// Modify the current `ConnectConfig` with a closure.
+    ///
+    /// If these have not been set `ConnectConfig::default()` will
+    /// be passed into the closure.
+    ///
+    /// If the closure fails, the whole `Builder` will fail.
+    pub fn try_configure_connector<F>(mut self, mut f: F) -> Result<Self, Error>
+    where
+        F: FnMut(ConnectConfig) -> Result<ConnectConfig, Error>,
+    {
+        let connect_config = self.connect_config;
+        self.connect_config = f(connect_config)?;
+        Ok(self)
+    }
+    /// Modify the current `CommitConfig` with a closure.
+    ///
+    /// If these have not been set `CommitConfig::default()` will
+    /// be passed into the closure.
+    pub fn configure_committer<F>(self, mut f: F) -> Self
+    where
+        F: FnMut(CommitConfig) -> CommitConfig,
+    {
+        self.try_configure_committer(|config| Ok(f(config)))
+            .unwrap()
     }
 
-    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
-    pub fn abort_connect_on_subscription_not_found<T: Into<AbortConnectOnSubscriptionNotFound>>(
-        mut self,
-        abort_connect_on_subscription_not_found: T,
-    ) -> Self {
-        self.abort_connect_on_subscription_not_found =
-            Some(abort_connect_on_subscription_not_found.into());
-        self
-    }
-
-    /// The maximum time for until a connection to a stream has to be established.
-    pub fn max_connect_time_secs<T: Into<MaxConnectTimeSecs>>(
-        mut self,
-        max_connect_time_secs: T,
-    ) -> Self {
-        self.max_connect_time_secs = Some(max_connect_time_secs.into());
-        self
-    }
-
-    /// The maximum retry delay between failed attempts to connect to a stream.
-    pub fn connect_stream_retry_max_delay_secs<T: Into<ConnectStreamRetryMaxDelaySecs>>(
-        mut self,
-        connect_stream_retry_max_delay_secs: T,
-    ) -> Self {
-        self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay_secs.into());
-        self
-    }
-
-    /// The timeout for a request made to Nakadi to connect to a stream.
-    pub fn connect_stream_timeout_secs<T: Into<ConnectStreamTimeoutSecs>>(
-        mut self,
-        connect_stream_timeout_secs: T,
-    ) -> Self {
-        self.connect_stream_timeout_secs = Some(connect_stream_timeout_secs.into());
-        self
-    }
-
-    /// The timeout for a request made to Nakadi to commit cursors.
-    pub fn commit_attempt_timeout_millis<T: Into<CommitAttemptTimeoutMillis>>(
-        mut self,
-        commit_attempt_timeout_millis: T,
-    ) -> Self {
-        self.commit_attempt_timeout_millis = Some(commit_attempt_timeout_millis.into());
-        self
-    }
-
-    /// The delay between failed attempts to commit cursors.
-    pub fn commit_retry_delay_millis<T: Into<CommitRetryDelayMillis>>(
-        mut self,
-        commit_retry_delay_millis: T,
-    ) -> Self {
-        self.commit_retry_delay_millis = Some(commit_retry_delay_millis.into());
-        self
+    /// Modify the current `CommitConfig` with a closure.
+    ///
+    /// If these have not been set `CommitConfig::default()` will
+    /// be passed into the closure.
+    ///
+    /// If the closure fails, the whole `Builder` will fail.
+    pub fn try_configure_committer<F>(mut self, mut f: F) -> Result<Self, Error>
+    where
+        F: FnMut(CommitConfig) -> Result<CommitConfig, Error>,
+    {
+        let commit_config = self.commit_config;
+        self.commit_config = f(commit_config)?;
+        Ok(self)
     }
 
     /// Modify the current `StreamParameters` with a closure.
     ///
     /// If these have not been set `StreamParameters::default()` will
     /// be passed into the closure.
-    pub fn configure_stream_parameters<F>(mut self, mut f: F) -> Self
+    pub fn configure_stream_parameters<F>(self, mut f: F) -> Self
     where
         F: FnMut(StreamParameters) -> StreamParameters,
     {
-        let stream_parameters = self.stream_parameters.unwrap_or_default();
-        self.stream_parameters = Some(f(stream_parameters));
-        self
+        self.try_configure_stream_parameters(|params| Ok(f(params)))
+            .unwrap()
     }
 
     /// Modify the current `StreamParameters` with a closure.
@@ -393,12 +350,11 @@ impl Builder {
     /// be passed into the closure.
     ///
     /// If the closure fails, the whole `Builder` will fail.
-    pub fn try_configure_stream_parameters<F>(mut self, mut f: F) -> Result<Self, Error>
+    pub fn try_configure_stream_parameters<F>(mut self, f: F) -> Result<Self, Error>
     where
         F: FnMut(StreamParameters) -> Result<StreamParameters, Error>,
     {
-        let stream_parameters = self.stream_parameters.unwrap_or_default();
-        self.stream_parameters = Some(f(stream_parameters)?);
+        self.connect_config = self.connect_config.try_configure_stream_parameters(f)?;
         Ok(self)
     }
 
@@ -424,68 +380,33 @@ impl Builder {
     }
 
     /// Applies the defaults to all values that have not been set so far.
-    ///
-    /// Remember that there is no default for a `SubscriptionId` which must be set otherwise.
     pub fn apply_defaults(&mut self) {
-        let stream_parameters = self
-            .stream_parameters
-            .clone()
-            .unwrap_or_else(StreamParameters::default);
-
         let instrumentation = self
             .instrumentation
             .clone()
             .unwrap_or_else(Instrumentation::default);
-
         let tick_interval = self.tick_interval_millis.unwrap_or_default().adjust();
-
         let handler_inactivity_timeout = self.handler_inactivity_timeout_secs;
         let partition_inactivity_timeout =
             Some(self.partition_inactivity_timeout_secs.unwrap_or_default());
-
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
-        let warn_stream_stalled = self.warn_stream_stalled_secs;
+        let warn_stream_stalled = Some(self.warn_stream_stalled_secs.unwrap_or_default());
 
-        let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
+        self.connect_config.apply_defaults();
 
-        let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
-            commit_strategy
-        } else {
-            self.guess_commit_strategy(&stream_parameters)
-        };
+        if self.commit_config.commit_strategy.is_none() {
+            self.commit_config.commit_strategy =
+                Some(guess_commit_strategy(&self.connect_config.stream_params))
+        }
 
-        let abort_connect_on_auth_error = self.abort_connect_on_auth_error.unwrap_or_default();
+        self.commit_config.apply_defaults();
 
-        let abort_connect_on_subscription_not_found = self
-            .abort_connect_on_subscription_not_found
-            .unwrap_or_default();
-
-        let max_connect_time = self.max_connect_time_secs;
-
-        let connect_stream_retry_max_delay =
-            self.connect_stream_retry_max_delay_secs.unwrap_or_default();
-        let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
-
-        let commit_attempt_timeout = self.commit_attempt_timeout_millis.unwrap_or_default();
-        let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
-
-        self.stream_parameters = Some(stream_parameters);
         self.instrumentation = Some(instrumentation);
         self.tick_interval_millis = Some(tick_interval);
         self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
         self.partition_inactivity_timeout_secs = partition_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_stream_stalled_secs = warn_stream_stalled;
-        self.dispatch_mode = Some(dispatch_mode);
-        self.commit_strategy = Some(commit_strategy);
-        self.abort_connect_on_auth_error = Some(abort_connect_on_auth_error);
-        self.abort_connect_on_subscription_not_found =
-            Some(abort_connect_on_subscription_not_found);
-        self.max_connect_time_secs = max_connect_time;
-        self.connect_stream_retry_max_delay_secs = Some(connect_stream_retry_max_delay);
-        self.connect_stream_timeout_secs = Some(connect_stream_timeout);
-        self.commit_attempt_timeout_millis = Some(commit_attempt_timeout);
-        self.commit_retry_delay_millis = Some(commit_retry_delay);
     }
 
     /// Create a `Consumer`
@@ -517,11 +438,6 @@ impl Builder {
     fn config(&self) -> Result<Config, Error> {
         let subscription_id = mandatory(self.subscription_id, "subscription_id")?;
 
-        let stream_parameters = self
-            .stream_parameters
-            .clone()
-            .unwrap_or_else(StreamParameters::default);
-
         let instrumentation = self
             .instrumentation
             .clone()
@@ -535,41 +451,25 @@ impl Builder {
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         stream_dead_policy.validate()?;
-        let warn_stream_stalled = self.warn_stream_stalled_secs;
+        let warn_stream_stalled = self.warn_stream_stalled_secs.unwrap_or_default();
 
         let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
-        let commit_strategy = if let Some(commit_strategy) = self.commit_strategy {
-            commit_strategy
+        let mut connect_config = self.connect_config.clone();
+        connect_config.apply_defaults();
+
+        let mut commit_config = self.commit_config.clone();
+
+        if let Some(commit_strategy) = commit_config.commit_strategy {
+            commit_strategy.validate()?;
         } else {
-            self.guess_commit_strategy(&stream_parameters)
-        };
-
-        commit_strategy.validate()?;
-
-        let abort_connect_on_auth_error = self.abort_connect_on_auth_error.unwrap_or_default();
-
-        let abort_connect_on_subscription_not_found = self
-            .abort_connect_on_subscription_not_found
-            .unwrap_or_default();
-
-        let max_connect_time = self.max_connect_time_secs;
-        if let Some(0) = max_connect_time.map(|t| t.into_inner()) {
-            return Err(Error::new(
-                "'max_connect_time_secs' must be greater than zero",
-            ));
+            commit_config.commit_strategy =
+                Some(guess_commit_strategy(&connect_config.stream_params));
         }
-
-        let connect_stream_retry_max_delay =
-            self.connect_stream_retry_max_delay_secs.unwrap_or_default();
-        let connect_stream_timeout = self.connect_stream_timeout_secs.unwrap_or_default();
-
-        let commit_attempt_timeout = self.commit_attempt_timeout_millis.unwrap_or_default();
-        let commit_retry_delay = self.commit_retry_delay_millis.unwrap_or_default();
+        commit_config.apply_defaults();
 
         let config = Config {
             subscription_id,
-            stream_parameters,
             instrumentation,
             tick_interval,
             handler_inactivity_timeout,
@@ -577,33 +477,27 @@ impl Builder {
             stream_dead_policy,
             warn_stream_stalled,
             dispatch_mode,
-            commit_strategy,
-            abort_connect_on_auth_error,
-            abort_connect_on_subscription_not_found,
-            max_connect_time,
-            connect_stream_retry_max_delay,
-            connect_stream_timeout,
-            commit_attempt_timeout,
-            commit_retry_delay,
+            commit_config,
+            connect_config,
         };
 
         Ok(config)
     }
+}
 
-    fn guess_commit_strategy(&self, stream_parameters: &StreamParameters) -> CommitStrategy {
-        let timeout = stream_parameters.effective_commit_timeout_secs();
-        let commit_after = timeout / 6;
-        let commit_after = std::cmp::max(1, commit_after);
-        let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
-        let effective_events_limit = max_uncommitted_events / 2;
-        let effective_events_limit = std::cmp::max(1, effective_events_limit);
-        let batch_limit = stream_parameters.effective_batch_limit();
-        let effective_batches_limit = std::cmp::max((max_uncommitted_events / batch_limit) / 2, 1);
-        let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
-        CommitStrategy::After {
-            seconds: Some(commit_after),
-            cursors: Some(effective_batches_limit),
-            events: Some(effective_events_limit),
-        }
+fn guess_commit_strategy(stream_parameters: &StreamParameters) -> CommitStrategy {
+    let timeout = stream_parameters.effective_commit_timeout_secs();
+    let commit_after = timeout / 6;
+    let commit_after = std::cmp::max(1, commit_after);
+    let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
+    let effective_events_limit = max_uncommitted_events / 2;
+    let effective_events_limit = std::cmp::max(1, effective_events_limit);
+    let batch_limit = stream_parameters.effective_batch_limit();
+    let effective_batches_limit = std::cmp::max((max_uncommitted_events / batch_limit) / 2, 1);
+    let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
+    CommitStrategy::After {
+        seconds: Some(commit_after),
+        cursors: Some(effective_batches_limit),
+        events: Some(effective_events_limit),
     }
 }

@@ -33,8 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_type_b = EventTypeName::new(EVENT_TYPE_B);
 
     let api_client = ApiClient::builder().finish_from_env()?;
-    let publisher = Publisher::new(api_client.clone())
-        .on_retry(|err, d| println!("Publish attempt failed (retry in {:?}): {}", d, err));
+    let publisher = Publisher::new(api_client.clone());
 
     remove_subscriptions(api_client.clone()).await?;
 
@@ -321,7 +320,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
                 .batch_flush_timeout_secs(1)
                 .max_uncommitted_events(67)
         })
-        .build_with(api_client.clone(), factory, StdOutLogger::default())?;
+        .build_with(api_client.clone(), factory, StdOutLoggingAdapter::default())?;
 
     println!("Consume");
     let (consumer_handle, consuming) = consumer.start();

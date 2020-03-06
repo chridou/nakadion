@@ -9,9 +9,9 @@ use tokio::{
     time::interval_at,
 };
 
-use crate::api::BytesStream;
+use crate::api::{BytesStream, SubscriptionCommitApi};
 use crate::components::{
-    committer::ProvidesCommitter,
+    committer::Committer,
     streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
     StreamingEssentials,
 };
@@ -168,17 +168,14 @@ async fn consume_stream_to_end<C, S>(
     stream_state: StreamState,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
-    C: ProvidesCommitter + Clone + Send + Sync + 'static,
+    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     // We might want to abort if we do not receive data from Nakadi in time
     // This is basically to prevents us from being locked in a dead stream.
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     // From time to time, if we do not receive data from Nakadi we want to emit warnings
-    let warn_stream_stalled = stream_state
-        .config()
-        .warn_stream_stalled
-        .map(|t| t.into_duration());
+    let warn_stream_stalled = stream_state.config().warn_stream_stalled.into_duration();
 
     let now = Instant::now();
     let stream_started_at = now;
@@ -229,14 +226,12 @@ where
                     let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
                     break;
                 }
-                if let Some(warn_stream_stalled) = warn_stream_stalled {
-                    let elapsed = last_events_received_at.elapsed();
-                    if elapsed >= warn_stream_stalled {
-                        stream_state.warn(format_args!(
-                            "The stream seems to have stalled (for {:?})",
-                            elapsed
-                        ));
-                    }
+                let elapsed = last_events_received_at.elapsed();
+                if elapsed >= warn_stream_stalled {
+                    stream_state.warn(format_args!(
+                        "The stream seems to have stalled (for {:?})",
+                        elapsed
+                    ));
                 }
                 partition_tracker.check_for_inactivity(Instant::now());
                 DispatcherMessage::Tick(timestamp)
@@ -364,16 +359,13 @@ async fn wait_for_first_frame<C, S>(
     ConsumerError,
 >
 where
-    C: ProvidesCommitter + Clone + Send + Sync + 'static,
+    C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let now = Instant::now();
     let nothing_received_since = now;
     let stream_dead_policy = stream_state.config().stream_dead_policy;
-    let warn_stream_stalled = stream_state
-        .config()
-        .warn_stream_stalled
-        .map(|d| d.into_duration());
+    let warn_stream_stalled = stream_state.config().warn_stream_stalled.into_duration();
 
     let mut stream = stream.boxed();
     // wait for the first frame from Nakadi and maybe abort if none arrives in time
@@ -409,14 +401,12 @@ where
                                 sleeping_dispatcher,
                             });
                         }
-                        if let Some(warn_stream_stalled) = warn_stream_stalled {
-                            let elapsed = nothing_received_since.elapsed();
-                            if elapsed >= warn_stream_stalled {
-                                stream_state.warn(format_args!(
-                                    "The stream seems to have stalled (for {:?})",
-                                    elapsed
-                                ));
-                            }
+                        let elapsed = nothing_received_since.elapsed();
+                        if elapsed >= warn_stream_stalled {
+                            stream_state.warn(format_args!(
+                                "The stream seems to have stalled (for {:?})",
+                                elapsed
+                            ));
                         }
                     }
                     Err(batch_line_error) => match batch_line_error.kind() {

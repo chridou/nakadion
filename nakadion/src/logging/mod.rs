@@ -8,24 +8,34 @@ use crate::nakadi_types::{
     subscription::{StreamId, SubscriptionId},
 };
 
-pub(crate) trait Logger {
+pub trait Logger: Send + Sync + 'static {
     fn debug(&self, args: Arguments);
     fn info(&self, args: Arguments);
     fn warn(&self, args: Arguments);
     fn error(&self, args: Arguments);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DevNullLogger;
+
+impl Logger for DevNullLogger {
+    fn debug(&self, _args: Arguments) {}
+    fn info(&self, _args: Arguments) {}
+    fn warn(&self, _args: Arguments) {}
+    fn error(&self, _args: Arguments) {}
+}
+
 #[derive(Clone)]
-pub struct ContextualLogger {
+pub(crate) struct ContextualLogger {
     context: Arc<LoggingContext>,
     logging_adapter: Arc<dyn LoggingAdapter>,
 }
 
 impl ContextualLogger {
-    pub fn new<L: LoggingAdapter>(logging_adapter: L) -> Self {
+    pub fn new(logging_adapter: Arc<dyn LoggingAdapter>) -> Self {
         ContextualLogger {
             context: Arc::new(LoggingContext::default()),
-            logging_adapter: Arc::new(logging_adapter),
+            logging_adapter,
         }
     }
 
@@ -342,20 +352,20 @@ pub mod slog_adapter {
         config: LogConfig,
     }
 
-    impl SlogLogger {
+    impl SlogLoggingAdapter {
         pub fn new(logger: Logger) -> Self {
-            SlogLogger {
+            SlogLoggingAdapter {
                 logger,
                 config: LogConfig::short(),
             }
         }
 
         pub fn new_with_config(logger: Logger, config: LogConfig) -> Self {
-            SlogLogger { logger, config }
+            SlogLoggingAdapter { logger, config }
         }
     }
 
-    impl LoggingAdapter for SlogLogger {
+    impl LoggingAdapter for SlogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             let ctx_display = context.create_display(&self.config);
             let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
@@ -410,21 +420,21 @@ pub mod log_adapter {
 
     /// A logger based on `log`
     #[derive(Clone)]
-    pub struct LogLogger(LogConfig);
+    pub struct LogLoggingAdapter(LogConfig);
 
-    impl LogLogger {
+    impl LogLoggingAdapter {
         pub fn new(config: LogConfig) -> Self {
             Self(config)
         }
     }
 
-    impl Default for LogLogger {
+    impl Default for LogLoggingAdapter {
         fn default() -> Self {
             Self::new(LogConfig::default())
         }
     }
 
-    impl LoggingAdapter for LogLogger {
+    impl LoggingAdapter for LogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             debug!("[DEBUG]{}{}", context.create_display(&self.0), args);
         }

@@ -137,6 +137,13 @@ macro_rules! __new_type_base {
             }
         }
 
+        impl From<$Name> for $T {
+            fn from(v: $Name) -> $T {
+                v.0
+            }
+
+        }
+
         impl std::str::FromStr for $Name {
             type Err = $crate::Error;
 

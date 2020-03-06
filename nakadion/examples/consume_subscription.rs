@@ -13,22 +13,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .handler_inactivity_timeout_secs(30)
-        .commit_attempt_timeout_millis(1500)
-        .connect_stream_timeout_secs(5)
-        .warn_stream_stalled_secs(10)
-        .configure_stream_parameters(|p| {
-            p.batch_limit(10)
-                .max_uncommitted_events(1000)
-                .stream_timeout_secs(60)
-        });
+        .configure_committer(|cfg| cfg.attempt_timeout_millis(1500))
+        .configure_connector(|cfg| {
+            cfg.attempt_timeout_secs(5)
+                .configure_stream_parameters(|p| {
+                    p.batch_limit(10)
+                        .max_uncommitted_events(1000)
+                        .stream_timeout_secs(60)
+                })
+        })
+        .warn_stream_stalled_secs(10);
 
     // This is not necessary and just used
     // to print the configured values
     builder.apply_defaults();
     println!("{:#?}", builder);
 
-    let consumer =
-        builder.build_with(client, handler::MyHandlerFactory, StdOutLogger::default())?;
+    let consumer = builder.build_with(
+        client,
+        handler::MyHandlerFactory,
+        StdOutLoggingAdapter::default(),
+    )?;
 
     let (_handle, consuming) = consumer.start();
 

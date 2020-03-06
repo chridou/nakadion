@@ -6,10 +6,10 @@ use std::sync::{
 };
 
 use crate::consumer::{Config, ConsumerError, Instrumentation};
-use crate::logging::{ContextualLogger, Logs};
+use crate::logging::{ContextualLogger, Logger};
 use crate::nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId};
 
-pub mod committer;
+//pub mod committer;
 pub mod controller;
 pub mod dispatcher;
 pub mod worker;
@@ -32,7 +32,7 @@ impl ConsumerState {
         Self {
             is_globally_cancelled: Arc::new(AtomicBool::new(false)),
             config: Arc::new(config),
-            logger: logger.with_subscription_id(subscription_id),
+            logger: logger.subscription_id(subscription_id),
             instrumentation,
         }
     }
@@ -45,7 +45,7 @@ impl ConsumerState {
             stream_id,
             Arc::clone(&self.config),
             Arc::downgrade(&self.is_globally_cancelled),
-            self.logger.with_stream_id(stream_id),
+            self.logger.stream_id(stream_id),
             self.instrumentation.clone(),
         )
     }
@@ -69,7 +69,7 @@ impl ConsumerState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().stream_parameters
+        &self.config().connect_config.stream_params
     }
 
     pub fn instrumentation(&self) -> &Instrumentation {
@@ -157,7 +157,7 @@ impl StreamState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().stream_parameters
+        &self.config().connect_config.stream_params
     }
 
     pub fn stream_id(&self) -> StreamId {

@@ -19,11 +19,11 @@ use crate::internals::{
     controller::{types::ControllerParams, Controller},
     ConsumerState,
 };
-use crate::logging::Logger;
+use crate::logging::{ContextualLogger, Logger};
 pub use crate::nakadi_types::{
     subscription::{
-        BatchFlushTimeoutSecs, BatchLimit, BatchTimespanSecs, MaxUncommittedEvents, StreamLimit,
-        StreamParameters, StreamTimeoutSecs, SubscriptionId,
+        StreamBatchFlushTimeoutSecs, StreamBatchLimit, StreamBatchTimespanSecs, StreamLimit,
+        StreamMaxUncommittedEvents, StreamParameters, StreamTimeoutSecs, SubscriptionId,
     },
     Error,
 };
@@ -33,18 +33,11 @@ pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 pub use crate::instrumentation::{Metrix, MetrixConfig};
 
 #[cfg(feature = "log")]
-pub use crate::logging::log_adapter::LogLogger;
+pub use crate::logging::log_adapter::LogLoggingAdapter;
 #[cfg(feature = "slog")]
-pub use crate::logging::slog_adapter::SlogLogger;
+pub use crate::logging::slog_adapter::SlogLoggingAdapter;
 
-use crate::logging::Logger;
-pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogger};
-pub use config_types::{
-    Builder, CommitStrategy, DispatchMode, HandlerInactivityTimeoutSecs,
-    PartitionInactivityTimeoutSecs, StreamDeadPolicy, TickIntervalMillis, WarnStreamStalledSecs,
-};
-
-use crate::components::{
+pub use crate::components::{
     committer::{
         CommitAttemptTimeoutMillis, CommitConfig, CommitInitialRetryIntervalMillis,
         CommitMaxRetryIntervalMillis, CommitRetryIntervalMultiplier, CommitRetryOnAuthError,
@@ -55,6 +48,10 @@ use crate::components::{
         ConnectConfig, ConnectMaxRetryDelaySecs, ConnectTimeout, ConnectTimeoutSecs,
     },
 };
+pub use crate::logging::{
+    DevNullLogger, LoggingAdapter, StdErrLoggingAdapter, StdOutLoggingAdapter,
+};
+pub use config_types::*;
 pub use error::*;
 
 mod config_types;
@@ -111,7 +108,7 @@ impl Consumer {
         let subscription_id = self.inner.config().subscription_id;
 
         let logger =
-            Logger::new(self.inner.logging_adapter()).with_subscription_id(subscription_id);
+            ContextualLogger::new(self.inner.logging_adapter()).subscription_id(subscription_id);
 
         let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
 
@@ -327,9 +324,8 @@ pub(crate) struct Config {
     pub handler_inactivity_timeout: HandlerInactivityTimeoutSecs,
     pub partition_inactivity_timeout: PartitionInactivityTimeoutSecs,
     pub stream_dead_policy: StreamDeadPolicy,
-    pub warn_stream_stalled: Option<WarnStreamStalledSecs>,
+    pub warn_stream_stalled: WarnStreamStalledSecs,
     pub dispatch_mode: DispatchMode,
-    pub commit_strategy: CommitStrategy,
     pub connect_config: ConnectConfig,
     pub commit_config: CommitConfig,
 }

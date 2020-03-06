@@ -50,7 +50,13 @@ new_type! {
     pub secs struct StreamDeadTimeoutSecs(u64, env="STREAM_DEAD_TIMEOUT_SECS");
 }
 new_type! {
-    #[doc="Emits a warning when no lines were received from Nakadi.\n"]
+    #[doc="Emits a warning when no lines were received from Nakadi.\n\n\
+    Default is 300 s.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub secs struct WarnStreamStalledSecs(u64, env="WARN_STREAM_STALLED_SECS");
+}
+impl Default for WarnStreamStalledSecs {
+    fn default() -> Self {
+        Self(300)
+    }
 }
