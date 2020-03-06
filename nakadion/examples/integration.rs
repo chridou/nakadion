@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::{spawn, time::delay_for};
 
 use nakadi_types::{
-    RandomFlowId,
+    NakadiBaseUrl, RandomFlowId,
     {
         event::{publishable::*, *},
         event_type::*,
@@ -18,6 +18,7 @@ use nakadi_types::{
 };
 
 use nakadion::api::{api_ext::SubscriptionApiExt, *};
+use nakadion::auth::NoAuthAccessTokenProvider;
 use nakadion::consumer::*;
 use nakadion::handler::*;
 use nakadion::publisher::*;
@@ -29,10 +30,13 @@ const EVENT_TYPE_B: &str = "Event_Type_B";
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let event_type_a = EventTypeName::new(EVENT_TYPE_A);
-    let event_type_b = EventTypeName::new(EVENT_TYPE_B);
+    let nakadi_base_url =
+        NakadiBaseUrl::try_from_env()?.unwrap_or_else(|| "http://localhost:8080".parse().unwrap());
 
-    let api_client = ApiClient::builder().finish_from_env()?;
+    let api_client = ApiClient::builder()
+        .nakadi_base_url(nakadi_base_url)
+        .finish(NoAuthAccessTokenProvider)?;
+
     let publisher = Publisher::new(api_client.clone());
 
     remove_subscriptions(api_client.clone()).await?;
@@ -44,6 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "There are {} event types already registered.",
         registered_event_types.len(),
     );
+
+    let event_type_a = EventTypeName::new(EVENT_TYPE_A);
+    let event_type_b = EventTypeName::new(EVENT_TYPE_B);
 
     for et in registered_event_types {
         if et.name == event_type_a {
@@ -77,8 +84,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_from(ReadFrom::Begin)
         .authorization(
             SubscriptionAuthorization::default()
-                .admin(("user", "adminClientId"))
-                .reader(("user", "adminClientId")),
+                .admin(("user", get_nakadi_user()))
+                .reader(("user", get_nakadi_user())),
         )
         .finish_for_create()?;
     let subscription = api_client
@@ -109,8 +116,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_from(ReadFrom::Begin)
         .authorization(
             SubscriptionAuthorization::default()
-                .admin(("user", "adminClientId"))
-                .reader(("user", "adminClientId")),
+                .admin(("user", get_nakadi_user()))
+                .reader(("user", get_nakadi_user())),
         )
         .finish_for_create()?;
     let subscription = api_client
@@ -552,4 +559,10 @@ async fn remove_subscriptions(api_client: ApiClient) -> Result<(), Error> {
 #[cfg(not(feature = "reqwest"))]
 fn main() {
     panic!("Please enable the `reqwest` feature which is a default feature");
+}
+
+fn get_nakadi_user() -> String {
+    std::env::var("NAKADI_USER")
+        .ok()
+        .unwrap_or_else(|| "adminClientId".to_owned())
 }
