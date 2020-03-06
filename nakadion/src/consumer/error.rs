@@ -203,9 +203,9 @@ impl From<ConsumerErrorKind> for ConsumerError {
 impl From<nakadi_types::Error> for ConsumerError {
     fn from(err: nakadi_types::Error) -> Self {
         Self {
-            message: Some(err.into_inner()),
+            message: Some(err.to_string()),
             kind: ConsumerErrorKind::Other,
-            source: None,
+            source: Some(Box::new(err)),
         }
     }
 }
