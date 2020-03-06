@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
-use crate::partition::{CursorOffset, PartitionId};
 
 mod event_type_input;
 pub use event_type_input::*;
