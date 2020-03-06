@@ -7,11 +7,11 @@ use std::fmt;
 use bytes::Bytes;
 use futures::{future::BoxFuture, stream::BoxStream};
 
-use nakadi_types::model::event_type::*;
-use nakadi_types::model::misc::OwningApplication;
-use nakadi_types::model::partition::*;
-use nakadi_types::model::publishing::*;
-use nakadi_types::model::subscription::*;
+use nakadi_types::event_type::*;
+use nakadi_types::misc::OwningApplication;
+use nakadi_types::partition::*;
+use nakadi_types::publishing::*;
+use nakadi_types::subscription::*;
 use nakadi_types::{Error, FlowId};
 
 use dispatch_http_request::RemoteCallError;
@@ -255,6 +255,21 @@ pub trait SubscriptionApi {
     ///
     /// List is ordered by creation date/time descending (newest
     /// subscriptions come first).
+    ///
+    /// Returns a stream of `Subscription`s. The stream contains an error if requesting
+    /// a page from Nakadi fails or if the result could not be deserialized.
+    ///
+    ///
+    /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions_get)
+    ///
+    /// ## Usage
+    ///
+    /// The parameter `offset` does not change its meaning. It can
+    /// be used if streams are created one after the other.
+    ///
+    /// The parameter `limit` is of limited use. It controls the
+    /// page size returned by Nakadi. Since a stream is generated it rather controls
+    /// how many requests (the frequency of calls) are sent to Nakadi to fill the stream.
     fn list_subscriptions<T: Into<FlowId>>(
         &self,
         event_type: Option<&EventTypeName>,
@@ -308,7 +323,9 @@ pub trait SubscriptionApi {
         cursors: &[SubscriptionCursorWithoutToken],
         flow_id: T,
     ) -> ApiFuture<()>;
+}
 
+pub trait SubscriptionStreamApi {
     /// Starts a new stream for reading events from this subscription.
     ///
     /// Starts a new stream for reading events from this subscription. The minimal consumption unit is a partition, so
@@ -344,7 +361,9 @@ pub trait SubscriptionApi {
         parameters: &StreamParameters,
         flow_id: T,
     ) -> ApiFuture<SubscriptionStreamChunks>;
+}
 
+pub trait SubscriptionCommitApi {
     /// Endpoint for committing offsets of the subscription.
     ///
     /// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/cursors_post)

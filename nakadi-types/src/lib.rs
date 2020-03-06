@@ -11,7 +11,13 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize};
 use url::Url;
 
 pub(crate) mod helpers;
-pub mod model;
+
+pub mod event;
+pub mod event_type;
+pub mod misc;
+pub mod partition;
+pub mod publishing;
+pub mod subscription;
 
 new_type! {
     #[doc("The base URL to the Nakadi API.")]

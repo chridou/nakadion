@@ -7,12 +7,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
-use crate::model::partition::{Cursor, CursorOffset, PartitionId};
+use crate::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
+use crate::partition::{Cursor, CursorOffset, PartitionId};
 use crate::Error;
 
 mod subscription_input;
-pub use crate::model::event_type::EventTypeName;
+pub use crate::event_type::EventTypeName;
 pub use subscription_input::*;
 
 new_type! {
@@ -67,6 +67,14 @@ impl EventTypePartition {
 
     pub fn split(self) -> (EventTypeName, PartitionId) {
         (self.event_type, self.partition)
+    }
+
+    pub fn event_type(&self) -> &EventTypeName {
+        &self.event_type
+    }
+
+    pub fn partition(&self) -> &PartitionId {
+        &self.partition
     }
 }
 
@@ -525,7 +533,7 @@ pub enum SubscriptionPartitionAssignmentType {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::model::partition::CursorOffset;
+    use crate::partition::CursorOffset;
 
     use serde_json::{self, json};
 
@@ -613,10 +621,10 @@ pub struct StreamParameters {
     /// The maximum number of uncommitted events that Nakadi will stream before pausing the stream. When in
     /// paused state and commit comes - the stream will resume.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_uncommitted_events: Option<MaxUncommittedEvents>,
+    pub max_uncommitted_events: Option<StreamMaxUncommittedEvents>,
     /// Maximum number of Events in each chunk (and therefore per partition) of the stream.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub batch_limit: Option<BatchLimit>,
+    pub batch_limit: Option<StreamBatchLimit>,
     /// Maximum number of Events in this stream (over all partitions being streamed in this
     /// connection)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -624,14 +632,14 @@ pub struct StreamParameters {
     /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "batch_flush_timeout")]
-    pub batch_flush_timeout_secs: Option<BatchFlushTimeoutSecs>,
+    pub batch_flush_timeout_secs: Option<StreamBatchFlushTimeoutSecs>,
     /// Useful for batching events based on their received_at timestamp. For example, if `batch_timespan` is 5
     /// seconds then Nakadi would flush a batch as soon as the difference in time between the first and the
     /// last event in the batch exceeds 5 seconds. It waits for an event outside of the window to signal the
     /// closure of a batch.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "batch_timespan")]
-    pub batch_timespan_secs: Option<BatchTimespanSecs>,
+    pub batch_timespan_secs: Option<StreamBatchTimespanSecs>,
     /// Maximum time in seconds a stream will live before connection is closed by the server.
     ///
     /// If 0 or unspecified will stream for 1h ±10min.
@@ -644,7 +652,7 @@ pub struct StreamParameters {
     /// Setting commit_timeout to 0 is equal to setting it to the maximum allowed value - 60 seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "commit_timeout")]
-    pub commit_timeout_secs: Option<CommitTimeoutSecs>,
+    pub commit_timeout_secs: Option<StreamCommitTimeoutSecs>,
 }
 
 impl StreamParameters {
@@ -667,29 +675,55 @@ impl StreamParameters {
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.max_uncommitted_events.is_none() {
             self.max_uncommitted_events =
-                MaxUncommittedEvents::try_from_env_prefixed(prefix.as_ref())?;
+                StreamMaxUncommittedEvents::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.batch_limit.is_none() {
-            self.batch_limit = BatchLimit::try_from_env_prefixed(prefix.as_ref())?;
+            self.batch_limit = StreamBatchLimit::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.stream_limit.is_none() {
             self.stream_limit = StreamLimit::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.batch_flush_timeout_secs.is_none() {
             self.batch_flush_timeout_secs =
-                BatchFlushTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
+                StreamBatchFlushTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.batch_timespan_secs.is_none() {
-            self.batch_timespan_secs = BatchTimespanSecs::try_from_env_prefixed(prefix.as_ref())?;
+            self.batch_timespan_secs =
+                StreamBatchTimespanSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.stream_timeout_secs.is_none() {
             self.stream_timeout_secs = StreamTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
         if self.commit_timeout_secs.is_none() {
-            self.commit_timeout_secs = CommitTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
+            self.commit_timeout_secs =
+                StreamCommitTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())
+    }
+
+    pub fn apply_defaults(&mut self) {
+        if self.max_uncommitted_events.is_none() {
+            self.max_uncommitted_events = Some(StreamMaxUncommittedEvents::default());
+        }
+        if self.batch_limit.is_none() {
+            self.batch_limit = Some(StreamBatchLimit::default());
+        }
+        if self.stream_limit.is_none() {
+            self.stream_limit = Some(StreamLimit::default());
+        }
+        if self.batch_flush_timeout_secs.is_none() {
+            self.batch_flush_timeout_secs = Some(StreamBatchFlushTimeoutSecs::default());
+        }
+        if self.batch_timespan_secs.is_none() {
+            self.batch_timespan_secs = Some(StreamBatchTimespanSecs::default());
+        }
+        if self.stream_timeout_secs.is_none() {
+            self.stream_timeout_secs = Some(StreamTimeoutSecs::default());
+        }
+        if self.commit_timeout_secs.is_none() {
+            self.commit_timeout_secs = Some(StreamCommitTimeoutSecs::default());
+        }
     }
 
     /// List of partitions to read from in this stream. If absent or empty - then the partitions will be
@@ -702,12 +736,12 @@ impl StreamParameters {
     ///
     /// When in
     /// paused state and commit comes - the stream will resume.
-    pub fn max_uncommitted_events<T: Into<MaxUncommittedEvents>>(mut self, value: T) -> Self {
+    pub fn max_uncommitted_events<T: Into<StreamMaxUncommittedEvents>>(mut self, value: T) -> Self {
         self.max_uncommitted_events = Some(value.into());
         self
     }
     /// Maximum number of Events in each chunk (and therefore per partition) of the stream.
-    pub fn batch_limit<T: Into<BatchLimit>>(mut self, value: T) -> Self {
+    pub fn batch_limit<T: Into<StreamBatchLimit>>(mut self, value: T) -> Self {
         self.batch_limit = Some(value.into());
         self
     }
@@ -718,7 +752,10 @@ impl StreamParameters {
         self
     }
     /// Maximum time in seconds to wait for the flushing of each chunk (per partition).
-    pub fn batch_flush_timeout_secs<T: Into<BatchFlushTimeoutSecs>>(mut self, value: T) -> Self {
+    pub fn batch_flush_timeout_secs<T: Into<StreamBatchFlushTimeoutSecs>>(
+        mut self,
+        value: T,
+    ) -> Self {
         self.batch_flush_timeout_secs = Some(value.into());
         self
     }
@@ -728,7 +765,7 @@ impl StreamParameters {
     /// seconds then Nakadi would flush a batch as soon as the difference in time between the first and the
     /// last event in the batch exceeds 5 seconds. It waits for an event outside of the window to signal the
     /// closure of a batch.
-    pub fn batch_timespan_secs<T: Into<BatchTimespanSecs>>(mut self, value: T) -> Self {
+    pub fn batch_timespan_secs<T: Into<StreamBatchTimespanSecs>>(mut self, value: T) -> Self {
         self.batch_timespan_secs = Some(value.into());
         self
     }
@@ -742,7 +779,7 @@ impl StreamParameters {
     /// In case if commit does not come within this timeout, Nakadi will initialize stream termination, no
     /// new data will be sent. Partitions from this stream will be assigned to other streams.
     /// Setting commit_timeout to 0 is equal to setting it to the maximum allowed value - 60 seconds.
-    pub fn commit_timeout_secs<T: Into<CommitTimeoutSecs>>(mut self, value: T) -> Self {
+    pub fn commit_timeout_secs<T: Into<StreamCommitTimeoutSecs>>(mut self, value: T) -> Self {
         self.commit_timeout_secs = Some(value.into());
         self
     }
@@ -770,36 +807,72 @@ impl StreamParameters {
 new_type! {
     #[doc="The maximum number of uncommitted events that Nakadi will stream before pausing the stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct MaxUncommittedEvents(u32, env="MAX_UNCOMMITTED_EVENTS");
+    pub copy struct StreamMaxUncommittedEvents(u32, env="STREAM_MAX_UNCOMMITTED_EVENTS");
+}
+impl Default for StreamMaxUncommittedEvents {
+    fn default() -> Self {
+        10.into()
+    }
 }
 new_type! {
     #[doc="Maximum number of Events in each chunk (and therefore per partition) of the stream.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct BatchLimit(u32, env="BATCH_LIMIT");
+    pub copy struct StreamBatchLimit(u32, env="STREAM_BATCH_LIMIT");
+}
+impl Default for StreamBatchLimit {
+    fn default() -> Self {
+        1.into()
+    }
 }
 new_type! {
     #[doc="Maximum number of Events in this stream \
-    (over all partitions being streamed in this connection).\n"]
+    (over all partitions being streamed in this connection).\n\n\
+    0 means infinite"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct StreamLimit(u32, env="STREAM_LIMIT");
+}
+impl Default for StreamLimit {
+    fn default() -> Self {
+        0.into()
+    }
 }
 new_type! {
     #[doc="Maximum time in seconds to wait for the flushing of each chunk (per partition).\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct BatchFlushTimeoutSecs(u32, env="BATCH_FLUSH_TIMEOUT_SECS");
+    pub secs struct StreamBatchFlushTimeoutSecs(u32, env="STREAM_BATCH_FLUSH_TIMEOUT_SECS");
+}
+impl Default for StreamBatchFlushTimeoutSecs {
+    fn default() -> Self {
+        30.into()
+    }
 }
 new_type! {
     #[doc="Useful for batching events based on their received_at timestamp.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct BatchTimespanSecs(u32, env="BATCH_TIMESPAN_SECS");
+    pub secs struct StreamBatchTimespanSecs(u32, env="STREAM_BATCH_TIMESPAN_SECS");
+}
+impl Default for StreamBatchTimespanSecs {
+    fn default() -> Self {
+        0.into()
+    }
 }
 new_type! {
     #[doc="Maximum time in seconds a stream will live before connection is closed by the server.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub secs struct StreamTimeoutSecs(u32, env="STREAM_TIMEOUT_SECS");
 }
+impl Default for StreamTimeoutSecs {
+    fn default() -> Self {
+        0.into()
+    }
+}
 new_type! {
     #[doc="Maximum amount of seconds that Nakadi will be waiting for commit after sending a batch to a client.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct CommitTimeoutSecs(u32, env="COMMIT_TIMEOUT_SECS");
+    pub secs struct StreamCommitTimeoutSecs(u32, env="STREAM_COMMIT_TIMEOUT_SECS");
+}
+impl Default for StreamCommitTimeoutSecs {
+    fn default() -> Self {
+        60.into()
+    }
 }

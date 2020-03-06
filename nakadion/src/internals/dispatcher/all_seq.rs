@@ -2,11 +2,12 @@
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use std::sync::Arc;
 
-use crate::components::committer::ProvidesCommitter;
+use crate::api::SubscriptionCommitApi;
+use crate::components::committer::Committer;
 use crate::consumer::Config;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{committer::*, worker::*, EnrichedResult, StreamState};
-use crate::logging::Logs;
+use crate::internals::{worker::*, EnrichedResult, StreamState};
+use crate::logging::Logger;
 
 use super::DispatcherMessage;
 
@@ -19,7 +20,7 @@ impl Dispatcher {
         config: Config,
     ) -> Sleeping<C>
     where
-        C: ProvidesCommitter + Send + Sync + Clone + 'static,
+        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         let worker = Worker::sleeping(
             handler_factory,
@@ -38,7 +39,7 @@ pub(crate) struct Sleeping<C> {
 
 impl<C> Sleeping<C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, C>
     where
@@ -46,8 +47,15 @@ where
     {
         let Sleeping { worker, api_client } = self;
 
-        let (committer, committer_join_handle) =
-            Committer::start(api_client.clone(), stream_state.clone());
+        let mut committer = Committer::new(
+            api_client.clone(),
+            stream_state.subscription_id(),
+            stream_state.stream_id(),
+        );
+        committer.set_config(stream_state.config.commit_config.clone());
+        committer.set_logger(stream_state.clone());
+
+        let (committer, committer_join_handle) = committer.run();
 
         let worker_stream = messages.map(move |dm| match dm {
             DispatcherMessage::BatchWithEvents(_etp, batch) => {
@@ -95,7 +103,7 @@ pub(crate) struct Active<'a, C> {
 
 impl<'a, C> Active<'a, C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
         let Active {

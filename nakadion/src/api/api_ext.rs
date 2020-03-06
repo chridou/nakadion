@@ -1,7 +1,7 @@
 //! Extensions to the standard API
 use futures::future::FutureExt;
 
-use nakadi_types::model::subscription::*;
+use nakadi_types::subscription::*;
 use nakadi_types::FlowId;
 
 pub use super::ApiFuture;

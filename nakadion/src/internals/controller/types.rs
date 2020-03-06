@@ -9,7 +9,7 @@ use tokio::{self, time::delay_for};
 use crate::consumer::Config;
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{dispatcher::SleepingDispatcher, ConsumerState};
-use crate::logging::Logs;
+use crate::logging::Logger;
 
 pub(crate) struct ControllerParams<C> {
     pub api_client: C,

@@ -1,4 +1,4 @@
-use nakadi_types::model::subscription::*;
+use nakadi_types::subscription::*;
 use nakadi_types::RandomFlowId;
 
 use nakadion::api::{ApiClient, SubscriptionApi};

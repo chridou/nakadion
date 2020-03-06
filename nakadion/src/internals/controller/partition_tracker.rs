@@ -2,20 +2,20 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::instrumentation::{Instrumentation, Instruments};
-use crate::logging::Logs;
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::logging::Logger;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 pub(crate) struct PartitionTracker {
     partitions: BTreeMap<EventTypePartition, Entry>,
     instrumentation: Instrumentation,
-    logger: Box<dyn Logs + Send>,
+    logger: Box<dyn Logger + Send>,
     inactivity_after: Duration,
 }
 
 impl PartitionTracker {
     pub fn new<L>(instrumentation: Instrumentation, inactivity_after: Duration, logger: L) -> Self
     where
-        L: Logs + Send + 'static,
+        L: Logger + Send + 'static,
     {
         Self {
             partitions: BTreeMap::new(),

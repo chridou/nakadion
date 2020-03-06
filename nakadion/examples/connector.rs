@@ -1,4 +1,4 @@
-use nakadi_types::model::subscription::*;
+use nakadi_types::subscription::*;
 
 use nakadion::api::ApiClient;
 use nakadion::components::{committer::*, connector::*};
@@ -14,12 +14,12 @@ async fn main() -> Result<(), Error> {
 
     let subscription_id = SubscriptionId::from_env()?;
 
-    let connector = client.connector();
+    let connector = Connector::new(client.clone());
     let (stream_id, events_stream) = connector.events_stream::<Value>(subscription_id).await?;
 
     let f = events_stream.try_for_each(move |(meta, events)| {
         let client = client.clone();
-        let committer = client.committer(subscription_id, stream_id);
+        let committer = Committer::new(client, subscription_id, stream_id);
         async move {
             if let Some(events) = events {
                 println!("{:?}", events);

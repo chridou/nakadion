@@ -1,6 +1,7 @@
 use std::error::Error as StdError;
 use std::fmt;
 
+use crate::components::connector::{ConnectError, ConnectErrorKind};
 use crate::nakadi_types::Error;
 
 #[derive(Debug)]
@@ -75,6 +76,38 @@ where
     }
 }
 
+impl From<ConnectError> for ConsumerAbort {
+    fn from(err: ConnectError) -> Self {
+        match err.kind() {
+            ConnectErrorKind::Aborted => ConsumerAbort::user_initiated(),
+            ConnectErrorKind::SubscriptionNotFound => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::SubscriptionNotFound).with_source(err),
+            ),
+            ConnectErrorKind::AccessDenied => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::AccessDenied).with_source(err),
+            ),
+            ConnectErrorKind::Unprocessable => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
+            ConnectErrorKind::BadRequest => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
+            ConnectErrorKind::Io => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
+            ConnectErrorKind::Other => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
+            ConnectErrorKind::Conflict => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
+            ConnectErrorKind::NakadiError => {
+                ConsumerAbort::error(ConsumerError::new(ConsumerErrorKind::Other).with_source(err))
+            }
+        }
+    }
+}
+
 /// Always leads to Nakadion shutting down
 #[derive(Debug)]
 pub struct ConsumerError {
@@ -98,6 +131,10 @@ impl ConsumerError {
 
     pub fn other() -> Self {
         Self::new(ConsumerErrorKind::Other)
+    }
+
+    pub fn connect_stream() -> Self {
+        Self::new(ConsumerErrorKind::ConnectStream)
     }
 
     pub fn new_with_message<M: fmt::Display>(kind: ConsumerErrorKind, message: M) -> Self {
@@ -193,6 +230,7 @@ impl From<ConsumerError> for Error {
 #[non_exhaustive]
 pub enum ConsumerErrorKind {
     SubscriptionNotFound,
+    ConnectStream,
     AccessDenied,
     Internal,
     HandlerAbort,
@@ -205,6 +243,7 @@ impl fmt::Display for ConsumerErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConsumerErrorKind::SubscriptionNotFound => write!(f, "subscription not found")?,
+            ConsumerErrorKind::ConnectStream => write!(f, "connect to stream failed")?,
             ConsumerErrorKind::Internal => write!(f, "internal")?,
             ConsumerErrorKind::HandlerAbort => write!(f, "handler initiated")?,
             ConsumerErrorKind::HandlerFactory => write!(f, "handler factory")?,

@@ -104,6 +104,30 @@ impl From<IoError> for RemoteCallError {
     }
 }
 
+impl From<http::header::InvalidHeaderValue> for RemoteCallError {
+    fn from(err: http::header::InvalidHeaderValue) -> Self {
+        RemoteCallError::new_other()
+            .with_message("invalid header value")
+            .with_cause(err)
+    }
+}
+
+impl From<http::uri::InvalidUri> for RemoteCallError {
+    fn from(err: http::uri::InvalidUri) -> Self {
+        RemoteCallError::new_other()
+            .with_message("invalid URI")
+            .with_cause(err)
+    }
+}
+
+impl From<tokio::time::Elapsed> for RemoteCallError {
+    fn from(err: tokio::time::Elapsed) -> Self {
+        RemoteCallError::new_io()
+            .with_message("a timeout occurred")
+            .with_cause(err)
+    }
+}
+
 #[derive(Debug)]
 enum RemoteCallErrorDetail {
     Other,

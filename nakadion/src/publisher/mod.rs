@@ -2,7 +2,7 @@
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
 pub use bytes::Bytes;
@@ -12,11 +12,21 @@ use tokio::time::{delay_for, timeout};
 
 pub use crate::api::{NakadiApiError, PublishApi, PublishFailure, PublishFuture};
 pub use crate::nakadi_types::{
-    model::{event_type::EventTypeName, publishing::BatchResponse},
     Error, FlowId,
+    {
+        event_type::EventTypeName,
+        publishing::{BatchResponse, BatchStats},
+    },
 };
 
-use crate::nakadi_types::model::publishing::PublishingStatus;
+use crate::logging::{DevNullLogger, Logger};
+use crate::nakadi_types::publishing::PublishingStatus;
+
+#[cfg(feature = "partitioner")]
+pub mod partitioner;
+
+mod instrumentation;
+pub use instrumentation::*;
 
 /// Strategy for handling partial submit failures
 ///
@@ -29,7 +39,7 @@ pub enum PartialFailureStrategy {
     /// Always retry all events
     RetryAll,
     /// Only retry those events where the publishing status is not `PublishingStatus::Submitted`
-    RetryNonSubmitted,
+    RetryNotSubmitted,
 }
 
 impl PartialFailureStrategy {
@@ -47,7 +57,7 @@ impl fmt::Display for PartialFailureStrategy {
         match self {
             PartialFailureStrategy::Abort => write!(f, "abort")?,
             PartialFailureStrategy::RetryAll => write!(f, "retry_all")?,
-            PartialFailureStrategy::RetryNonSubmitted => write!(f, "retry_non_submitted")?,
+            PartialFailureStrategy::RetryNotSubmitted => write!(f, "retry_not_submitted")?,
         }
 
         Ok(())
@@ -67,7 +77,7 @@ impl FromStr for PartialFailureStrategy {
         match s {
             "abort" => Ok(PartialFailureStrategy::Abort),
             "retry_all" => Ok(PartialFailureStrategy::RetryAll),
-            "retry_non_submitted" => Ok(PartialFailureStrategy::RetryNonSubmitted),
+            "retry_not_submitted" => Ok(PartialFailureStrategy::RetryNotSubmitted),
             _ => Err(Error::new(format!(
                 "not a valid partial failure strategy: {}",
                 s
@@ -77,27 +87,81 @@ impl FromStr for PartialFailureStrategy {
 }
 
 new_type! {
-    #[doc="The time a publish attempt for the events batch may take.\n\n\
-    Default is 1000 ms\n"]
+    #[doc="The time a publish attempt for an events batch may take.\n\n\
+    Default is 30 seconds\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct PublishAttemptTimeoutMillis(u64, env="PUBLISH_ATTEMPT_TIMEOUT_MILLIS");
 }
 
 impl Default for PublishAttemptTimeoutMillis {
     fn default() -> Self {
-        Self(1_000)
+        Self(30_000)
     }
 }
 
-new_type! {
-    #[doc="The a publishing the events batch including retries may take.\n\n\
-    Default is 5000 ms.\n"]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub millis struct PublishTimeoutMillis(u64, env="PUBLISH_TIMEOUT_MILLIS");
+/// The timeout for a complete publishing of events to Nakadi including retries
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PublishTimeout {
+    Infinite,
+    Millis(u64),
 }
-impl Default for PublishTimeoutMillis {
+
+impl PublishTimeout {
+    env_funs!("PUBLISH_TIMEOUT");
+
+    pub fn into_duration_opt(self) -> Option<Duration> {
+        match self {
+            PublishTimeout::Infinite => None,
+            PublishTimeout::Millis(millis) => Some(Duration::from_millis(millis)),
+        }
+    }
+}
+
+impl Default for PublishTimeout {
     fn default() -> Self {
-        Self(5_000)
+        Self::Infinite
+    }
+}
+
+impl<T> From<T> for PublishTimeout
+where
+    T: Into<u64>,
+{
+    fn from(v: T) -> Self {
+        Self::Millis(v.into())
+    }
+}
+
+impl fmt::Display for PublishTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PublishTimeout::Infinite => write!(f, "infinite")?,
+            PublishTimeout::Millis(millis) => write!(f, "{} ms", millis)?,
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for PublishTimeout {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+
+        if s.starts_with('{') {
+            return Ok(serde_json::from_str(s)?);
+        }
+
+        match s {
+            "infinite" => Ok(PublishTimeout::Infinite),
+            x => {
+                let millis: u64 = x.parse().map_err(|err| {
+                    Error::new(format!("{} is not a publish timeout: {}", s, err))
+                })?;
+                Ok(PublishTimeout::Millis(millis))
+            }
+        }
     }
 }
 
@@ -138,9 +202,9 @@ new_type! {
     #[doc="If true, retries are done on auth errors.\n\n\
     Default is false.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub copy struct PublishRetryOnAuthErrors(bool, env="PUBLISH_RETRY_ON_AUTH_ERRORS");
+    pub copy struct PublishRetryOnAuthError(bool, env="PUBLISH_RETRY_ON_AUTH_ERROR");
 }
-impl Default for PublishRetryOnAuthErrors {
+impl Default for PublishRetryOnAuthError {
     fn default() -> Self {
         Self(false)
     }
@@ -151,7 +215,7 @@ impl Default for PublishRetryOnAuthErrors {
 pub struct PublisherConfig {
     /// Timeout for a complete publishing including potential retries
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_millis: Option<PublishTimeoutMillis>,
+    pub timeout: Option<PublishTimeout>,
     /// Timeout for a single publish request with Nakadi
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt_timeout_millis: Option<PublishAttemptTimeoutMillis>,
@@ -166,7 +230,7 @@ pub struct PublisherConfig {
     pub max_retry_interval_millis: Option<PublishMaxRetryIntervalMillis>,
     /// Retry on authentication/authorization errors if `true`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry_on_auth_errors: Option<PublishRetryOnAuthErrors>,
+    pub retry_on_auth_error: Option<PublishRetryOnAuthError>,
     /// Strategy for handling partial failures
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partial_failure_strategy: Option<PartialFailureStrategy>,
@@ -198,8 +262,8 @@ impl PublisherConfig {
     ///
     /// All the env vars are prefixed with `<prefix>_`.
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
-        if self.timeout_millis.is_none() {
-            self.timeout_millis = PublishTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
+        if self.timeout.is_none() {
+            self.timeout = PublishTimeout::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.attempt_timeout_millis.is_none() {
@@ -231,8 +295,8 @@ impl PublisherConfig {
     }
 
     /// Timeout for a complete publishing including potential retries
-    pub fn timeout_millis<T: Into<PublishTimeoutMillis>>(mut self, v: T) -> Self {
-        self.timeout_millis = Some(v.into());
+    pub fn timeout<T: Into<PublishTimeout>>(mut self, v: T) -> Self {
+        self.timeout = Some(v.into());
         self
     }
     /// Timeout for a single publish request with Nakadi
@@ -265,8 +329,8 @@ impl PublisherConfig {
         self
     }
     /// Retry on authentication/authorization errors if `true`
-    pub fn retry_on_auth_errors<T: Into<PublishRetryOnAuthErrors>>(mut self, v: T) -> Self {
-        self.retry_on_auth_errors = Some(v.into());
+    pub fn retry_on_auth_error<T: Into<PublishRetryOnAuthError>>(mut self, v: T) -> Self {
+        self.retry_on_auth_error = Some(v.into());
         self
     }
     /// Strategy for handling partial failures
@@ -309,11 +373,13 @@ pub trait PublishesEvents {
 /// for publishing no retries are done on partial successes. Retries are
 /// only done on io errors and server errors or on auth errors if
 /// `retry_on_auth_errors` is set to `true`.
+///
 #[derive(Clone)]
 pub struct Publisher<C> {
     config: PublisherConfig,
     api_client: Arc<C>,
-    on_retry: Arc<dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static>,
+    logger: Arc<dyn Logger>,
+    instrumentation: Instrumentation,
 }
 
 impl<C> Publisher<C>
@@ -328,15 +394,27 @@ where
         Self {
             config,
             api_client: Arc::new(api_client),
-            on_retry: Arc::new(|_, _| {}),
+            logger: Arc::new(DevNullLogger),
+            instrumentation: Default::default(),
         }
     }
 
-    pub fn on_retry<F: Fn(&PublishFailure, Duration) + Send + Sync + 'static>(
-        &mut self,
-        on_retry: F,
-    ) {
-        self.on_retry = Arc::new(on_retry);
+    pub fn set_logger<L: Logger>(&mut self, logger: L) {
+        self.logger = Arc::new(logger);
+    }
+
+    pub fn logger<L: Logger>(mut self, logger: L) -> Self {
+        self.set_logger(logger);
+        self
+    }
+
+    pub fn instrumentation(mut self, instr: Instrumentation) -> Self {
+        self.set_instrumentation(instr);
+        self
+    }
+
+    pub fn set_instrumentation(&mut self, instr: Instrumentation) {
+        self.instrumentation = instr;
     }
 }
 
@@ -351,7 +429,7 @@ where
         flow_id: FlowId,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(self.config.timeout_millis.unwrap_or_default().into());
+        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
@@ -372,18 +450,16 @@ where
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
-        let retry_on_auth_errors = self.config.retry_on_auth_errors.unwrap_or_default().into();
+        let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
 
         let strategy = self.config.partial_failure_strategy.unwrap_or_default();
 
         let mut bytes_to_publish = assemble_bytes_to_publish(events);
         let mut events: Vec<Bytes> = events.to_vec();
+        let started = Instant::now();
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry = Arc::clone(&self.on_retry);
-            let on_retry =
-                (on_retry.as_ref()) as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -394,31 +470,46 @@ where
                 )
                 .await
                 {
-                    Ok(()) => break Ok(()),
+                    Ok(()) => {
+                        self.instrumentation.published(started.elapsed());
+                        self.instrumentation
+                            .batch_stats(BatchStats::all_submitted(events.len()));
+                        break Ok(());
+                    }
                     Err(publish_failure) => publish_failure,
                 };
 
                 match publish_failure {
                     PublishFailure::Other(api_error) => {
+                        self.instrumentation
+                            .batch_stats(BatchStats::all_not_submitted(events.len()));
+
                         let retry_allowed =
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
-                                let failure = PublishFailure::Other(api_error);
-                                on_retry(&failure, delay);
+                                self.logger.warn(format_args!(
+                                    "publish attempt failed (retry in {:?}: {}",
+                                    delay, api_error
+                                ));
                                 delay_for(delay).await;
                                 continue;
                             } else {
+                                self.instrumentation.publish_failed(started.elapsed());
                                 break Err(api_error.into());
                             }
                         } else {
+                            self.instrumentation.publish_failed(started.elapsed());
                             break Err(api_error.into());
                         }
                     }
                     PublishFailure::Unprocessable(batch_response) => {
-                        break Err(PublishFailure::Unprocessable(batch_response))
+                        self.instrumentation.batch_stats(batch_response.stats());
+                        self.instrumentation.publish_failed(started.elapsed());
+                        break Err(PublishFailure::Unprocessable(batch_response));
                     }
                     PublishFailure::PartialFailure(batch_response) => {
+                        self.instrumentation.batch_stats(batch_response.stats());
                         if let Some(delay) = backoff.next_backoff() {
                             match get_events_for_retry(&batch_response, &events, strategy) {
                                 Ok(Some(to_retry)) => {
@@ -433,13 +524,16 @@ where
                                     continue;
                                 }
                                 Ok(None) => {
-                                    break Err(PublishFailure::PartialFailure(batch_response))
+                                    self.instrumentation.publish_failed(started.elapsed());
+                                    break Err(PublishFailure::PartialFailure(batch_response));
                                 }
                                 Err(_err) => {
-                                    break Err(PublishFailure::PartialFailure(batch_response))
+                                    self.instrumentation.publish_failed(started.elapsed());
+                                    break Err(PublishFailure::PartialFailure(batch_response));
                                 }
                             }
                         } else {
+                            self.instrumentation.publish_failed(started.elapsed());
                             break Err(PublishFailure::PartialFailure(batch_response));
                         }
                     }
@@ -492,7 +586,7 @@ where
         flow_id: T,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(self.config.timeout_millis.unwrap_or_default().into());
+        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
@@ -513,15 +607,12 @@ where
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
-        let retry_on_auth_errors = self.config.retry_on_auth_errors.unwrap_or_default().into();
+        let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
         let bytes = events.into();
         let flow_id = flow_id.into();
         async move {
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
-            let on_retry = Arc::clone(&self.on_retry);
-            let on_retry =
-                (on_retry.as_ref()) as &(dyn Fn(&PublishFailure, Duration) + Send + Sync + 'static);
             loop {
                 let publish_failure = match single_attempt(
                     api_client,
@@ -542,8 +633,10 @@ where
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
-                                let failure = PublishFailure::Other(api_error);
-                                on_retry(&failure, delay);
+                                self.logger.warn(format_args!(
+                                    "connect publish failed (retry in {:?}: {}",
+                                    delay, api_error
+                                ));
                                 delay_for(delay).await;
                                 continue;
                             } else {
@@ -592,7 +685,7 @@ fn get_events_for_retry(
 ) -> Result<Option<Vec<Bytes>>, Error> {
     match strategy {
         PartialFailureStrategy::Abort => Ok(None),
-        PartialFailureStrategy::RetryNonSubmitted => {
+        PartialFailureStrategy::RetryNotSubmitted => {
             if events.len() != batch_response.len() {
                 return Err(Error::new(
                     "The number of events did not match the number of batch response items",

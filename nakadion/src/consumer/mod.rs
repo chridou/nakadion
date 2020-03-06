@@ -1,7 +1,10 @@
-//! Kit for creating a consumer for a subscription
+//! A consumer for a subscription
 //!
 //! Start here if you want to consume a stream. You will need
 //! a `BatchHandlerFactory` to consume a stream.
+//!
+//! The consumer instantiates handlers to process events and manages
+//! cursor commits.
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -16,11 +19,11 @@ use crate::internals::{
     controller::{types::ControllerParams, Controller},
     ConsumerState,
 };
-use crate::logging::Logs;
+use crate::logging::{ContextualLogger, Logger};
 pub use crate::nakadi_types::{
-    model::subscription::{
-        BatchFlushTimeoutSecs, BatchLimit, BatchTimespanSecs, MaxUncommittedEvents, StreamLimit,
-        StreamParameters, StreamTimeoutSecs, SubscriptionId,
+    subscription::{
+        StreamBatchFlushTimeoutSecs, StreamBatchLimit, StreamBatchTimespanSecs, StreamLimit,
+        StreamMaxUncommittedEvents, StreamParameters, StreamTimeoutSecs, SubscriptionId,
     },
     Error,
 };
@@ -30,19 +33,25 @@ pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 pub use crate::instrumentation::{Metrix, MetrixConfig};
 
 #[cfg(feature = "log")]
-pub use crate::logging::log_adapter::LogLogger;
+pub use crate::logging::log_adapter::LogLoggingAdapter;
 #[cfg(feature = "slog")]
-pub use crate::logging::slog_adapter::SlogLogger;
+pub use crate::logging::slog_adapter::SlogLoggingAdapter;
 
-use crate::logging::Logger;
-pub use crate::logging::{DevNullLogger, LoggingAdapter, StdErrLogger, StdOutLogger};
-pub use config_types::{
-    AbortConnectOnAuthError, AbortConnectOnSubscriptionNotFound, Builder,
-    CommitAttemptTimeoutMillis, CommitRetryDelayMillis, CommitStrategy,
-    ConnectStreamRetryMaxDelaySecs, ConnectStreamTimeoutSecs, DispatchMode,
-    HandlerInactivityTimeoutSecs, MaxConnectAttempts, PartitionInactivityTimeoutSecs,
-    StreamDeadPolicy, TickIntervalMillis, WarnStreamStalledSecs,
+pub use crate::components::{
+    committer::{
+        CommitAttemptTimeoutMillis, CommitConfig, CommitInitialRetryIntervalMillis,
+        CommitMaxRetryIntervalMillis, CommitRetryIntervalMultiplier, CommitRetryOnAuthError,
+        CommitTimeoutMillis,
+    },
+    connector::{
+        ConnectAbortOnAuthError, ConnectAbortOnSubscriptionNotFound, ConnectAttemptTimeoutSecs,
+        ConnectConfig, ConnectMaxRetryDelaySecs, ConnectTimeout, ConnectTimeoutSecs,
+    },
 };
+pub use crate::logging::{
+    DevNullLogger, LoggingAdapter, StdErrLoggingAdapter, StdOutLoggingAdapter,
+};
+pub use config_types::*;
 pub use error::*;
 
 mod config_types;
@@ -59,6 +68,10 @@ mod error;
 /// The consumer can be cloned so that that multiple connections to `Nakadi`
 /// can be established. But be aware that in this case the consumers will share their
 /// resources, e.g. the API client, metrics and logger.
+///
+/// The consumer will only return if stopped via a `ConsumerHandle` or if
+/// an error is returned. Note that stopping the `Consumer` from within a
+/// handler is also considered an error case.
 #[derive(Clone)]
 pub struct Consumer {
     inner: Arc<dyn ConsumerInternal + Send + Sync + 'static>,
@@ -95,7 +108,7 @@ impl Consumer {
         let subscription_id = self.inner.config().subscription_id;
 
         let logger =
-            Logger::new(self.inner.logging_adapter()).with_subscription_id(subscription_id);
+            ContextualLogger::new(self.inner.logging_adapter()).subscription_id(subscription_id);
 
         let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
 
@@ -132,12 +145,6 @@ impl Consumer {
     }
 }
 
-/*match tokio::spawn(inner.start(consumer_state)).await {
-    Ok(Ok(())) => {}
-    Ok(Err(err)) => outcome.aborted = Some(err),
-    Err(err) => outcome.aborted = Some(err.into()),
-}*/
-
 impl fmt::Debug for Consumer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Consumer({:?})", self.inner)?;
@@ -147,7 +154,8 @@ impl fmt::Debug for Consumer {
 
 /// Returned once a `Consumer` has stopped. It contains the
 /// original consumer and if the `Consumer` was stopped for
-/// other reasons than the stream ending a `ConsumerError`.
+/// other reasons than the stream ending a `ConsumerAbort`
+/// which gives more insight on why the consumer was stopped.
 pub struct ConsumptionOutcome {
     stop_reason: ConsumerAbort,
     consumer: Consumer,
@@ -247,6 +255,10 @@ pub struct ConsumerHandle {
 
 impl ConsumerHandle {
     /// Stops the `Consumer`.
+    ///
+    /// The returned `ConsumptionOutcome` will contain
+    /// `ConsumerAbort::UserInitiated` as the reason stopping
+    /// the `Consumer`
     pub fn stop(&self) {
         self.consumer_state.request_global_cancellation()
     }
@@ -307,20 +319,13 @@ where
 #[derive(Debug, Clone)]
 pub(crate) struct Config {
     pub subscription_id: SubscriptionId,
-    pub stream_parameters: StreamParameters,
     pub instrumentation: Instrumentation,
     pub tick_interval: TickIntervalMillis,
     pub handler_inactivity_timeout: HandlerInactivityTimeoutSecs,
     pub partition_inactivity_timeout: PartitionInactivityTimeoutSecs,
     pub stream_dead_policy: StreamDeadPolicy,
-    pub warn_stream_stalled: Option<WarnStreamStalledSecs>,
+    pub warn_stream_stalled: WarnStreamStalledSecs,
     pub dispatch_mode: DispatchMode,
-    pub commit_strategy: CommitStrategy,
-    pub abort_connect_on_auth_error: AbortConnectOnAuthError,
-    pub abort_connect_on_subscription_not_found: AbortConnectOnSubscriptionNotFound,
-    pub max_connect_attempts: MaxConnectAttempts,
-    pub connect_stream_retry_max_delay: ConnectStreamRetryMaxDelaySecs,
-    pub connect_stream_timeout: ConnectStreamTimeoutSecs,
-    pub commit_attempt_timeout: CommitAttemptTimeoutMillis,
-    pub commit_retry_delay: CommitRetryDelayMillis,
+    pub connect_config: ConnectConfig,
+    pub commit_config: CommitConfig,
 }

@@ -340,13 +340,13 @@ macro_rules! new_type {
         impl $Name {
             env_funs!($env);
 
-            pub fn into_duration(self) -> Duration {
-                Duration::from_millis(u64::from(self.0))
+            pub fn into_duration(self) -> std::time::Duration {
+                std::time::Duration::from_millis(u64::from(self.0))
             }
         }
 
-        impl From<$Name> for Duration {
-            fn from(v: $Name) -> Duration {
+        impl From<$Name> for std::time::Duration {
+            fn from(v: $Name) -> std::time::Duration {
                 v.into_duration()
             }
         }

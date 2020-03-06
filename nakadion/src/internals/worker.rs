@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use futures::Stream;
-use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
+use tokio::{self, task::JoinHandle};
 
-use crate::components::streams::BatchLine;
+use crate::components::{committer::CommitHandle, streams::BatchLine};
 use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{committer::CommitData, EnrichedErr, EnrichedResult, StreamState};
+use crate::internals::{EnrichedErr, EnrichedResult, StreamState};
 
 use processor::HandlerSlot;
 
@@ -44,7 +44,7 @@ impl SleepingWorker {
     pub fn start<S>(
         self,
         stream_state: StreamState,
-        committer: UnboundedSender<CommitData>,
+        committer: CommitHandle,
         batches: S,
     ) -> ActiveWorker
     where
@@ -89,19 +89,19 @@ mod processor {
 
     use bytes::Bytes;
     use futures::{pin_mut, Stream, StreamExt};
-    use tokio::{self, sync::mpsc::UnboundedSender, task::JoinHandle};
+    use tokio::{self, task::JoinHandle};
 
-    use crate::nakadi_types::{model::subscription::SubscriptionCursor, Error};
+    use crate::nakadi_types::subscription::SubscriptionCursor;
 
-    use crate::components::streams::BatchLine;
+    use crate::components::{committer::CommitHandle, streams::BatchLine};
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
         HandlerAssignment,
     };
     use crate::instrumentation::Instruments;
-    use crate::internals::{committer::CommitData, EnrichedOk, EnrichedResult, StreamState};
-    use crate::logging::{Logger, Logs};
+    use crate::internals::{EnrichedOk, EnrichedResult, StreamState};
+    use crate::logging::{ContextualLogger, Logger};
 
     use super::WorkerMessage;
 
@@ -112,7 +112,7 @@ mod processor {
         batches: S,
         mut handler_slot: HandlerSlot,
         stream_state: StreamState,
-        committer: UnboundedSender<CommitData>,
+        committer: CommitHandle,
     ) -> JoinHandle<EnrichedResult<HandlerSlot>>
     where
         S: Stream<Item = WorkerMessage> + Send + 'static,
@@ -172,7 +172,7 @@ mod processor {
     pub struct ProcessingCompound {
         handler_slot: HandlerSlot,
         stream_state: StreamState,
-        committer: UnboundedSender<CommitData>,
+        committer: CommitHandle,
     }
 
     impl ProcessingCompound {
@@ -221,15 +221,9 @@ mod processor {
                             .handler_deserialization(n_events_bytes, t_deserialize);
                     }
 
-                    let commit_data = CommitData {
-                        cursor,
-                        received_at: frame_received_at,
-                        frame_id,
-                        n_events,
-                    };
-                    if let Err(err) = self.try_commit(commit_data) {
+                    if let Err(err) = self.committer.commit(cursor, frame_received_at, n_events) {
                         self.stream_state
-                            .error(format_args!("Failed to enqueue commit data: {}", err));
+                            .error(format_args!("Failed to enqueue commit data: {:?}", err));
                         self.stream_state.request_stream_cancellation();
                     }
                     Ok(true)
@@ -272,17 +266,6 @@ mod processor {
             }
         }
 
-        fn try_commit(&mut self, commit_data: CommitData) -> Result<(), Error> {
-            if let Err(err) = self.committer.send(commit_data) {
-                return Err(Error::new(format!(
-                    "failed to enqueue commit data '{}'",
-                    err
-                )));
-            }
-
-            Ok(())
-        }
-
         fn report_processed_stats(
             &self,
             n_events_bytes: usize,
@@ -306,7 +289,7 @@ mod processor {
         pub assignment: HandlerAssignment,
         pub inactivity_after: HandlerInactivityTimeoutSecs,
         pub notified_on_inactivity: bool,
-        pub logger: Option<Logger>,
+        pub logger: Option<ContextualLogger>,
     }
 
     impl HandlerSlot {
@@ -399,20 +382,18 @@ mod processor {
 
         pub fn with_logger<F>(&self, f: F)
         where
-            F: Fn(&Logger),
+            F: Fn(&ContextualLogger),
         {
             if let Some(ref logger) = self.logger {
                 f(logger)
             }
         }
 
-        pub fn set_logger(&mut self, logger: &Logger) {
+        pub fn set_logger(&mut self, logger: &ContextualLogger) {
             let logger = match self.assignment.event_type_and_partition() {
-                (Some(e), Some(p)) => logger
-                    .with_event_type(e.clone())
-                    .with_partition_id(p.clone()),
-                (Some(e), None) => logger.with_event_type(e.clone()),
-                (None, Some(p)) => logger.with_partition_id(p.clone()),
+                (Some(e), Some(p)) => logger.event_type(e.clone()).partition_id(p.clone()),
+                (Some(e), None) => logger.event_type(e.clone()),
+                (None, Some(p)) => logger.partition_id(p.clone()),
                 (None, None) => logger.clone(),
             };
             self.logger = Some(logger)

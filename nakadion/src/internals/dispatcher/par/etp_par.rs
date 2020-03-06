@@ -7,18 +7,17 @@ use futures::{
     pin_mut, FutureExt, Stream, StreamExt,
 };
 use std::future::Future;
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::components::committer::ProvidesCommitter;
+use crate::api::SubscriptionCommitApi;
+use crate::components::committer::{CommitHandle, Committer};
 use crate::consumer::ConsumerError;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{
-    committer::*, dispatcher::DispatcherMessage, worker::*, EnrichedErr, EnrichedOk,
-    EnrichedResult, StreamState,
+    dispatcher::DispatcherMessage, worker::*, EnrichedErr, EnrichedOk, EnrichedResult, StreamState,
 };
-use crate::logging::Logs;
+use crate::logging::Logger;
 
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 use super::BufferedWorker;
 
@@ -30,7 +29,7 @@ impl Dispatcher {
         api_client: C,
     ) -> Sleeping<C>
     where
-        C: ProvidesCommitter + Send + Sync + Clone + 'static,
+        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         Sleeping {
             assignments: BTreeMap::default(),
@@ -48,7 +47,7 @@ pub(crate) struct Sleeping<C> {
 
 impl<C> Sleeping<C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> Active<'static, C>
     where
@@ -60,8 +59,15 @@ where
             handler_factory,
         } = self;
 
-        let (committer, committer_join_handle) =
-            Committer::start(api_client.clone(), stream_state.clone());
+        let mut committer = Committer::new(
+            api_client.clone(),
+            stream_state.subscription_id(),
+            stream_state.stream_id(),
+        );
+        committer.set_config(stream_state.config.commit_config.clone());
+        committer.set_logger(stream_state.clone());
+
+        let (committer, committer_join_handle) = committer.run();
 
         let join_workers = run(
             assignments,
@@ -104,7 +110,7 @@ fn run<S>(
     assignments: BTreeMap<EventTypePartition, SleepingWorker>,
     stream: S,
     stream_state: StreamState,
-    committer: UnboundedSender<CommitData>,
+    committer: CommitHandle,
     handler_factory: Arc<dyn BatchHandlerFactory>,
 ) -> impl Future<Output = EnrichedResult<BTreeMap<EventTypePartition, SleepingWorker>>>
 where
@@ -222,7 +228,7 @@ pub(crate) struct Active<'a, C> {
 
 impl<'a, C> Active<'a, C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
         let Active {

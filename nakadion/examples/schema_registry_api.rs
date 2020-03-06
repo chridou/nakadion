@@ -1,4 +1,4 @@
-use nakadi_types::model::event_type::*;
+use nakadi_types::event_type::*;
 use nakadi_types::RandomFlowId;
 use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 

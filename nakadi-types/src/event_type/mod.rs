@@ -4,8 +4,8 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::model::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
-use crate::model::partition::{CursorOffset, PartitionId};
+use crate::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
+use crate::partition::{CursorOffset, PartitionId};
 
 mod event_type_input;
 pub use event_type_input::*;

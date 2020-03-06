@@ -4,20 +4,21 @@ use std::time::Instant;
 
 use futures::{Stream, TryFutureExt};
 
-use crate::components::committer::ProvidesCommitter;
+use crate::api::SubscriptionCommitApi;
 use crate::components::streams::BatchLine;
 use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
-use crate::logging::Logs;
-use crate::nakadi_types::model::subscription::EventTypePartition;
+use crate::logging::Logger;
+use crate::nakadi_types::subscription::EventTypePartition;
 
 mod all_seq;
 mod par;
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum DispatcherMessage {
-    // A batch containing events along with the `EventTypePartition` extracted from the cursor
+    /// A batch containing events along with the `EventTypePartition` extracted from the cursor
     BatchWithEvents(EventTypePartition, BatchLine),
     Tick(Instant),
     StreamEnded,
@@ -53,7 +54,7 @@ impl Dispatcher {
         config: Config,
     ) -> SleepingDispatcher<C>
     where
-        C: ProvidesCommitter + Send + Sync + Clone + 'static,
+        C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
     {
         match mode {
             DispatchMode::AllSeq => SleepingDispatcher::AllSeq(
@@ -77,7 +78,7 @@ pub(crate) enum SleepingDispatcher<C> {
 
 impl<C> SleepingDispatcher<C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub fn start<S>(self, stream_state: StreamState, messages: S) -> ActiveDispatcher<'static, C>
     where
@@ -117,7 +118,7 @@ pub(crate) enum ActiveDispatcher<'a, C> {
 
 impl<'a, C> ActiveDispatcher<'a, C>
 where
-    C: ProvidesCommitter + Send + Sync + Clone + 'static,
+    C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
     pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
         match self {

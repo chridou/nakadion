@@ -1,7 +1,8 @@
 use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-use crate::internals::{committer::*, worker::*, EnrichedResult, StreamState};
+use crate::components::committer::CommitHandle;
+use crate::internals::{worker::*, EnrichedResult, StreamState};
 
 pub mod et_par;
 pub mod etp_par;
@@ -18,7 +19,7 @@ impl BufferedWorker {
     fn new(
         sleeping_worker: SleepingWorker,
         stream_state: StreamState,
-        committer: UnboundedSender<CommitData>,
+        committer: CommitHandle,
     ) -> BufferedWorker {
         let (tx, rx) = unbounded_channel::<WorkerMessage>();
 

@@ -2,86 +2,96 @@ use std::fmt;
 use std::fmt::Arguments;
 use std::sync::Arc;
 
-use crate::nakadi_types::model::{
+use crate::nakadi_types::{
     event_type::EventTypeName,
     partition::PartitionId,
     subscription::{StreamId, SubscriptionId},
 };
 
-pub(crate) trait Logs {
+pub trait Logger: Send + Sync + 'static {
     fn debug(&self, args: Arguments);
     fn info(&self, args: Arguments);
     fn warn(&self, args: Arguments);
     fn error(&self, args: Arguments);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DevNullLogger;
+
+impl Logger for DevNullLogger {
+    fn debug(&self, _args: Arguments) {}
+    fn info(&self, _args: Arguments) {}
+    fn warn(&self, _args: Arguments) {}
+    fn error(&self, _args: Arguments) {}
+}
+
 #[derive(Clone)]
-pub(crate) struct Logger {
+pub(crate) struct ContextualLogger {
     context: Arc<LoggingContext>,
     logging_adapter: Arc<dyn LoggingAdapter>,
 }
 
-impl Logger {
+impl ContextualLogger {
     pub fn new(logging_adapter: Arc<dyn LoggingAdapter>) -> Self {
-        Logger {
+        ContextualLogger {
             context: Arc::new(LoggingContext::default()),
             logging_adapter,
         }
     }
 
-    pub fn with_subscription_id(&self, subscription_id: SubscriptionId) -> Self {
+    pub fn subscription_id(&self, subscription_id: SubscriptionId) -> Self {
         let mut context = (*self.context).clone();
         context.subscription_id = Some(subscription_id);
         let logging_adapter = Arc::clone(&self.logging_adapter);
 
-        Logger {
+        ContextualLogger {
             context: Arc::new(context),
             logging_adapter,
         }
     }
 
-    pub fn with_stream_id(&self, stream_id: StreamId) -> Self {
+    pub fn stream_id(&self, stream_id: StreamId) -> Self {
         let mut context = (*self.context).clone();
         context.stream_id = Some(stream_id);
         let logging_adapter = Arc::clone(&self.logging_adapter);
 
-        Logger {
+        ContextualLogger {
             context: Arc::new(context),
             logging_adapter,
         }
     }
 
-    pub fn with_partition_id(&self, partition_id: PartitionId) -> Self {
+    pub fn partition_id(&self, partition_id: PartitionId) -> Self {
         let mut context = (*self.context).clone();
         context.partition_id = Some(partition_id);
         let logging_adapter = Arc::clone(&self.logging_adapter);
 
-        Logger {
+        ContextualLogger {
             context: Arc::new(context),
             logging_adapter,
         }
     }
 
-    pub fn with_event_type(&self, event_type: EventTypeName) -> Self {
+    pub fn event_type(&self, event_type: EventTypeName) -> Self {
         let mut context = (*self.context).clone();
         context.event_type = Some(event_type);
         let logging_adapter = Arc::clone(&self.logging_adapter);
 
-        Logger {
+        ContextualLogger {
             context: Arc::new(context),
             logging_adapter,
         }
     }
 }
 
-impl Logs for Logger {
+impl Logger for ContextualLogger {
     #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logging_adapter.debug(&self.context, args);
     }
 
     #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, args: Arguments) {}
+    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logging_adapter.info(&self.context, args);
@@ -109,21 +119,21 @@ pub trait LoggingAdapter: Send + Sync + 'static {
 ///
 /// This does not use the tokio version. It blocks the current thread.
 #[derive(Clone)]
-pub struct StdOutLogger(LogConfig);
+pub struct StdOutLoggingAdapter(LogConfig);
 
-impl StdOutLogger {
+impl StdOutLoggingAdapter {
     pub fn new(config: LogConfig) -> Self {
         Self(config)
     }
 }
 
-impl Default for StdOutLogger {
+impl Default for StdOutLoggingAdapter {
     fn default() -> Self {
         Self::new(LogConfig::default())
     }
 }
 
-impl LoggingAdapter for StdOutLogger {
+impl LoggingAdapter for StdOutLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         println!("[DEBUG]{}{}", context.create_display(&self.0), args);
     }
@@ -143,21 +153,21 @@ impl LoggingAdapter for StdOutLogger {
 ///
 /// This does not use the tokio version. It blocks the current thread.
 #[derive(Clone)]
-pub struct StdErrLogger(LogConfig);
+pub struct StdErrLoggingAdapter(LogConfig);
 
-impl StdErrLogger {
+impl StdErrLoggingAdapter {
     pub fn new(config: LogConfig) -> Self {
         Self(config)
     }
 }
 
-impl Default for StdErrLogger {
+impl Default for StdErrLoggingAdapter {
     fn default() -> Self {
         Self::new(LogConfig::default())
     }
 }
 
-impl LoggingAdapter for StdErrLogger {
+impl LoggingAdapter for StdErrLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         eprintln!("[DEBUG]{}{}", context.create_display(&self.0), args);
     }
@@ -176,9 +186,9 @@ impl LoggingAdapter for StdErrLogger {
 
 /// Does no logging at all
 #[derive(Clone, Copy)]
-pub struct DevNullLogger;
+pub struct DevNullLoggingAdapter;
 
-impl LoggingAdapter for DevNullLogger {
+impl LoggingAdapter for DevNullLoggingAdapter {
     fn debug(&self, _context: &LoggingContext, _args: Arguments) {}
     fn info(&self, _context: &LoggingContext, _args: Arguments) {}
     fn warn(&self, _context: &LoggingContext, _args: Arguments) {}
@@ -337,25 +347,25 @@ pub mod slog_adapter {
 
     /// A logger based on `slog`
     #[derive(Clone)]
-    pub struct SlogLogger {
+    pub struct SlogLoggingAdapter {
         logger: Logger,
         config: LogConfig,
     }
 
-    impl SlogLogger {
+    impl SlogLoggingAdapter {
         pub fn new(logger: Logger) -> Self {
-            SlogLogger {
+            SlogLoggingAdapter {
                 logger,
                 config: LogConfig::short(),
             }
         }
 
         pub fn new_with_config(logger: Logger, config: LogConfig) -> Self {
-            SlogLogger { logger, config }
+            SlogLoggingAdapter { logger, config }
         }
     }
 
-    impl LoggingAdapter for SlogLogger {
+    impl LoggingAdapter for SlogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             let ctx_display = context.create_display(&self.config);
             let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
@@ -410,21 +420,21 @@ pub mod log_adapter {
 
     /// A logger based on `log`
     #[derive(Clone)]
-    pub struct LogLogger(LogConfig);
+    pub struct LogLoggingAdapter(LogConfig);
 
-    impl LogLogger {
+    impl LogLoggingAdapter {
         pub fn new(config: LogConfig) -> Self {
             Self(config)
         }
     }
 
-    impl Default for LogLogger {
+    impl Default for LogLoggingAdapter {
         fn default() -> Self {
             Self::new(LogConfig::default())
         }
     }
 
-    impl LoggingAdapter for LogLogger {
+    impl LoggingAdapter for LogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             debug!("[DEBUG]{}{}", context.create_display(&self.0), args);
         }

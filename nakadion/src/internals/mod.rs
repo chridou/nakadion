@@ -6,10 +6,10 @@ use std::sync::{
 };
 
 use crate::consumer::{Config, ConsumerError, Instrumentation};
-use crate::logging::{Logger, Logs};
-use crate::nakadi_types::model::subscription::{StreamId, StreamParameters, SubscriptionId};
+use crate::logging::{ContextualLogger, Logger};
+use crate::nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId};
 
-pub mod committer;
+//pub mod committer;
 pub mod controller;
 pub mod dispatcher;
 pub mod worker;
@@ -21,18 +21,18 @@ pub mod worker;
 pub(crate) struct ConsumerState {
     is_globally_cancelled: Arc<AtomicBool>,
     config: Arc<Config>,
-    logger: Logger,
+    logger: ContextualLogger,
     instrumentation: Instrumentation,
 }
 
 impl ConsumerState {
-    pub fn new(config: Config, logger: Logger) -> Self {
+    pub fn new(config: Config, logger: ContextualLogger) -> Self {
         let subscription_id = config.subscription_id;
         let instrumentation = config.instrumentation.clone();
         Self {
             is_globally_cancelled: Arc::new(AtomicBool::new(false)),
             config: Arc::new(config),
-            logger: logger.with_subscription_id(subscription_id),
+            logger: logger.subscription_id(subscription_id),
             instrumentation,
         }
     }
@@ -45,7 +45,7 @@ impl ConsumerState {
             stream_id,
             Arc::clone(&self.config),
             Arc::downgrade(&self.is_globally_cancelled),
-            self.logger.with_stream_id(stream_id),
+            self.logger.stream_id(stream_id),
             self.instrumentation.clone(),
         )
     }
@@ -69,7 +69,7 @@ impl ConsumerState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().stream_parameters
+        &self.config().connect_config.stream_params
     }
 
     pub fn instrumentation(&self) -> &Instrumentation {
@@ -77,14 +77,14 @@ impl ConsumerState {
     }
 }
 
-impl Logs for ConsumerState {
+impl Logger for ConsumerState {
     #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);
     }
 
     #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, args: Arguments) {}
+    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logger.info(args);
@@ -107,7 +107,7 @@ pub(crate) struct StreamState {
     config: Arc<Config>,
     is_cancelled: Arc<AtomicBool>,
     is_globally_cancelled: Weak<AtomicBool>,
-    logger: Logger,
+    logger: ContextualLogger,
     instrumentation: Instrumentation,
 }
 
@@ -116,7 +116,7 @@ impl StreamState {
         stream_id: StreamId,
         config: Arc<Config>,
         is_globally_cancelled: Weak<AtomicBool>,
-        logger: Logger,
+        logger: ContextualLogger,
         instrumentation: Instrumentation,
     ) -> Self {
         Self {
@@ -157,7 +157,7 @@ impl StreamState {
 
     #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
-        &self.config().stream_parameters
+        &self.config().connect_config.stream_params
     }
 
     pub fn stream_id(&self) -> StreamId {
@@ -168,7 +168,7 @@ impl StreamState {
         self.config().subscription_id
     }
 
-    pub fn logger(&self) -> &Logger {
+    pub fn logger(&self) -> &ContextualLogger {
         &self.logger
     }
 
@@ -177,14 +177,14 @@ impl StreamState {
     }
 }
 
-impl Logs for StreamState {
+impl Logger for StreamState {
     #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);
     }
 
     #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, args: Arguments) {}
+    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logger.info(args);
