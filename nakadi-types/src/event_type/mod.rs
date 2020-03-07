@@ -10,15 +10,15 @@ mod event_type_input;
 pub use event_type_input::*;
 
 new_type! {
- #[doc=r#"Name of an EventType. The name is constrained by a regular expression.
+    #[doc=r#"Name of an EventType. The name is constrained by a regular expression.
 
- Note: the name can encode the owner/responsible for this EventType and ideally should
- follow a common pattern that makes it easy to read and understand, but this level of
- structure is not enforced. For example a team name and data type can be used such as
- ‘acme-team.price-change’.
+Note: the name can encode the owner/responsible for this EventType and ideally should
+follow a common pattern that makes it easy to read and understand, but this level of
+structure is not enforced. For example a team name and data type can be used such as
+‘acme-team.price-change’.
 
- See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)"#]
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*name)"#]
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
     pub struct EventTypeName(String, env="EVENT_TYPE_NAME");
 }
 

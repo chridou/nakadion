@@ -9,7 +9,7 @@ use crate::Error;
 new_type! {
     #[doc=r#"Indicator of the application owning this EventType.
 
-    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)"#]
+See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)"#]
     #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct OwningApplication(String, env="OWNING_APPLICATION");
 }
@@ -134,7 +134,7 @@ impl fmt::Display for AuthorizationAttribute {
 new_type! {
     #[doc=r#"Data type of `AuthorizationAttribute`.
 
-    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
+See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
     #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct AuthAttDataType(String);
 }
@@ -148,8 +148,8 @@ impl AuthAttDataType {
 
 new_type! {
     #[doc=r#"Value type of `AuthorizationAttribute`.
-    
-    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
+
+See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
     #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct AuthAttValue(String);
 }
