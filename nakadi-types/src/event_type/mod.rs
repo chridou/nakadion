@@ -401,6 +401,23 @@ impl Default for EnrichmentStrategy {
 /// Operational statistics for an EventType. This data may be provided by users on Event Type creation.
 /// Nakadi uses this object in order to provide an optimal number of partitions from a throughput perspective.
 ///
+/// This field defines the number of partitions in the underlying Kafka topic of an event type.
+/// The amount of partitions is given by the expression max(read_parallelism, write_parallelism).
+/// The maximum number of partitions is specific to each deployment of Nakadi
+/// and should be referred to in a separated document.
+///
+/// For historical reasons the way that the number of partitions is defined is not as straighforward as it could.
+/// The fields messages_per_minute and message_size could potentially influence the resulting amount of partitions,
+/// so it’s recommended to set both of them to 1 (one).
+/// Providing values different than 1 could result in a higher number of partitions being created.
+///
+/// For those interested in why these fields exist, in the beginning of the project the developers
+/// run a very rudimentary benchmark to understand how much data could be ingested by a single Kafka topic-partition.
+/// This benchmark data was later used by this feature to define the suposedely
+/// ideal number of partitions for the user’s needs. Over time the maintainers of
+/// the project found this benchmark to be unreliable,
+/// usually resulting in fewer partitions than needed.
+///  
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypeStatistics)
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventTypeStatistics {

@@ -36,6 +36,7 @@ new_type! {
     pub struct DataType(String);
 }
 
+/// The type of operation executed on the entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataOp {
     #[serde(rename = "C")]
@@ -49,6 +50,9 @@ pub enum DataOp {
 }
 
 /// A `DataChangeEvent` template for consumption of events
+///
+/// Represents a change on a resource. Also contains indicators
+/// for the data type and the type of operation performed.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
 #[derive(Debug, Clone, Deserialize)]

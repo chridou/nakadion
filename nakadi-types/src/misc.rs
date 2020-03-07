@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::Error;
 
 new_type! {
-/// Indicator of the application owning this EventType.
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    #[doc=r#"Indicator of the application owning this EventType.
+
+    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventType*owning_application)"#]
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct OwningApplication(String, env="OWNING_APPLICATION");
 }
 
@@ -132,10 +132,10 @@ impl fmt::Display for AuthorizationAttribute {
 }
 
 new_type! {
-/// Data type of `AuthorizationAttribute`
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    #[doc=r#"Data type of `AuthorizationAttribute`.
+
+    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct AuthAttDataType(String);
 }
 
@@ -147,9 +147,9 @@ impl AuthAttDataType {
 }
 
 new_type! {
-/// Value of `AuthorizationAttribute`
-///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    #[doc=r#"Value type of `AuthorizationAttribute`.
+    
+    See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)"#]
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct AuthAttValue(String);
 }

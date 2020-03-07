@@ -68,6 +68,8 @@ pub struct EventTypeInput {
     pub schema: EventTypeSchemaInput,
     /// Event type cleanup policy. There are two possible values:
     pub cleanup_policy: CleanupPolicy,
+    /// Operational statistics for an EventType. This data may be provided by users on Event Type creation.
+    /// Nakadi uses this object in order to provide an optimal number of partitions from a throughput perspective.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_statistic: Option<EventTypeStatistics>,
     #[serde(skip_serializing_if = "Option::is_none")]
