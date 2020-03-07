@@ -1,3 +1,9 @@
+//! This example is the integration test used with CI.
+//!
+//! It should not be executed against production systems.
+//!
+//! The included `docker-compose.yml` can be used to start a local
+//! Nakadi.
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{
