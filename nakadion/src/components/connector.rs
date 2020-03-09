@@ -204,7 +204,9 @@ impl FromStr for ConnectTimeout {
 ///```
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectConfig {
+    /// `StreamParameters` used to configure the stream consumed from Nakadi
     pub stream_parameters: StreamParameters,
+    /// If set to `true` auth error will not cause a retry on connect attempts
     pub abort_on_auth_error: Option<ConnectAbortOnAuthError>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub abort_connect_on_subscription_not_found: Option<ConnectAbortOnSubscriptionNotFound>,
@@ -219,22 +221,34 @@ pub struct ConnectConfig {
 }
 
 impl ConnectConfig {
+    /// Create a new instance from env vars.
+    ///
+    /// Fields where no env var was found will simply not be set.
     pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.update_from_env()?;
         Ok(me)
     }
 
+    /// Create a new instance from env vars.
+    ///
+    /// Fields where no env var was found will simply not be set.
     pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         let mut me = Self::default();
         me.update_from_env_prefixed(prefix)?;
         Ok(me)
     }
 
+    /// Fills not set values from env vars.
+    ///
+    /// Fields where no env var was found will simply not be set.
     pub fn update_from_env(&mut self) -> Result<(), Error> {
         self.update_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
     }
 
+    /// Fills not set values from env vars.
+    ///
+    /// Fields where no env var was found will simply not be set.
     pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         self.stream_parameters
             .fill_from_env_prefixed(prefix.as_ref())?;
@@ -262,6 +276,9 @@ impl ConnectConfig {
         Ok(())
     }
 
+    /// Fills not set values with default values.
+    ///
+    /// The filled in values are those which would be used if a value was not set.
     pub fn apply_defaults(&mut self) {
         self.stream_parameters.apply_defaults();
         if self.abort_on_auth_error.is_none() {
@@ -282,14 +299,17 @@ impl ConnectConfig {
         }
     }
 
+    /// `StreamParameters` used to configure the stream consumed from Nakadi
     pub fn stream_parameters<T: Into<StreamParameters>>(mut self, v: T) -> Self {
         self.stream_parameters = v.into();
         self
     }
+    /// If set to `true` auth error will not cause a retry on connect attempts
     pub fn abort_on_auth_error<T: Into<ConnectAbortOnAuthError>>(mut self, v: T) -> Self {
         self.abort_on_auth_error = Some(v.into());
         self
     }
+    /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     pub fn abort_connect_on_subscription_not_found<T: Into<ConnectAbortOnSubscriptionNotFound>>(
         mut self,
         v: T,
@@ -297,14 +317,19 @@ impl ConnectConfig {
         self.abort_connect_on_subscription_not_found = Some(v.into());
         self
     }
+    /// The maximum time for until a connection to a stream has to be established.
+    ///
+    /// Default is to retry indefinitely
     pub fn timeout_secs<T: Into<ConnectTimeout>>(mut self, v: T) -> Self {
         self.timeout_secs = Some(v.into());
         self
     }
+    /// The maximum retry delay between failed attempts to connect to a stream.
     pub fn max_retry_delay_secs<T: Into<ConnectMaxRetryDelaySecs>>(mut self, v: T) -> Self {
         self.max_retry_delay_secs = Some(v.into());
         self
     }
+    /// The timeout for a request made to Nakadi to connect to a stream.
     pub fn attempt_timeout_secs<T: Into<ConnectAttemptTimeoutSecs>>(mut self, v: T) -> Self {
         self.attempt_timeout_secs = Some(v.into());
         self
@@ -331,12 +356,10 @@ impl ConnectConfig {
 
 /// A `Connector` to connect to a Nakadi Stream
 ///
-/// ## `on_retry`
+/// ## Usage
 ///
-/// A closure to be called before a retry. The error which caused the retry and
-/// the time until the retry will be made is passed. This closure overrides the current one
-/// and will be used for all subsequent clones of this instance. This allows
-/// users to give context on the call site.
+/// If other than default values should be used the `Connector`
+/// can be configured via its mutable methods.
 pub struct Connector<C> {
     stream_client: C,
     config: ConnectConfig,
@@ -369,19 +392,7 @@ where
         }
     }
 
-    pub fn set_logger<L: Logger>(&mut self, logger: L) {
-        self.logger = Box::new(logger);
-    }
-
-    pub fn logger<L: Logger>(mut self, logger: L) -> Self {
-        self.set_logger(logger);
-        self
-    }
-
-    pub fn instrumentation(&self) -> Instrumentation {
-        self.instrumentation.clone()
-    }
-
+    /// Connect to Nakadi for a stream of byte chunks.
     pub async fn connect(
         &self,
         subscription_id: SubscriptionId,
@@ -389,6 +400,11 @@ where
         self.connect_abortable(subscription_id, || false).await
     }
 
+    /// Connect to Nakadi for a stream of byte chunks.
+    ///
+    /// A closure which is regularly polled must be provided for
+    /// the connector to determine whether connecting to Nakadi
+    /// shall be aborted.
     pub async fn connect_abortable<F>(
         &self,
         subscription_id: SubscriptionId,
@@ -402,33 +418,121 @@ where
             .await
     }
 
+    /// Sets the logger to be used from now on.
+    ///
+    /// The `Logger` is used mostly for emitting retry warnings.
+    pub fn set_logger<L: Logger>(&mut self, logger: L) {
+        self.logger = Box::new(logger);
+    }
+
+    /// Sets the logger to be used from now on in a builder method style.
+    ///
+    /// The `Logger` is used mostly for emitting retry warnings.
+    pub fn logger<L: Logger>(mut self, logger: L) -> Self {
+        self.set_logger(logger);
+        self
+    }
+
+    /// Get the currently used instrumentation
+    pub fn instrumentation(&self) -> Instrumentation {
+        self.instrumentation.clone()
+    }
+
+    /// Sets the `FlowId` for the next connect attempts.
+    ///
+    /// If not set, a random `FlowId` will be generated.
     pub fn set_flow_id(&mut self, flow_id: FlowId) {
         self.flow_id = Some(flow_id);
     }
 
+    /// Set the `ConnectConfig` in a builder style
     pub fn configure(mut self, config: ConnectConfig) -> Self {
         self.set_config(config);
         self
     }
 
+    /// Set the `ConnectConfig` which shall be used for the
+    /// next connect attempt
     pub fn set_config(&mut self, config: ConnectConfig) {
         self.config = config;
     }
 
-    pub fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
-        self.instrumentation = instrumentation;
-    }
-
-    pub fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
-        &mut self.config.stream_parameters
-    }
-
+    /// Returns a reference to the currently used config
     pub fn config(&self) -> &ConnectConfig {
         &self.config
     }
 
+    /// Returns a mutable reference to the currently used config
     pub fn config_mut(&mut self) -> &mut ConnectConfig {
         &mut self.config
+    }
+
+    /// Sets the `Instrumentation` to be used with this connector.
+    ///
+    /// Uses the `Instrumentation` of the consumer since
+    /// this is a component used by the `Consumer` itself.
+    pub fn set_instrumentation(&mut self, instrumentation: Instrumentation) {
+        self.instrumentation = instrumentation;
+    }
+
+    /// Gets a mutable reference to the `StreamParameters` of the currently
+    /// used `ConnectConfig`
+    pub fn stream_parameters_mut(&mut self) -> &mut StreamParameters {
+        &mut self.config.stream_parameters
+    }
+
+    /// Get a stream of frames(lines) directly from Nakadi.
+    pub async fn frame_stream(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> Result<(StreamId, FramesStream), ConnectError> {
+        let (stream_id, chunks) = self.connect(subscription_id).await?.parts();
+
+        let framed = crate::components::streams::FramedStream::new(chunks, self.instrumentation());
+
+        Ok((stream_id, framed.boxed()))
+    }
+
+    /// Get a stream of analyzed lines.
+    pub async fn batch_stream(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> Result<(StreamId, BatchStream), ConnectError> {
+        let (stream_id, frames) = self.frame_stream(subscription_id).await?;
+
+        let lines =
+            crate::components::streams::BatchLineStream::new(frames, self.instrumentation());
+
+        Ok((stream_id, lines.boxed()))
+    }
+
+    /// Get a stream of deserialized events.
+    pub async fn events_stream<E: serde::de::DeserializeOwned>(
+        &self,
+        subscription_id: SubscriptionId,
+    ) -> Result<(StreamId, EventsStream<E>), ConnectError> {
+        let (stream_id, batches) = self.batch_stream(subscription_id).await?;
+
+        let events = batches.map(|r| match r {
+            Ok(batch_line) => {
+                let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
+                let meta = StreamedBatchMeta {
+                    cursor,
+                    received_at: batch_line.received_at(),
+                    frame_id: batch_line.frame_id(),
+                };
+
+                if let Some(events_bytes) = batch_line.events_bytes() {
+                    let events = serde_json::from_slice::<Vec<E>>(&events_bytes)?;
+                    Ok((meta, Some(events)))
+                } else {
+                    Ok((meta, None))
+                }
+            }
+            Err(err) => Err(Error::from_error(err)),
+        });
+
+        Ok((stream_id, events.boxed()))
     }
 
     async fn connect_to_stream<F>(
@@ -559,60 +663,6 @@ where
                     .caused_by(err))
             }
         }
-    }
-
-    /// Get a stream of frames(lines) directly from Nakadi.
-    pub async fn frame_stream(
-        &self,
-        subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, FramesStream), ConnectError> {
-        let (stream_id, chunks) = self.connect(subscription_id).await?.parts();
-
-        let framed = crate::components::streams::FramedStream::new(chunks, self.instrumentation());
-
-        Ok((stream_id, framed.boxed()))
-    }
-
-    /// Get a stream of analyzed lines.
-    pub async fn batch_stream(
-        &self,
-        subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, BatchStream), ConnectError> {
-        let (stream_id, frames) = self.frame_stream(subscription_id).await?;
-
-        let lines =
-            crate::components::streams::BatchLineStream::new(frames, self.instrumentation());
-
-        Ok((stream_id, lines.boxed()))
-    }
-
-    /// Get a stream of deserialized events.
-    pub async fn events_stream<E: serde::de::DeserializeOwned>(
-        &self,
-        subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, EventsStream<E>), ConnectError> {
-        let (stream_id, batches) = self.batch_stream(subscription_id).await?;
-
-        let events = batches.map(|r| match r {
-            Ok(batch_line) => {
-                let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
-                let meta = StreamedBatchMeta {
-                    cursor,
-                    received_at: batch_line.received_at(),
-                    frame_id: batch_line.frame_id(),
-                };
-
-                if let Some(events_bytes) = batch_line.events_bytes() {
-                    let events = serde_json::from_slice::<Vec<E>>(&events_bytes)?;
-                    Ok((meta, Some(events)))
-                } else {
-                    Ok((meta, None))
-                }
-            }
-            Err(err) => Err(Error::from_error(err)),
-        });
-
-        Ok((stream_id, events.boxed()))
     }
 }
 

@@ -1,4 +1,9 @@
 //! Components to directly interact with Nakadi
+//!
+//! This are used by the `Consumer` internally so metrics
+//! and instrumentation within this module are
+//! tailored for the `Consumer` but can be used
+//! apart from it.
 use std::error::Error as StdError;
 use std::fmt;
 
