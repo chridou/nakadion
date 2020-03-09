@@ -158,7 +158,6 @@ impl Default for CommitRetryOnAuthError {
 /// Fetching values from the environment uses `FromStr` for parsing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "strategy")]
 pub enum CommitStrategy {
     /// Commit cursors immediately
     Immediately,

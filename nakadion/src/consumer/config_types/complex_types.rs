@@ -44,7 +44,6 @@ use crate::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "strategy")]
 pub enum DispatchMode {
     /// Dispatch all batches to a single worker(handler)
     ///
@@ -175,7 +174,6 @@ impl FromStr for DispatchMode {
 /// Fetching values from the environment uses `FromStr` for parsing
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "policy")]
 #[non_exhaustive]
 pub enum StreamDeadPolicy {
     /// The stream is never considered dead

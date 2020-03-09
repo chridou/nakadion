@@ -119,7 +119,6 @@ impl Default for ConnectAttemptTimeoutSecs {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "timeout")]
 pub enum ConnectTimeout {
     /// There is no limit on the number of connect attempts being done
     Infinite,
