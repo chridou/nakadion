@@ -77,9 +77,55 @@ impl Default for ConnectAttemptTimeoutSecs {
 }
 
 /// The timeout for a request made to Nakadi to connect to a stream including retries
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+///
+/// ## FromStr
+///
+/// `ConnectTimeout` can be parsed from a `str` slice.
+///
+/// ```rust
+/// use nakadion::components::connector::ConnectTimeout;
+///
+/// let ct: ConnectTimeout = "infinite".parse().unwrap();
+/// assert_eq!(ct, ConnectTimeout::Infinite);
+///
+/// let ct: ConnectTimeout = "60".parse().unwrap();
+/// assert_eq!(ct, ConnectTimeout::Seconds(60));
+///
+/// // JSON also works
+///
+/// let ct: ConnectTimeout = "\"infinite\"".parse().unwrap();
+/// assert_eq!(ct, ConnectTimeout::Infinite);
+///
+/// let ct: ConnectTimeout = r#"{"seconds":60}"#.parse().unwrap();
+/// assert_eq!(ct, ConnectTimeout::Seconds(60));
+///
+/// let ct: ConnectTimeout = "59".parse().unwrap();
+/// assert_eq!(ct, ConnectTimeout::Seconds(59));
+/// ```
+///
+/// ## Serialize/Deserialize
+///
+/// ```rust
+/// use nakadion::components::connector::ConnectTimeout;
+/// use serde_json::{self, json};
+///
+/// let infinite_json = json!("infinite");
+/// let ct: ConnectTimeout = serde_json::from_value(infinite_json).unwrap();
+/// assert_eq!(ct, ConnectTimeout::Infinite);
+///
+/// let seconds_json = json!({"seconds": 25});
+/// let ct: ConnectTimeout = serde_json::from_value(seconds_json).unwrap();
+/// assert_eq!(ct, ConnectTimeout::Seconds(25));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectTimeout {
+    /// There is no limit on the number of connect attempts being done
     Infinite,
+    /// Retry only for the given time.
+    ///
+    /// This not an exact value and the effective timeout
+    /// might be longer than the value given here.
     Seconds(u64),
 }
 
@@ -126,7 +172,7 @@ impl FromStr for ConnectTimeout {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
 
-        if s.starts_with('{') {
+        if s.starts_with('{') || s.starts_with('\"') {
             return Ok(serde_json::from_str(s)?);
         }
 
@@ -143,6 +189,19 @@ impl FromStr for ConnectTimeout {
 }
 
 /// Parameters to configure the `Connector`
+///
+/// # Example
+///
+/// ```rust
+/// use nakadion::components::connector::{ConnectConfig, ConnectTimeout};
+///
+/// let cfg = ConnectConfig::default()
+///     .abort_on_auth_error(true)
+///     .timeout_secs(25u64);
+///
+/// assert_eq!(cfg.abort_on_auth_error, Some(true.into()));
+/// assert_eq!(cfg.timeout_secs, Some(ConnectTimeout::Seconds(25)));
+///```
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectConfig {
     pub stream_parameters: StreamParameters,
