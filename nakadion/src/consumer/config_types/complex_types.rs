@@ -28,13 +28,13 @@ use crate::Error;
 /// ```rust
 /// use nakadion::consumer::DispatchMode;
 ///
-/// let strategy = "{\"strategy\": \"all_seq\"}".parse::<DispatchMode>().unwrap();
+/// let strategy = "\"all_seq\"".parse::<DispatchMode>().unwrap();
 /// assert_eq!(strategy, DispatchMode::AllSeq);
 ///
-/// let strategy = "{\"strategy\": \"event_type_par\"}".parse::<DispatchMode>().unwrap();
+/// let strategy = "\"event_type_par\"".parse::<DispatchMode>().unwrap();
 /// assert_eq!(strategy, DispatchMode::EventTypePar);
 ///
-/// let strategy = "{\"strategy\": \"event_type_partition_par\"}".parse::<DispatchMode>().unwrap();
+/// let strategy = "\"event_type_partition_par\"".parse::<DispatchMode>().unwrap();
 /// assert_eq!(strategy, DispatchMode::EventTypePartitionPar);
 /// ```
 ///
@@ -109,7 +109,7 @@ impl FromStr for DispatchMode {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
 
-        if s.starts_with('{') {
+        if s.starts_with('{') || s.starts_with('\"') {
             return Ok(serde_json::from_str(s)?);
         }
 
@@ -153,16 +153,16 @@ impl FromStr for DispatchMode {
 /// ```rust
 /// use nakadion::consumer::StreamDeadPolicy;
 ///
-/// let policy = r#"{"policy": "never"}"#.parse::<StreamDeadPolicy>().unwrap();
+/// let policy = r#""never""#.parse::<StreamDeadPolicy>().unwrap();
 /// assert_eq!(policy, StreamDeadPolicy::Never);
 ///
-/// let policy = r#"{"policy": "no_frames_for", "seconds": 1}"#.parse::<StreamDeadPolicy>().unwrap();
+/// let policy = r#"{"no_frames_for":{"seconds": 1}}"#.parse::<StreamDeadPolicy>().unwrap();
 /// assert_eq!(
 ///     policy,
 ///     StreamDeadPolicy::NoFramesFor { seconds: 1}
 /// );
 ///
-/// let policy = r#"{"policy": "no_events_for", "seconds": 2}"#.parse::<StreamDeadPolicy>().unwrap();
+/// let policy = r#"{"no_events_for":{"seconds": 2}}"#.parse::<StreamDeadPolicy>().unwrap();
 /// assert_eq!(
 ///     policy,
 ///     StreamDeadPolicy::NoEventsFor { seconds: 2}
@@ -263,7 +263,7 @@ impl FromStr for StreamDeadPolicy {
         }
 
         let s = s.trim();
-        if s.starts_with('{') {
+        if s.starts_with('{') || s.starts_with('\"') {
             return Ok(serde_json::from_str(s)?);
         }
 
@@ -271,7 +271,7 @@ impl FromStr for StreamDeadPolicy {
             "never" => StreamDeadPolicy::Never,
             _ => parse_internal(s).map_err(|err| {
                 Error::new(format!(
-                    "could not parse CommitStrategy from {}: {}",
+                    "could not parse StreamDeadPolicy from {}: {}",
                     s, err
                 ))
             })?,

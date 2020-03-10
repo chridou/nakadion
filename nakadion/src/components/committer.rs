@@ -136,13 +136,13 @@ impl Default for CommitRetryOnAuthError {
 /// ```rust
 /// use nakadion::components::committer::CommitStrategy;
 ///
-/// let strategy = r#"{"strategy": "immediately"}"#.parse::<CommitStrategy>().unwrap();
+/// let strategy = r#""immediately""#.parse::<CommitStrategy>().unwrap();
 /// assert_eq!(strategy, CommitStrategy::Immediately);
 ///
-/// let strategy = r#"{"strategy": "latest_possible"}"#.parse::<CommitStrategy>().unwrap();
+/// let strategy = r#""latest_possible""#.parse::<CommitStrategy>().unwrap();
 /// assert_eq!(strategy, CommitStrategy::LatestPossible);
 ///
-/// let strategy = r#"{"strategy": "after","seconds":1, "cursors":3}"#.parse::<CommitStrategy>().unwrap();
+/// let strategy = r#"{"after":{"seconds":1, "cursors":3}}"#.parse::<CommitStrategy>().unwrap();
 /// assert_eq!(
 ///     strategy,
 ///     CommitStrategy::After {
@@ -282,7 +282,7 @@ impl FromStr for CommitStrategy {
         }
         let s = s.trim();
 
-        if s.starts_with('{') {
+        if s.starts_with('{') || s.starts_with('\"') {
             return Ok(serde_json::from_str(s)?);
         }
 
