@@ -571,7 +571,9 @@ async fn api_check(api_client: &ApiClient) -> Result<(), Error> {
     let event_type_name = EventTypeName::new("api_test_event");
 
     if let Err(err) = api_client.delete_event_type(&event_type_name, ()).await {
-        println!("Event not deleted: {}", err);
+        println!("Event not {} not deleted: {}", event_type_name, err);
+    } else {
+        println!("Event {} deleted", event_type_name);
     }
 
     println!("Create event type {}", event_type_name);
