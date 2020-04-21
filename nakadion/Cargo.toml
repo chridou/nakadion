@@ -40,7 +40,7 @@ partitioner = ["crc"]
 env_logger = "0.7"
 tokio = {version = "0.2", features = ["macros"] }
 slog-term = "2.5.0"
-slog-async = "2.4.0"
+slog-async = "2.5.0"
 
 [[example]]
 name = "consume_subscription"
