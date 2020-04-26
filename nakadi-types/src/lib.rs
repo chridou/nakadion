@@ -134,7 +134,9 @@ impl FromStr for FlowId {
     }
 }
 
-/// An error for cases where further investigation is not necessary
+/// An error for cases where further investigation is not necessary.
+///
+/// The `catch all` error...
 #[derive(Debug)]
 pub struct Error {
     message: Option<String>,
@@ -182,6 +184,7 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+/// Some API endpoints return an empty `String` where we would expect it to be `None`
 fn deserialize_empty_string_is_none<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,

@@ -1,4 +1,4 @@
-//! The controller controls the lifecycle of the `Consumer` over multiple streams
+//! The controller controls the life cycle of the `Consumer` over multiple streams
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -28,7 +28,7 @@ pub(crate) mod types;
 
 use types::*;
 
-/// The controller controls the lifecycle of the `Consumer` over multiple streams
+/// The controller controls the life cycle of the `Consumer` over multiple streams
 ///
 /// * It connects to Nakadi
 /// * It builds up the components needed for consumption after a connect (Dispatcher, Workers, Committer)
@@ -36,7 +36,7 @@ use types::*;
 /// * It waits for a tear down of stream components when a stream is not consumed anymore
 /// * It reconnects to a stream or aborts the consumer
 ///
-/// Any occurrence of a `ConsumerError` triggers the `Controller` to abort the `Consumer` with an error.
+/// **Any occurrence of a `ConsumerError` triggers the `Controller` to abort the `Consumer` with an error.**
 #[derive(Clone)]
 pub(crate) struct Controller<C> {
     params: ControllerParams<C>,
@@ -104,7 +104,7 @@ where
 
     // We need stimuli even if we do not get anything from Nakadi
     // We also us the ticker to carry the sleeping dispatcher to the point
-    // where we know the we will process batches
+    // where we know that we will process batches
     let sleep_ticker = SleepTicker::start(sleeping_dispatcher, consumer_state.clone());
 
     // To be able to continue we need an established connection to a stream
@@ -120,7 +120,8 @@ where
         }
     };
 
-    // From now on we are in the context of a stream
+    // From now on we are in the context of a stream so we
+    // continue with a stream state for the current stream
     let stream_state = consumer_state.stream_state(stream_id);
 
     stream_state
@@ -135,7 +136,7 @@ where
         stream_state.instrumentation().clone(),
     );
 
-    // Only if we receive a frame we start to the rest
+    // Only if we receive a frame we start the rest
     // of the infrastructure
     let (active_dispatcher, stream, batch_lines_sink) =
         match wait_for_first_frame(stream, sleep_ticker, stream_state.clone()).await? {
@@ -149,7 +150,9 @@ where
             } => return Ok(sleeping_dispatcher),
         };
 
-    // Once we received a frame we start consuming
+    // Once we received a frame we start consuming. The dispatcher
+    // will run until it falls asleep because the stream ended or
+    // was aborted
     let sleeping_dispatcher =
         consume_stream_to_end(stream, active_dispatcher, batch_lines_sink, stream_state).await?;
 
@@ -282,7 +285,7 @@ where
     drop(partition_tracker);
 
     stream_state.debug(format_args!(
-        "Streaming stopping after {:?}.",
+        "Streaming ending after {:?}.",
         stream_started_at.elapsed()
     ));
 
@@ -348,7 +351,9 @@ enum WaitForFirstFrameResult<C, T> {
 ///
 /// If we got one, put it in front of the stream again and also wake up the dispatcher
 ///
-/// If an error is returned we abort the `Consumer`
+/// * If there is nothing received on the stream in time or if it even ended we return with an `Ok`
+/// since another connect attempt might be eligible
+/// * If a "real" error occurs an error is returned to abort the `Consumer`
 async fn wait_for_first_frame<C, S>(
     stream: S,
     sleep_ticker: SleepTicker<C>,
@@ -362,7 +367,7 @@ where
     S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
 {
     let now = Instant::now();
-    let nothing_received_since = now;
+    let nothing_received_since = now; // Just pretend we received something now to have a start
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_stream_stalled = stream_state.config().warn_stream_stalled.into_duration();
 
@@ -373,15 +378,20 @@ where
             if let Some(next) = stream.next().await {
                 match next {
                     Ok(BatchLineMessage::StreamEnded) => {
-                        stream_state
-                            .info(format_args!("Stream ended before receiving a batch line"));
+                        stream_state.warn(format_args!(
+                            "Stream ended before receiving a batch line after {:?}",
+                            nothing_received_since.elapsed()
+                        ));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         return Ok(WaitForFirstFrameResult::Aborted {
                             sleeping_dispatcher,
                         });
                     }
                     Ok(BatchLineMessage::BatchLine(first_frame)) => {
-                        stream_state.info(format_args!("Received first frame."));
+                        stream_state.info(format_args!(
+                            "Received first frame after {:?}.",
+                            nothing_received_since.elapsed()
+                        ));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         let (batch_lines_sink, batch_lines_receiver) =
                             unbounded_channel::<DispatcherMessage>();
@@ -421,6 +431,10 @@ where
                     },
                 }
             } else {
+                stream_state.warn(format_args!(
+                    "Stream ended without `BatchLineMessage::StreamEnded` after {:?}. This should not happen.",
+                    nothing_received_since.elapsed()
+                ));
                 let sleeping_dispatcher = sleep_ticker.join().await?;
                 return Ok(WaitForFirstFrameResult::Aborted {
                     sleeping_dispatcher,
@@ -429,6 +443,7 @@ where
         }
     };
 
+    // Recreate the stream by appending the rest to the already received first batch line
     let stream = stream::once(async { Ok(BatchLineMessage::BatchLine(first_frame)) }).chain(stream);
 
     Ok(WaitForFirstFrameResult::GotTheFrame {
@@ -438,7 +453,10 @@ where
     })
 }
 
-/// Injects ticks into the stream of frames from Nakadi
+/// Creates a stream of batches and also injects ticks into the stream of frames from Nakadi
+/// which creates tick messages within the stream of batches.
+///
+/// The created stream will also have a `BatchLineMessage::StreamEnded` appended as a final message
 fn make_ticked_batch_line_stream(
     bytes_stream: BytesStream,
     tick_interval: TickIntervalMillis,

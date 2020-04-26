@@ -70,8 +70,10 @@ mod error;
 /// resources, e.g. the API client, metrics and logger.
 ///
 /// The consumer will only return if stopped via a `ConsumerHandle` or if
-/// an error is returned. Note that stopping the `Consumer` from within a
-/// handler is also considered an error case.
+/// an error occurs internally. Note that stopping the `Consumer` from within a
+/// handler is also considered an error case as is failing to connect to for a stream.
+/// In the error case of not being able to connect to a stream the behaviour can be
+/// configured via the `ConnectConfig` (e.g. it can be configured to retry indefinitely)
 #[derive(Clone)]
 pub struct Consumer {
     inner: Arc<dyn ConsumerInternal + Send + Sync + 'static>,

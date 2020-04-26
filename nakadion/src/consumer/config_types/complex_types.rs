@@ -127,6 +127,8 @@ impl FromStr for DispatchMode {
 /// Once a stream is considered dead a reconnect for a new stream
 /// will be attempted.
 ///
+/// The default is `Never`
+///
 /// # FromStr
 ///
 /// ```rust

@@ -45,11 +45,6 @@ impl Default for PartitionInactivityTimeoutSecs {
 }
 
 new_type! {
-    #[doc="The time after which a stream is considered stuck and has to be aborted.\n"]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct StreamDeadTimeoutSecs(u64, env="STREAM_DEAD_TIMEOUT_SECS");
-}
-new_type! {
     #[doc="Emits a warning when no lines were received from Nakadi.\n\n\
     Default is 300 s.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

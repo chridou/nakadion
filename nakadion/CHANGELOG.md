@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.20.2]
 
+### Changed
+- Improved documentation
+
+### Removed
+- Unused type `StreamDeadTimeoutSecs`. `StreamDeadPolicy` is to be used instead.
 
 ## [0.20.1] - 2020-03-06
 

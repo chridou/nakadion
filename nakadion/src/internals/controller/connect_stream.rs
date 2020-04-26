@@ -3,6 +3,12 @@ use crate::components::connector::Connector;
 use crate::consumer::ConsumerAbort;
 use crate::internals::ConsumerState;
 
+/// Connects to a stream by creating a `Connector`
+///
+/// Connecting can be aborted via the `ConsumerState`
+///
+/// Failing to connect will always abort the `Consumer` so it is up to
+/// the configuration of the connector to control connect behaviour.
 pub(crate) async fn connect_with_retries<C: SubscriptionStreamApi>(
     stream_api: C,
     consumer_state: ConsumerState,
