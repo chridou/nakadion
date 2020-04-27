@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.20.2]## [0.20.2] - 2020-04-27
+## [0.20.3] - 2020-04-27
+
+### CHANGED
+
+- just version bump
+
+## [0.20.2] - 2020-04-27
 
 ### CHANGED
 - Improved documentation
@@ -16,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CHANGED
 - moved `Partition` to module `partition
-- added various convinience methods
+- added various convenience methods
 
 ## [0.1.0-alpha.X]
 

@@ -297,6 +297,12 @@ impl ProvidesAccessToken for FixedAccessTokenProvider {
 #[derive(Debug)]
 pub struct TokenError(String);
 
+impl TokenError {
+    pub fn message<T: fmt::Display>(msg: T) -> Self {
+        Self(msg.to_string())
+    }
+}
+
 impl fmt::Display for TokenError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "Failed to get access token: {}", self.0)
