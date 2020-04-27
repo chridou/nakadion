@@ -300,7 +300,8 @@ where
                     if retry_allowed {
                         let delay = backoff.next();
                         self.logger.warn(format_args!(
-                            "connect attempt {} failed after {:?} have already elapsed (retry in {:?}: {}",
+                            "connect attempt {} failed after {:?} have already elapsed (retry in {:?}) \
+                            with error: {}",
                             num_attempts, connect_started_at.elapsed(), delay, err
                         ));
                         num_attempts += 1;

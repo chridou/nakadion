@@ -29,8 +29,10 @@ impl PartitionTracker {
         let now = Instant::now();
         if let Some(entry) = self.partitions.get_mut(partition) {
             if entry.activity(now) {
-                self.logger
-                    .info(format_args!("Partition {} is active again", partition));
+                self.logger.info(format_args!(
+                    "Known partition {} is active again",
+                    partition
+                ));
                 self.instrumentation.controller_partition_activated();
             }
         } else {
@@ -40,7 +42,7 @@ impl PartitionTracker {
             };
             self.partitions.insert(partition.clone(), entry);
             self.logger
-                .info(format_args!("Partition {} is active", partition));
+                .info(format_args!("New active partition {}", partition));
             self.instrumentation.controller_partition_activated();
         }
     }
@@ -48,8 +50,10 @@ impl PartitionTracker {
     pub fn check_for_inactivity(&mut self, now: Instant) {
         for (partition, entry) in self.partitions.iter_mut() {
             if let Some(activated_at) = entry.check_for_inactivity(now, self.inactivity_after) {
-                self.logger
-                    .info(format_args!("Partition {} is inactive", partition));
+                self.logger.info(format_args!(
+                    "Known partition {} became inactive",
+                    partition
+                ));
                 self.instrumentation
                     .controller_partition_deactivated(activated_at.elapsed())
             }

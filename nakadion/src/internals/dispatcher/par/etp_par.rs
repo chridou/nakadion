@@ -153,7 +153,8 @@ where
                 worker
             } else {
                 stream_state.info(format_args!(
-                    "Discovered new event type partition: {}",
+                    "Discovered new event type partition combination for events \
+                    processing: {}",
                     event_type_partition
                 ));
                 let assignment =
