@@ -27,7 +27,7 @@ pub trait DispatchHttpRequest {
 #[derive(Debug)]
 pub struct RemoteCallError {
     message: Option<String>,
-    cause: Option<Box<dyn StdError + Send + 'static>>,
+    cause: Option<Box<dyn StdError + Send + Sync + 'static>>,
     detail: RemoteCallErrorDetail,
 }
 
@@ -53,7 +53,7 @@ impl RemoteCallError {
         self
     }
 
-    pub fn with_cause<E: StdError + Send + 'static>(mut self, cause: E) -> Self {
+    pub fn with_cause<E: StdError + Send + Sync + 'static>(mut self, cause: E) -> Self {
         self.cause = Some(Box::new(cause));
         self
     }
@@ -100,7 +100,7 @@ impl StdError for RemoteCallError {
 
 impl From<IoError> for RemoteCallError {
     fn from(err: IoError) -> Self {
-        Self::new_io().with_message(err.0)
+        Self::new_io().with_message(err.into_string())
     }
 }
 
@@ -192,7 +192,7 @@ mod reqwest_dispatch_http_request {
 
                 let bytes_stream = reqwest_response
                     .bytes_stream()
-                    .map_err(|err| IoError(err.to_string()))
+                    .map_err(|err| IoError::new(err.to_string()))
                     .boxed();
                 let mut response = Response::new(bytes_stream);
 

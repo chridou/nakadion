@@ -10,7 +10,7 @@ use crate::nakadi_types::{Error, FlowId};
 #[derive(Debug)]
 pub struct NakadiApiError {
     context: Option<String>,
-    cause: Option<Box<dyn StdError + Send + 'static>>,
+    cause: Option<Box<dyn StdError + Send + Sync + 'static>>,
     kind: NakadiApiErrorKind,
     flow_id: Option<FlowId>,
 }
@@ -61,7 +61,7 @@ impl NakadiApiError {
     /// Add a cause to this error
     pub fn caused_by<E>(mut self, err: E) -> Self
     where
-        E: StdError + Send + 'static,
+        E: StdError + Send + Sync + 'static,
     {
         self.cause = Some(Box::new(err));
         self
@@ -211,7 +211,7 @@ impl From<NakadiApiErrorKind> for NakadiApiError {
 
 impl From<crate::components::IoError> for NakadiApiError {
     fn from(err: crate::components::IoError) -> Self {
-        Self::io().with_context(err.0)
+        Self::io().with_context(err.into_string())
     }
 }
 

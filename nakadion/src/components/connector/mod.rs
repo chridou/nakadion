@@ -361,7 +361,7 @@ where
 pub struct ConnectError {
     context: Option<String>,
     kind: ConnectErrorKind,
-    source: Option<Box<dyn StdError + Send + 'static>>,
+    source: Option<Box<dyn StdError + Send + Sync + 'static>>,
 }
 
 impl ConnectError {
@@ -409,7 +409,7 @@ impl ConnectError {
         self
     }
 
-    pub fn caused_by<E: StdError + Send + 'static>(mut self, source: E) -> Self {
+    pub fn caused_by<E: StdError + Send + Sync + 'static>(mut self, source: E) -> Self {
         self.source = Some(Box::new(source));
         self
     }

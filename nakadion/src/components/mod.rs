@@ -24,11 +24,16 @@ impl<T> StreamingEssentials for T where
 }
 
 #[derive(Debug)]
-pub struct IoError(pub String);
+pub struct IoError(String);
 
 impl IoError {
     pub fn new<T: Into<String>>(s: T) -> Self {
         Self(s.into())
+    }
+
+    /// Keep private, needs improvement of IoError
+    pub(crate) fn into_string(self) -> String {
+        self.0
     }
 }
 

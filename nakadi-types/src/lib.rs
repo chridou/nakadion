@@ -140,7 +140,7 @@ impl FromStr for FlowId {
 #[derive(Debug)]
 pub struct Error {
     message: Option<String>,
-    source: Option<Box<dyn StdError + Send + 'static>>,
+    source: Option<Box<dyn StdError + Send + Sync + 'static>>,
 }
 
 impl Error {
@@ -151,8 +151,11 @@ impl Error {
         }
     }
 
-    pub fn from_error<E: StdError + Send + 'static>(err: E) -> Self {
-        Self::new(err.to_string())
+    pub fn from_error<E: StdError + Send + Sync + 'static>(err: E) -> Self {
+        Self {
+            message: None,
+            source: Some(Box::new(err)),
+        }
     }
 
     pub fn boxed(self) -> Box<dyn StdError + Send + 'static> {
@@ -163,8 +166,9 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match (self.message.as_ref(), self.source().as_ref()) {
+            (Some(msg), Some(err)) => write!(f, "{} - Caused by: {}", msg, err)?,
             (Some(msg), _) => write!(f, "{}", msg)?,
-            (_, Some(err)) => write!(f, "{}", err)?,
+            (_, Some(err)) => write!(f, "An error occurred caused by: {}", err)?,
             _ => write!(f, "some unspecified error occurred")?,
         }
 
