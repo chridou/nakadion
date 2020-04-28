@@ -136,7 +136,7 @@ macro_rules! env_funs {
 
         #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
-        #[doc="The name of the environment variable is \"NAKADION_"]
+        #[doc="The name of the environment variable is \""]
         #[doc=$var]
         #[doc="\""]
         pub fn from_env_opt_type_named() -> Option<Self> {
