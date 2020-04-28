@@ -41,6 +41,9 @@ macro_rules! from_env {
 
 macro_rules! env_funs {
     ($var:expr) => {
+        #[doc="The default name of the environment variable for this type.\n"]
+        pub const ENV_TYPE_NAME: &'static str = &$var;
+
         #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
@@ -87,6 +90,16 @@ macro_rules! env_funs {
         }
 
         #[doc="Initialize from the environment.\n"]
+        #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \""]
+        #[doc=$var]
+        #[doc="\""]
+         pub fn try_from_env_type_named() -> Result<Option<Self>, $crate::Error> {
+            Self::try_from_env_named(Self::ENV_TYPE_NAME)
+        }
+
+
+        #[doc="Initialize from the environment.\n"]
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
         #[doc=$var]
@@ -122,6 +135,16 @@ macro_rules! env_funs {
         }
 
         #[doc="Initialize from the environment.\n"]
+        #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
+        #[doc="The name of the environment variable is \""]
+        #[doc=$var]
+        #[doc="\""]
+        pub fn from_env_type_named() -> Result<Self, $crate::Error> {
+            Self::from_env_named(Self::ENV_TYPE_NAME)
+        }
+
+
+        #[doc="Initialize from the environment.\n"]
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
         #[doc="The name of the environment variable is \"NAKADION_"]
         #[doc=$var]
@@ -148,6 +171,16 @@ macro_rules! env_funs {
         pub fn from_env_opt_named<T: AsRef<str>>(var_name: T) -> Option<Self> {
             Self::from_env_named(var_name.as_ref()).ok()
         }
+
+        #[doc="Initialize from the environment.\n"]
+        #[doc="Returns `None` if the value could not be read for any reason.\n"]
+        #[doc="The name of the environment variable is \"NAKADION_"]
+        #[doc=$var]
+        #[doc="\""]
+        pub fn from_env_opt_type_named() -> Option<Self> {
+            Self::from_env_opt_named(Self::ENV_TYPE_NAME)
+        }
+
     };
 }
 

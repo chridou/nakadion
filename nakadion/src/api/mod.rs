@@ -320,7 +320,7 @@ pub trait SubscriptionApi {
     fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        cursors: &[SubscriptionCursorWithoutToken],
+        cursors: &[EventTypeCursor],
         flow_id: T,
     ) -> ApiFuture<()>;
 }

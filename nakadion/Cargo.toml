@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.20.4"
+version = "0.21.0"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -12,7 +12,7 @@ keywords = [ "nakadi", "event", "broker", "distributed","messaging"]
 edition = "2018"
 
 [dependencies]
-nakadi-types = { path = "../nakadi-types", version="^0.20.4"}
+nakadi-types = { path = "../nakadi-types", version="^0.21.0"}
 futures = "0.3"
 pin-utils = "0.1.0"
 tokio = {version = "0.2", features = ["fs", "sync", "time", "stream", "rt-core", "blocking"] }

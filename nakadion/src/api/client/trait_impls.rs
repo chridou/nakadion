@@ -339,12 +339,12 @@ impl SubscriptionApi for ApiClient {
     fn reset_subscription_cursors<T: Into<FlowId>>(
         &self,
         id: SubscriptionId,
-        cursors: &[SubscriptionCursorWithoutToken],
+        cursors: &[EventTypeCursor],
         flow_id: T,
     ) -> ApiFuture<()> {
         #[derive(Serialize)]
         struct EntityWrapper<'b> {
-            items: &'b [SubscriptionCursorWithoutToken],
+            items: &'b [EventTypeCursor],
         };
         let data = EntityWrapper { items: cursors };
         let url = self.urls().subscriptions_reset_subscription_cursors(id);

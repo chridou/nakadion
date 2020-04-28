@@ -31,7 +31,7 @@ where
                 .get_subscription_cursors(id, flow_id.clone())
                 .await?
                 .into_iter()
-                .map(|c| c.into_without_token_begin())
+                .map(|c| c.into_event_type_cursor_begin())
                 .collect::<Vec<_>>();
 
             self.reset_subscription_cursors(id, &cursors, flow_id)

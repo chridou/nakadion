@@ -46,7 +46,7 @@ pub struct SubscriptionInput {
     /// The initial cursors should cover all partitions of subscription.
     /// Clients will get events starting from next offset positions.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
+    pub initial_cursors: Option<Vec<EventTypeCursor>>,
     pub authorization: SubscriptionAuthorization,
 }
 
@@ -90,7 +90,7 @@ pub struct SubscriptionInputBuilder {
     pub event_types: Option<EventTypeNames>,
     pub consumer_group: Option<ConsumerGroup>,
     pub read_from: Option<ReadFrom>,
-    pub initial_cursors: Option<Vec<SubscriptionCursorWithoutToken>>,
+    pub initial_cursors: Option<Vec<EventTypeCursor>>,
     pub authorization: Option<SubscriptionAuthorization>,
 }
 
@@ -120,7 +120,7 @@ impl SubscriptionInputBuilder {
         self
     }
 
-    pub fn initial_cursors(mut self, initial_cursors: Vec<SubscriptionCursorWithoutToken>) -> Self {
+    pub fn initial_cursors(mut self, initial_cursors: Vec<EventTypeCursor>) -> Self {
         self.initial_cursors = Some(initial_cursors);
         self
     }
