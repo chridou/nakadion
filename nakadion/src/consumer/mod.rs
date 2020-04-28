@@ -49,7 +49,8 @@ pub use crate::components::{
     },
 };
 pub use crate::logging::{
-    DevNullLoggingAdapter, LoggingAdapter, StdErrLoggingAdapter, StdOutLoggingAdapter,
+    DevNullLoggingAdapter, LogConfig, LogDetailLevel, LoggingAdapter, StdErrLoggingAdapter,
+    StdOutLoggingAdapter,
 };
 pub use config_types::*;
 pub use error::*;
@@ -88,20 +89,26 @@ impl Consumer {
     /// Create a `Builder` initialized with values from the environment
     /// whereas the environment variables will be prefixed with `NAKADION_`.
     pub fn builder_from_env() -> Result<Builder, Error> {
-        Builder::try_from_env()
+        Builder::from_env()
     }
 
     /// Create a `Builder` initialized with values from the environment
     /// whereas the environment variables will be prefixed with `<prefix>_`.
     pub fn builder_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Builder, Error> {
-        Builder::try_from_env_prefixed(prefix)
+        Builder::from_env_prefixed(prefix)
+    }
+
+    /// Create a `Builder` initialized with values from the environment
+    /// whereas the environment variables will not be prefixed at all.
+    pub fn builder_from_env_type_names() -> Result<Builder, Error> {
+        Builder::from_env_type_names()
     }
 
     /// Start consuming events.
     ///
     /// A 'Consuming` and a `ConsumerHandle` will be returned. The `Consuming`
     /// will complete with a `ConsumptionOutcome` once consumption has stopped.
-    /// `Consuming` can be dropped if ther is no interest in waiting the consumer
+    /// `Consuming` can be dropped if there is no interest in waiting the consumer
     /// to finish.
     ///
     /// The `ConsumerHandle` can be used to check whether

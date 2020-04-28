@@ -116,31 +116,8 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Creates a new `Builder` from the environment where all the env vars
-    /// are prefixed with `NAKADION_`.
-    pub fn try_from_env() -> Result<Self, Error> {
-        Self::try_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
-    }
-
-    /// Creates a new `Builder` from the environment where all the env vars
-    /// are prefixed with `<prefix>_`.
-    pub fn try_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.fill_from_env_prefixed(prefix)?;
-        Ok(me)
-    }
-
-    /// Sets all values that have not been set so far from the environment.
-    ///
-    /// All the env vars are prefixed with `NAKADION_`.
-    pub fn fill_from_env(&mut self) -> Result<(), Error> {
-        self.fill_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
-    }
-
-    /// Sets all values that have not been set so far from the environment.
-    ///
-    /// All the env vars are prefixed with `<prefix>_`.
-    pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.subscription_id.is_none() {
             self.subscription_id = SubscriptionId::try_from_env_prefixed(prefix.as_ref())?;
         }
@@ -176,10 +153,9 @@ impl Builder {
             self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        self.commit_config
-            .update_from_env_prefixed(prefix.as_ref())?;
+        self.commit_config.fill_from_env_prefixed(prefix.as_ref())?;
         self.connect_config
-            .update_from_env_prefixed(prefix.as_ref())?;
+            .fill_from_env_prefixed(prefix.as_ref())?;
 
         Ok(())
     }

@@ -1,13 +1,15 @@
-use std::fmt;
-use std::fmt::Arguments;
+use std::fmt::{self, Arguments};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::nakadi_types::{
     event_type::EventTypeName,
     partition::PartitionId,
     subscription::{StreamId, SubscriptionId},
+    Error,
 };
 
+/// Logs the given `Arguments` at different log levels
 pub trait Logger: Send + Sync + 'static {
     fn debug(&self, args: Arguments);
     fn info(&self, args: Arguments);
@@ -19,9 +21,14 @@ impl<T> Logger for T
 where
     T: LoggingAdapter,
 {
+    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         LoggingAdapter::debug(self, &LoggingContext::default(), args)
     }
+
+    #[cfg(not(feature = "debug-mode"))]
+    fn debug(&self, _args: Arguments) {}
+
     fn info(&self, args: Arguments) {
         LoggingAdapter::info(self, &LoggingContext::default(), args)
     }
@@ -224,8 +231,19 @@ pub struct LogConfig {
 }
 
 impl LogConfig {
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+        let level = LogDetailLevel::from_env_prefixed(prefix.as_ref())?;
+
+        match level {
+            LogDetailLevel::Low => *self = Self::low(),
+            LogDetailLevel::Medium => *self = Self::medium(),
+            LogDetailLevel::High => *self = Self::high(),
+        }
+        Ok(())
+    }
     /// Only display the stream id and the partition id
-    pub fn short() -> Self {
+    pub fn low() -> Self {
         Self {
             show_subscription_id: false,
             show_stream_id: true,
@@ -245,7 +263,7 @@ impl LogConfig {
     }
 
     /// Only display the subscription id, the stream id, the event type and the partition id
-    pub fn long() -> Self {
+    pub fn high() -> Self {
         Self {
             show_subscription_id: true,
             show_stream_id: true,
@@ -257,7 +275,39 @@ impl LogConfig {
 
 impl Default for LogConfig {
     fn default() -> Self {
-        Self::short()
+        Self::medium()
+    }
+}
+
+/// Defines the level of context being logged
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum LogDetailLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl LogDetailLevel {
+    env_funs!("LOG_DETAIL_LEVEL");
+}
+
+impl Default for LogDetailLevel {
+    fn default() -> Self {
+        LogDetailLevel::Medium
+    }
+}
+
+impl FromStr for LogDetailLevel {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "low" => Ok(LogDetailLevel::Low),
+            "medium" => Ok(LogDetailLevel::Medium),
+            "high" => Ok(LogDetailLevel::High),
+            s => Err(Error::new(format!("{} is not a valid LogDetailLevel", s))),
+        }
     }
 }
 
@@ -364,7 +414,7 @@ pub mod slog_adapter {
         pub fn new(logger: Logger) -> Self {
             SlogLoggingAdapter {
                 logger,
-                config: LogConfig::short(),
+                config: LogConfig::low(),
             }
         }
 
@@ -390,7 +440,7 @@ pub mod slog_adapter {
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
-            info!(&self.logger, "{}{}", ctx_display, args; kvs)
+            info!(&self.logger, "{} {}", ctx_display, args; kvs)
         }
 
         fn warn(&self, context: &LoggingContext, args: Arguments) {
@@ -399,7 +449,7 @@ pub mod slog_adapter {
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
-            warn!(&self.logger, "{}{}", ctx_display, args; kvs)
+            warn!(&self.logger, "{} {}", ctx_display, args; kvs)
         }
 
         fn error(&self, context: &LoggingContext, args: Arguments) {
@@ -408,7 +458,7 @@ pub mod slog_adapter {
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
-            error!(&self.logger, "{}{}", ctx_display, args; kvs)
+            error!(&self.logger, "{} {}", ctx_display, args; kvs)
         }
     }
 
@@ -444,16 +494,16 @@ pub mod log_adapter {
 
     impl LoggingAdapter for LogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
-            debug!("[DEBUG]{}{}", context.create_display(&self.0), args);
+            debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
         }
         fn info(&self, context: &LoggingContext, args: Arguments) {
-            info!("[INFO]{}{}", context.create_display(&self.0), args);
+            info!("[INFO]{} {}", context.create_display(&self.0), args);
         }
         fn warn(&self, context: &LoggingContext, args: Arguments) {
-            warn!("[WARN]{}{}", context.create_display(&self.0), args);
+            warn!("[WARN]{} {}", context.create_display(&self.0), args);
         }
         fn error(&self, context: &LoggingContext, args: Arguments) {
-            error!("[ERROR]{}{}", context.create_display(&self.0), args);
+            error!("[ERROR]{} {}", context.create_display(&self.0), args);
         }
     }
 }

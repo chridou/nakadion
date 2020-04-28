@@ -371,23 +371,8 @@ pub struct CommitConfig {
 }
 
 impl CommitConfig {
-    pub fn from_env() -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.update_from_env()?;
-        Ok(me)
-    }
-
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.update_from_env_prefixed(prefix)?;
-        Ok(me)
-    }
-
-    pub fn update_from_env(&mut self) -> Result<(), Error> {
-        self.update_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
-    }
-
-    pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.timeout_millis.is_none() {
             self.timeout_millis = CommitTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
         }

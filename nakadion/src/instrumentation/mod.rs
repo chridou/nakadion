@@ -1,7 +1,10 @@
 //! Types for implementing custom instrumentation
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use crate::nakadi_types::Error;
 
 #[cfg(feature = "metrix")]
 mod metrix_impl;
@@ -124,9 +127,29 @@ pub enum MetricsDetailLevel {
     High,
 }
 
+impl MetricsDetailLevel {
+    env_funs!("METRICS_DETAIL_LEVEL");
+}
+
 impl Default for MetricsDetailLevel {
     fn default() -> Self {
         MetricsDetailLevel::Medium
+    }
+}
+
+impl FromStr for MetricsDetailLevel {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "low" => Ok(MetricsDetailLevel::Low),
+            "medium" => Ok(MetricsDetailLevel::Medium),
+            "high" => Ok(MetricsDetailLevel::High),
+            s => Err(Error::new(format!(
+                "{} is not a valid MetricsDetailLevel",
+                s
+            ))),
+        }
     }
 }
 

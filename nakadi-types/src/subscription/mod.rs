@@ -706,7 +706,7 @@ pub struct StreamParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "batch_flush_timeout")]
     pub batch_flush_timeout_secs: Option<StreamBatchFlushTimeoutSecs>,
-    /// Useful for batching events based on their received_at timestamp. For example, if `batch_timespan` is 5
+    /// Useful for batching events based on their `received_at` timestamp. For example, if `batch_timespan` is 5
     /// seconds then Nakadi would flush a batch as soon as the difference in time between the first and the
     /// last event in the batch exceeds 5 seconds. It waits for an event outside of the window to signal the
     /// closure of a batch.
@@ -729,22 +729,42 @@ pub struct StreamParameters {
 }
 
 impl StreamParameters {
+    /// Initializes all fields from environment variables prefixed with "NAKADION_"
     pub fn from_env() -> Result<Self, Error> {
         let mut me = Self::default();
         me.fill_from_env()?;
         Ok(me)
     }
 
+    /// Initializes all fields from environment variables prefixed with "[prefix]_"
+    ///
+    /// The underscore is omitted if `prefix` is empty
     pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
         let mut me = Self::default();
         me.fill_from_env_prefixed(prefix)?;
         Ok(me)
     }
 
+    /// Initializes all fields from environment variables without any prefix
+    pub fn from_env_type_names() -> Result<Self, Error> {
+        let mut me = Self::default();
+        me.fill_from_env_type_names()?;
+        Ok(me)
+    }
+
+    /// Updates all not yet set fields from environment variables prefixed with "NAKADION_"
     pub fn fill_from_env(&mut self) -> Result<(), Error> {
         self.fill_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
     }
 
+    /// Updates all not yet set fields from environment variables without any prefix
+    pub fn fill_from_env_type_names(&mut self) -> Result<(), Error> {
+        self.fill_from_env_prefixed("")
+    }
+
+    /// Updates all not yet set fields from environment variables prefixed with "[prefix]_"
+    ///
+    /// The underscore is omitted if `prefix` is empty
     pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         if self.max_uncommitted_events.is_none() {
             self.max_uncommitted_events =

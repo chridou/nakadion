@@ -26,12 +26,14 @@ impl From<Eid> for EventId {
 }
 
 impl EventId {
+    /// Generate a new random `EventId` from a version 4 UUID
     pub fn random() -> Self {
         Self::new(Uuid::new_v4())
     }
 }
 
 new_type! {
+    #[doc=""]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct DataType(String);
 }
@@ -54,9 +56,10 @@ pub enum DataOp {
 /// Represents a change on a resource. Also contains indicators
 /// for the data type and the type of operation performed.
 ///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_AuthorizationAttribute)
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_DataChangeEvent)
 #[derive(Debug, Clone, Deserialize)]
 pub struct DataChangeEvent<T> {
+    /// The payload of the type
     pub data: T,
     pub data_type: DataType,
     pub data_op: DataOp,
@@ -65,7 +68,7 @@ pub struct DataChangeEvent<T> {
 
 /// A `BusinessEvent` template for consumption of events
 ///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_DataChangeEvent)
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BusinessEvent)
 #[derive(Debug, Clone, Deserialize)]
 pub struct BusinessEvent<T> {
     #[serde(flatten)]

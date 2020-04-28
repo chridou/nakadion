@@ -133,17 +133,35 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn from_env() -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.nakadi_base_url = NakadiBaseUrl::try_from_env()?;
-
-        Ok(me)
-    }
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
-
-        Ok(me)
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+        if self.nakadi_base_url.is_none() {
+            self.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.timeout_millis.is_none() {
+            self.timeout_millis = ApiClientTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.attempt_timeout_millis.is_none() {
+            self.attempt_timeout_millis =
+                ApiClientAttemptTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.initial_retry_interval_millis.is_none() {
+            self.initial_retry_interval_millis =
+                ApiClientInitialRetryIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.retry_interval_multiplier.is_none() {
+            self.retry_interval_multiplier =
+                ApiClientRetryIntervalMultiplier::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.max_retry_interval_millis.is_none() {
+            self.max_retry_interval_millis =
+                ApiClientMaxRetryIntervalMillis::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.retry_on_auth_errors.is_none() {
+            self.retry_on_auth_errors =
+                ApiClientRetryOnAuthErrors::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        Ok(())
     }
 
     pub fn nakadi_base_url(mut self, url: NakadiBaseUrl) -> Self {

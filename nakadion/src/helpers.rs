@@ -6,6 +6,48 @@ pub const TOKEN_PATH_ENV_VAR: &str = "ACCESS_TOKEN_PATH";
 pub const TOKEN_FIXED_ENV_VAR: &str = "ACCESS_TOKEN_FIXED";
 pub const ALLOW_NO_TOKEN_ENV_VAR: &str = "ACCESS_TOKEN_ALLOW_NONE";
 
+macro_rules! env_ctors {
+    () => {
+        #[doc="Initializes all fields from environment variables prefixed with \"NAKADION_\""]
+        pub fn from_env() -> Result<Self, $crate::Error> {
+            let mut me = Self::default();
+            me.fill_from_env()?;
+            Ok(me)
+        }
+
+        #[doc="Initializes all fields from environment variables prefixed with \"[prefix]_\"\n\n"]
+        #[doc="The underscore is omitted if `prefix` is empty"]
+        pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, $crate::Error> {
+            let mut me = Self::default();
+            me.fill_from_env_prefixed(prefix)?;
+            Ok(me)
+        }
+
+        #[doc="Initializes all fields from environment variables without any prefix"]
+        pub fn from_env_type_names() -> Result<Self, $crate::Error> {
+            let mut me = Self::default();
+            me.fill_from_env_type_names()?;
+            Ok(me)
+        }
+
+        #[doc="Updates all not yet set fields from environment variables prefixed with \"NAKADION_\""]
+        pub fn fill_from_env(&mut self) -> Result<(), $crate::Error> {
+            self.fill_from_env_prefixed_internal($crate::helpers::NAKADION_PREFIX)
+        }
+
+        #[doc="Updates all not yet set fields from environment variables prefixed with \"[prefix]_\"\n\n"]
+        #[doc="The underscore is omitted if `prefix` is empty"]
+        pub fn fill_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), $crate::Error> {
+            self.fill_from_env_prefixed_internal(prefix)
+        }
+
+        #[doc="Updates all not yet set fields from environment variables without any prefix"]
+        pub fn fill_from_env_type_names(&mut self) -> Result<(), $crate::Error> {
+            self.fill_from_env_prefixed_internal("")
+        }
+    };
+}
+
 macro_rules! from_env {
     (prefix => $PREFIX:expr, postfix => $POSTFIX:expr) => {{
         let mut var_name: String = String::from($PREFIX);
@@ -60,12 +102,15 @@ macro_rules! env_funs {
         #[doc="Returns `None` if the value was not found and fails if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
-        #[doc="\""]
+        #[doc="\"\n\n"]
+        #[doc="The underscore and prefix will be omitted if prefix is empty."]
         pub fn try_from_env_prefixed<T: Into<String>>(
             prefix: T,
         ) -> Result<Option<Self>, $crate::Error> {
             let mut var_name: String = prefix.into();
-            var_name.push('_');
+            if !var_name.is_empty() {
+                var_name.push('_');
+            }
             var_name.push_str(&$var);
             Self::try_from_env_named(var_name)
         }
@@ -97,10 +142,9 @@ macro_rules! env_funs {
         #[doc="The name of the environment variable is \""]
         #[doc=$var]
         #[doc="\""]
-         pub fn try_from_env_type_named() -> Result<Option<Self>, $crate::Error> {
+        pub fn try_from_env_type_name() -> Result<Option<Self>, $crate::Error> {
             Self::try_from_env_named(Self::ENV_TYPE_NAME)
         }
-
 
         #[doc="Initialize from the environment.\n"]
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
@@ -115,10 +159,13 @@ macro_rules! env_funs {
         #[doc="Fails if the value was not found or if the value could not be parsed.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
-        #[doc="\""]
-         pub fn from_env_prefixed<T: Into<String>>(prefix: T) -> Result<Self, $crate::Error> {
+        #[doc="\"\n\n"]
+        #[doc="The underscore and prefix will be omitted if prefix is empty."]
+        pub fn from_env_prefixed<T: Into<String>>(prefix: T) -> Result<Self, $crate::Error> {
             let mut var_name: String = prefix.into();
-            var_name.push('_');
+            if !var_name.is_empty() {
+                var_name.push('_');
+            }
             var_name.push_str(&$var);
             Self::from_env_named(var_name)
         }
@@ -142,7 +189,7 @@ macro_rules! env_funs {
         #[doc="The name of the environment variable is \""]
         #[doc=$var]
         #[doc="\""]
-        pub fn from_env_type_named() -> Result<Self, $crate::Error> {
+        pub fn from_env_type_name() -> Result<Self, $crate::Error> {
             Self::from_env_named(Self::ENV_TYPE_NAME)
         }
 
@@ -160,10 +207,13 @@ macro_rules! env_funs {
         #[doc="Returns `None` if the value could not be read for any reason.\n"]
         #[doc="The name of the environment variable is \"`prefix`_"]
         #[doc=$var]
-        #[doc="\""]
+        #[doc="\"\n\n"]
+        #[doc="The underscore and prefix will be omitted if prefix is empty."]
          pub fn from_env_opt_prefixed<T: Into<String>>(prefix: T) -> Option<Self> {
             let mut var_name: String = prefix.into();
-            var_name.push('_');
+            if !var_name.is_empty() {
+                var_name.push('_');
+            }
             var_name.push_str(&$var);
             Self::from_env_named(var_name).ok()
         }
@@ -180,7 +230,7 @@ macro_rules! env_funs {
         #[doc="The name of the environment variable is \""]
         #[doc=$var]
         #[doc="\""]
-        pub fn from_env_opt_type_named() -> Option<Self> {
+        pub fn from_env_opt_type_name() -> Option<Self> {
             Self::from_env_opt_named(Self::ENV_TYPE_NAME)
         }
     };

@@ -211,35 +211,8 @@ pub struct ConnectConfig {
 }
 
 impl ConnectConfig {
-    /// Create a new instance from env vars.
-    ///
-    /// Fields where no env var was found will simply not be set.
-    pub fn from_env() -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.update_from_env()?;
-        Ok(me)
-    }
-
-    /// Create a new instance from env vars.
-    ///
-    /// Fields where no env var was found will simply not be set.
-    pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, Error> {
-        let mut me = Self::default();
-        me.update_from_env_prefixed(prefix)?;
-        Ok(me)
-    }
-
-    /// Fills not set values from env vars.
-    ///
-    /// Fields where no env var was found will simply not be set.
-    pub fn update_from_env(&mut self) -> Result<(), Error> {
-        self.update_from_env_prefixed(crate::helpers::NAKADION_PREFIX)
-    }
-
-    /// Fills not set values from env vars.
-    ///
-    /// Fields where no env var was found will simply not be set.
-    pub fn update_from_env_prefixed<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
         self.stream_parameters
             .fill_from_env_prefixed(prefix.as_ref())?;
 

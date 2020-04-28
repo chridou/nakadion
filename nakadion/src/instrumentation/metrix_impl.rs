@@ -55,8 +55,22 @@ impl Default for MetrixGaugeTrackingSecs {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct MetrixConfig {
-    ///
+    /// Enables tracking for gauges for the given amount of seconds
     pub gauge_tracking_secs: Option<MetrixGaugeTrackingSecs>,
+}
+
+impl MetrixConfig {
+    env_ctors!();
+    fn fill_from_env_prefixed_internal<T: AsRef<str>>(
+        &mut self,
+        prefix: T,
+    ) -> Result<(), crate::Error> {
+        if self.gauge_tracking_secs.is_none() {
+            self.gauge_tracking_secs =
+                MetrixGaugeTrackingSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        Ok(())
+    }
 }
 
 impl Instruments for Metrix {
