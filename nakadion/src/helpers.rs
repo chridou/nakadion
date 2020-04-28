@@ -41,7 +41,10 @@ macro_rules! from_env {
 
 macro_rules! env_funs {
     ($var:expr) => {
-        #[doc="The default name of the environment variable for this type.\n"]
+        #[doc="The default name of the environment variable for this type.\n\n"]
+        #[doc="The name of the environment variable is \""]
+        #[doc=$var]
+        #[doc="\""]
         pub const ENV_TYPE_NAME: &'static str = &$var;
 
         #[doc="Initialize from the environment.\n"]
