@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - unified env config funs and load without prefix
 - `ApiClient` fully configurable from environment
 - renamed function to initialize structs from env
+- functions which load from env with prefix do not add an underscore if prefix is empty
 
 ### ADDED
 - logging configurable via environment

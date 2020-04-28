@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### CHANGED
 
 - unified env config funs and load without prefix
+- functions which load from env with prefix do not add an underscore if prefix is empty
 
 ## [0.21.0] - 2020-04-28
 
