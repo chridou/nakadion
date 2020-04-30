@@ -64,7 +64,7 @@ pub trait EventTypePartitionLike {
     fn partition(&self) -> &PartitionId;
 }
 
-/// Represents event-type:partition pair.
+/// Represents event-type/partition pair.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_EventTypePartition)
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
