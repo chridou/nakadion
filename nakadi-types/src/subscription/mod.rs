@@ -104,6 +104,7 @@ impl fmt::Display for EventTypePartition {
         Ok(())
     }
 }
+
 impl EventTypePartitionLike for EventTypePartition {
     fn event_type(&self) -> &EventTypeName {
         &self.event_type

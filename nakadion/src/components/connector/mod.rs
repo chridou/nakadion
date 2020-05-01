@@ -268,11 +268,13 @@ where
         let mut backoff = Backoff::new(self.config.max_retry_delay_secs.unwrap_or_default().into());
 
         let connect_started_at = Instant::now();
-        let mut num_attempts = 1;
+        let mut num_attempts = 0;
         loop {
             if check_abort() {
                 return Err(ConnectError::aborted());
             }
+
+            num_attempts += 1;
 
             match self
                 .connect_single_attempt(subscription_id, flow_id.clone())
@@ -304,7 +306,7 @@ where
                             with error: {}",
                             num_attempts, connect_started_at.elapsed(), delay, err
                         ));
-                        num_attempts += 1;
+
                         delay_for(delay).await;
                         continue;
                     } else {
