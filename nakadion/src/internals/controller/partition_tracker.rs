@@ -30,7 +30,7 @@ impl PartitionTracker {
         if let Some(entry) = self.partitions.get_mut(partition) {
             if entry.activity(now) {
                 self.logger.info(format_args!(
-                    "Known partition {} is active again",
+                    "Partition {} is active again",
                     partition
                 ));
                 self.instrumentation.controller_partition_activated();
@@ -51,7 +51,7 @@ impl PartitionTracker {
         for (partition, entry) in self.partitions.iter_mut() {
             if let Some(activated_at) = entry.check_for_inactivity(now, self.inactivity_after) {
                 self.logger.info(format_args!(
-                    "Known partition {} became inactive",
+                    "Partition {} became inactive",
                     partition
                 ));
                 self.instrumentation

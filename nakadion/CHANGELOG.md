@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ADDED
 
+- metric for `cursor_received_at` in committer
 - `WarnNoFramesSecs` time to emit a warning if no frames were received from Nakadi
 - `WarnNoEventsSecs` time to emit a warning if no events were received from Nakadi
 

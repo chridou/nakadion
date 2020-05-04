@@ -898,6 +898,7 @@ mod background {
         committer.logger.debug(format_args!("Committer starting"));
 
         let config = committer.config.clone();
+        let instrumentation = committer.instrumentation.clone();
 
         let mut pending = PendingCursors::new(
             config.commit_strategy.unwrap_or_default(),
@@ -913,6 +914,7 @@ mod background {
             let now = Instant::now();
             let cursor_received = match to_commit.try_recv() {
                 Ok(CommitterMessage::Data(next)) => {
+                    instrumentation.committer_cursor_received(next.cursor_received_at);
                     pending.add(next, now);
                     true
                 }
