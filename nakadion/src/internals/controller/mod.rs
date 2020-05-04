@@ -177,7 +177,8 @@ where
     // This is basically to prevents us from being locked in a dead stream.
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     // From time to time, if we do not receive data from Nakadi we want to emit warnings
-    let warn_stream_stalled = stream_state.config().warn_stream_stalled.into_duration();
+    let warn_no_frames = stream_state.config().warn_no_frames.into_duration();
+    let warn_no_events = stream_state.config().warn_no_events.into_duration();
 
     let now = Instant::now();
     let stream_started_at = now;
@@ -228,13 +229,23 @@ where
                     let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
                     break;
                 }
-                let elapsed = last_events_received_at.elapsed();
-                if elapsed >= warn_stream_stalled {
+
+                let elapsed = last_frame_received_at.elapsed();
+                if elapsed >= warn_no_frames {
                     stream_state.warn(format_args!(
-                        "The stream seems to have stalled (for {:?})",
+                        "No events frames for {:?}.",
                         elapsed
                     ));
                 }
+
+                let elapsed = last_frame_received_at.elapsed();
+                if elapsed >= warn_no_events {
+                    stream_state.warn(format_args!(
+                        "No events received for {:?}.",
+                        elapsed
+                    ));
+                }
+
                 partition_tracker.check_for_inactivity(Instant::now());
                 DispatcherMessage::Tick(timestamp)
             }
@@ -369,7 +380,7 @@ where
     let now = Instant::now();
     let nothing_received_since = now; // Just pretend we received something now to have a start
     let stream_dead_policy = stream_state.config().stream_dead_policy;
-    let warn_stream_stalled = stream_state.config().warn_stream_stalled.into_duration();
+    let warn_no_frames = stream_state.config().warn_no_frames.into_duration();
 
     let mut stream = stream.boxed();
     // wait for the first frame from Nakadi and maybe abort if none arrives in time
@@ -411,9 +422,9 @@ where
                             });
                         }
                         let elapsed = nothing_received_since.elapsed();
-                        if elapsed >= warn_stream_stalled {
+                        if elapsed >= warn_no_frames {
                             stream_state.warn(format_args!(
-                                "The stream seems to have stalled (for {:?})",
+                                "No first frame for {:?}",
                                 elapsed
                             ));
                         }

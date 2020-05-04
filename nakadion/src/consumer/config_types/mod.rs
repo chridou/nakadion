@@ -101,8 +101,10 @@ pub struct Builder {
     pub partition_inactivity_timeout_secs: Option<PartitionInactivityTimeoutSecs>,
     /// The time after which a stream is considered stuck and has to be aborted.
     pub stream_dead_policy: Option<StreamDeadPolicy>,
-    /// Emits a warning when no lines were received from Nakadi for the given time.
-    pub warn_stream_stalled_secs: Option<WarnStreamStalledSecs>,
+    /// Emits a warning when no frames (lines) were received from Nakadi for the given time.
+    pub warn_no_frames_secs: Option<WarnNoFramesSecs>,
+    /// Emits a warning when no events were received from Nakadi for the given time.
+    pub warn_no_events_secs: Option<WarnNoEventsSecs>,
     /// Defines how batches are internally dispatched.
     ///
     /// This e.g. configures parallelism.
@@ -144,9 +146,14 @@ impl Builder {
             self.stream_dead_policy = StreamDeadPolicy::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.warn_stream_stalled_secs.is_none() {
-            self.warn_stream_stalled_secs =
-                WarnStreamStalledSecs::try_from_env_prefixed(prefix.as_ref())?;
+        if self.warn_no_frames_secs.is_none() {
+            self.warn_no_frames_secs =
+                WarnNoFramesSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
+        if self.warn_no_events_secs.is_none() {
+            self.warn_no_events_secs =
+                WarnNoEventsSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.dispatch_mode.is_none() {
@@ -226,12 +233,21 @@ impl Builder {
         self
     }
 
-    /// Emits a warning when no lines were received from Nakadi for the given time.
-    pub fn warn_stream_stalled_secs<T: Into<WarnStreamStalledSecs>>(
+    /// Emits a warning when no frames (lines) were received from Nakadi for the given time.
+    pub fn warn_no_frames_secs<T: Into<WarnNoFramesSecs>>(
         mut self,
-        warn_stream_stalled_secs: T,
+        warn_no_frames_secs: T,
     ) -> Self {
-        self.warn_stream_stalled_secs = Some(warn_stream_stalled_secs.into());
+        self.warn_no_frames_secs = Some(warn_no_frames_secs.into());
+        self
+    }
+
+    /// Emits a warning when no events were received from Nakadi for the given time.
+    pub fn warn_no_events_secs<T: Into<WarnNoEventsSecs>>(
+        mut self,
+        warn_no_events_secs: T,
+    ) -> Self {
+        self.warn_no_events_secs = Some(warn_no_events_secs.into());
         self
     }
 
@@ -366,7 +382,8 @@ impl Builder {
         let partition_inactivity_timeout =
             Some(self.partition_inactivity_timeout_secs.unwrap_or_default());
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
-        let warn_stream_stalled = Some(self.warn_stream_stalled_secs.unwrap_or_default());
+        let warn_no_frames_secs = Some(self.warn_no_frames_secs.unwrap_or_default());
+        let warn_no_events_secs = Some(self.warn_no_events_secs.unwrap_or_default());
 
         self.connect_config.apply_defaults();
 
@@ -383,7 +400,8 @@ impl Builder {
         self.handler_inactivity_timeout_secs = handler_inactivity_timeout;
         self.partition_inactivity_timeout_secs = partition_inactivity_timeout;
         self.stream_dead_policy = Some(stream_dead_policy);
-        self.warn_stream_stalled_secs = warn_stream_stalled;
+        self.warn_no_frames_secs = warn_no_frames_secs;
+        self.warn_no_events_secs = warn_no_events_secs;
     }
 
     /// Create a `Consumer`
@@ -428,7 +446,8 @@ impl Builder {
 
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         stream_dead_policy.validate()?;
-        let warn_stream_stalled = self.warn_stream_stalled_secs.unwrap_or_default();
+        let warn_no_frames = self.warn_no_frames_secs.unwrap_or_default();
+        let warn_no_events = self.warn_no_events_secs.unwrap_or_default();
 
         let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
 
@@ -452,7 +471,8 @@ impl Builder {
             handler_inactivity_timeout,
             partition_inactivity_timeout,
             stream_dead_policy,
-            warn_stream_stalled,
+            warn_no_frames,
+            warn_no_events,
             dispatch_mode,
             commit_config,
             connect_config,

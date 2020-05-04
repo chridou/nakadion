@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .stream_timeout_secs(60)
                 })
         })
-        .warn_stream_stalled_secs(10);
+        .warn_no_frames_secs(10);
 
     // This is not necessary and just used
     // to print the configured values

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [X]
+
+### ADDED
+
+- `WarnNoFramesSecs` time to emit a warning if no frames were received from Nakadi
+- `WarnNoEventsSecs` time to emit a warning if no events were received from Nakadi
+
+### REMOVED
+
+- `WarnStreamStalledSecs` removed
+
 ## [0.22.0] - 2020-04-28
 
 ### CHANGED

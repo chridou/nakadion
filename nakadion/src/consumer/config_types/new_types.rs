@@ -45,13 +45,25 @@ impl Default for PartitionInactivityTimeoutSecs {
 }
 
 new_type! {
-    #[doc="Emits a warning when no lines were received from Nakadi.\n\n\
-    Default is 300 s.\n"]
+    #[doc="Emits a warning when no frames (lines) were received from Nakadi.\n\n\
+    Default is 30s.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub secs struct WarnStreamStalledSecs(u64, env="WARN_STREAM_STALLED_SECS");
+    pub secs struct WarnNoFramesSecs(u64, env="WARN_NO_FRAMES_SECS");
 }
-impl Default for WarnStreamStalledSecs {
+impl Default for WarnNoFramesSecs {
     fn default() -> Self {
-        Self(300)
+        Self(60)
+    }
+}
+
+new_type! {
+    #[doc="Emits a warning when no events were received from Nakadi.\n\n\
+    Default is 60s.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct WarnNoEventsSecs(u64, env="WARN_NO_EVENTS_SECS");
+}
+impl Default for WarnNoEventsSecs {
+    fn default() -> Self {
+        Self(60)
     }
 }
