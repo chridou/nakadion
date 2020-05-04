@@ -150,17 +150,17 @@ impl Default for StdOutLoggingAdapter {
 
 impl LoggingAdapter for StdOutLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        println!("[DEBUG]{}{}", context.create_display(&self.0), args);
+        println!("[DEBUG]{} {}", context.create_display(&self.0), args);
     }
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        println!("[INFO]{}{}", context.create_display(&self.0), args);
+        println!("[INFO]{} {}", context.create_display(&self.0), args);
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        println!("[WARN]{}{}", context.create_display(&self.0), args);
+        println!("[WARN]{} {}", context.create_display(&self.0), args);
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        println!("[ERROR]{}{}", context.create_display(&self.0), args);
+        println!("[ERROR]{} {}", context.create_display(&self.0), args);
     }
 }
 
@@ -184,18 +184,18 @@ impl Default for StdErrLoggingAdapter {
 
 impl LoggingAdapter for StdErrLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[DEBUG]{}{}", context.create_display(&self.0), args);
+        eprintln!("[DEBUG]{} {}", context.create_display(&self.0), args);
     }
 
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[INFO]{}{}", context.create_display(&self.0), args);
+        eprintln!("[INFO]{} {}", context.create_display(&self.0), args);
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[WARN]{}{}", context.create_display(&self.0), args);
+        eprintln!("[WARN]{} {}", context.create_display(&self.0), args);
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[ERROR]{}{}", context.create_display(&self.0), args);
+        eprintln!("[ERROR]{} {}", context.create_display(&self.0), args);
     }
 }
 
@@ -383,7 +383,7 @@ impl<'a> ContextDisplay<'a> {
 fn add_delimiter(n: &mut usize, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
     (*n) -= 1;
     if *n == 0 {
-        write!(f, "] ")?;
+        write!(f, "]")?;
     } else {
         write!(f, ";")?;
     }
@@ -431,7 +431,7 @@ pub mod slog_adapter {
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
 
-            debug!(&self.logger, "{}{}", ctx_display, args; kvs)
+            debug!(&self.logger, "{} {}", ctx_display, args; kvs)
         }
 
         fn info(&self, context: &LoggingContext, args: Arguments) {

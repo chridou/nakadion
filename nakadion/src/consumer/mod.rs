@@ -131,16 +131,24 @@ impl Consumer {
         };
 
         let kept_inner = Arc::clone(&self.inner);
-        let join = tokio::spawn(async move {
-            let stop_reason = self.inner.start(consumer_state).await;
+        let join = tokio::spawn({
+            let consumer_state = consumer_state.clone();
+            async move {
+                let stop_reason = self.inner.start(consumer_state).await;
 
-            ConsumptionOutcome {
-                stop_reason,
-                consumer: self,
+                ConsumptionOutcome {
+                    stop_reason,
+                    consumer: self,
+                }
             }
         });
 
         let f = async move {
+            consumer_state.info(format_args!(
+                "Consumer for subscription {} stopped",
+                subscription_id
+            ));
+
             match join.await {
                 Ok(outcome) => outcome,
                 Err(join_error) => ConsumptionOutcome {

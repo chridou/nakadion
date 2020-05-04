@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### CHANGED
 
 - Fixed event type partition tracking
+- Improve logging format
 
 ### ADDED
 
