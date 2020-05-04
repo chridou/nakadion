@@ -158,6 +158,19 @@ impl Instruments for Metrix {
         );
     }
 
+    fn controller_no_frames_warning(&self, no_frames_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerNoFramesForWarning,
+            (no_frames_for, TimeUnit::Milliseconds),
+        );
+    }
+    fn controller_no_events_warning(&self, no_events_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerNoEventsForWarning,
+            (no_events_for, TimeUnit::Milliseconds),
+        );
+    }
+
     // === DISPATCHER ===
 
     // === HANDLERS ===
@@ -234,6 +247,8 @@ pub enum Metric {
     ControllerKeepAliveReceivedLag,
     ControllerPartitionActivated,
     ControllerPartitionDeactivatedAfter,
+    ControllerNoFramesForWarning,
+    ControllerNoEventsForWarning,
     HandlerBatchLag,
     HandlerBatchProcessedBytes,
     HandlerBatchProcessedTime,
@@ -254,7 +269,7 @@ mod instr {
     use metrix::TelemetryTransmitter;
     use metrix::TimeUnit;
 
-    use super::create_gauge;
+    use super::{create_gauge, create_staircase_timer};
     use super::{Metric, MetrixConfig};
 
     pub fn create(
@@ -302,6 +317,12 @@ mod instr {
                     )),
                 )
                 .panel(
+                    Panel::named(Metric::ControllerNoFramesForWarning, "frames").handler(
+                        create_staircase_timer("no_frames_warning", &config)
+                            .for_label(Metric::ControllerNoFramesForWarning),
+                    ),
+                )
+                .panel(
                     Panel::named(AcceptAllLabels, "events")
                         .handler(
                             ValueMeter::new_with_defaults("per_second")
@@ -319,6 +340,10 @@ mod instr {
                         .handler(
                             ValueMeter::new_with_defaults("batch_deserialization_bytes_per_second")
                                 .for_label(Metric::HandlerBatchDeserializationBytes),
+                        )
+                        .handler(
+                            create_staircase_timer("no_events_warning", &config)
+                                .for_label(Metric::ControllerNoEventsForWarning),
                         ),
                 )
                 .panel(
@@ -354,4 +379,12 @@ fn create_gauge(name: &str, config: &MetrixConfig) -> Gauge {
     Gauge::new(name)
         .tracking(tracking_seconds.into_inner() as usize)
         .group_values(true)
+}
+
+fn create_staircase_timer(
+    name: &str,
+    config: &MetrixConfig,
+) -> metrix::instruments::StaircaseTimer {
+    let switch_off_after = config.gauge_tracking_secs.unwrap_or_default();
+    metrix::instruments::StaircaseTimer::new(name).switch_off_after(switch_off_after.into())
 }

@@ -83,6 +83,11 @@ pub trait Instruments {
     /// A partition did not receive data for some time is is therefore considered inactive.
     fn controller_partition_deactivated(&self, active_for: Duration);
 
+    /// No frames have been received for the given time and the warning has already  threshold elapsed
+    fn controller_no_frames_warning(&self, no_frames_for: Duration);
+    /// No events have been received for the given time and the warning threshold has already elapsed
+    fn controller_no_events_warning(&self, no_events_for: Duration);
+
     // === DISPATCHER ===
 
     // === WORKERS ===
@@ -390,6 +395,32 @@ impl Instruments for Instrumentation {
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
                 instr.controller_partition_deactivated(active_for)
+            }
+        }
+    }
+
+    fn controller_no_frames_warning(&self, no_frames_for: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.controller_no_frames_warning(no_frames_for)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.controller_no_frames_warning(no_frames_for)
+            }
+        }
+    }
+
+    fn controller_no_events_warning(&self, no_events_for: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.controller_no_events_warning(no_events_for)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.controller_no_events_warning(no_events_for)
             }
         }
     }

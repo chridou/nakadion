@@ -232,18 +232,18 @@ where
 
                 let elapsed = last_frame_received_at.elapsed();
                 if elapsed >= warn_no_frames {
-                    stream_state.warn(format_args!(
-                        "No events frames for {:?}.",
-                        elapsed
-                    ));
+                    stream_state.warn(format_args!("No events frames for {:?}.", elapsed));
+                    stream_state
+                        .instrumentation()
+                        .controller_no_frames_warning(elapsed);
                 }
 
-                let elapsed = last_frame_received_at.elapsed();
+                let elapsed = last_events_received_at.elapsed();
                 if elapsed >= warn_no_events {
-                    stream_state.warn(format_args!(
-                        "No events received for {:?}.",
-                        elapsed
-                    ));
+                    stream_state.warn(format_args!("No events received for {:?}.", elapsed));
+                    stream_state
+                        .instrumentation()
+                        .controller_no_events_warning(elapsed);
                 }
 
                 partition_tracker.check_for_inactivity(Instant::now());
@@ -381,6 +381,7 @@ where
     let nothing_received_since = now; // Just pretend we received something now to have a start
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_no_frames = stream_state.config().warn_no_frames.into_duration();
+    let warn_no_events = stream_state.config().warn_no_events.into_duration();
 
     let mut stream = stream.boxed();
     // wait for the first frame from Nakadi and maybe abort if none arrives in time
@@ -423,10 +424,16 @@ where
                         }
                         let elapsed = nothing_received_since.elapsed();
                         if elapsed >= warn_no_frames {
-                            stream_state.warn(format_args!(
-                                "No first frame for {:?}",
-                                elapsed
-                            ));
+                            stream_state.warn(format_args!("No first frame for {:?}", elapsed));
+                            stream_state
+                                .instrumentation()
+                                .controller_no_frames_warning(elapsed);
+                        }
+                        if elapsed >= warn_no_events {
+                            stream_state.warn(format_args!("No first event for {:?}", elapsed));
+                            stream_state
+                                .instrumentation()
+                                .controller_no_events_warning(elapsed);
                         }
                     }
                     Err(batch_line_error) => match batch_line_error.kind() {
