@@ -349,7 +349,7 @@ mod instr {
                 .panel(
                     Panel::named(AcceptAllLabels, "batch_lag")
                         .histogram(
-                            Histogram::new_with_defaults("controller")
+                            Histogram::new_with_defaults("controller_us")
                                 .display_time_unit(TimeUnit::Microseconds)
                                 .accept((
                                     Metric::ControllerBatchReceivedLag,
@@ -358,12 +358,12 @@ mod instr {
                                 )),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("handlers")
+                            Histogram::new_with_defaults("handlers_us")
                                 .display_time_unit(TimeUnit::Microseconds)
                                 .accept(Metric::HandlerBatchLag),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("committer")
+                            Histogram::new_with_defaults("committer_us")
                                 .display_time_unit(TimeUnit::Microseconds)
                                 .accept(Metric::CommitterCursorsReceivedLag),
                         ),
