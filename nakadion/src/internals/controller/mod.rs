@@ -222,6 +222,7 @@ where
                 break;
             }
             BatchLineMessage::Tick(timestamp) => {
+                stream_state.info(format_args!("Got a tick"));
                 if stream_dead_policy
                     .is_stream_dead(last_frame_received_at, last_events_received_at)
                 {

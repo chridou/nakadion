@@ -52,7 +52,7 @@ new_type! {
 }
 impl Default for WarnNoFramesSecs {
     fn default() -> Self {
-        Self(60)
+        Self(30)
     }
 }
 
