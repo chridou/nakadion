@@ -347,6 +347,58 @@ mod instr {
                         ),
                 )
                 .panel(
+                    Panel::named(AcceptAllLabels, "committer")
+                        .handler(
+                            create_staircase_timer("commit_failed_warning", &config)
+                                .for_label(Metric::CommitterCommitFailed),
+                        )
+                        .panel(
+                            Panel::named(AcceptAllLabels, "cursors")
+                                .meter(
+                                    Meter::new_with_defaults("received_per_second")
+                                        .for_label(Metric::CommitterCursorsReceivedLag),
+                                )
+                                .handler(
+                                    ValueMeter::new_with_defaults("committed_per_second")
+                                        .for_label(Metric::CommitterCursorsCommittedCount),
+                                )
+                                .handler(
+                                    ValueMeter::new_with_defaults("not_committed_per_second")
+                                        .for_label(Metric::CommitterCursorsNotCommittedCount),
+                                ),
+                        )
+                        .panel(
+                            Panel::named(
+                                Metric::CommitterCursorsCommittedTime,
+                                "ok_commit_requests",
+                            )
+                            .meter(
+                                Meter::new_with_defaults("per_second")
+                                    .for_label(Metric::CommitterCursorsCommittedTime)
+                                    .histogram(
+                                        Histogram::new_with_defaults("latency_ms")
+                                            .display_time_unit(TimeUnit::Milliseconds)
+                                            .for_label(Metric::CommitterCursorsCommittedTime),
+                                    ),
+                            ),
+                        )
+                        .panel(
+                            Panel::named(
+                                Metric::CommitterCursorsNotCommittedTime,
+                                "failed_commit_requests",
+                            )
+                            .meter(
+                                Meter::new_with_defaults("per_second")
+                                    .for_label(Metric::CommitterCursorsNotCommittedTime)
+                                    .histogram(
+                                        Histogram::new_with_defaults("latency_ms")
+                                            .display_time_unit(TimeUnit::Milliseconds)
+                                            .for_label(Metric::CommitterCursorsNotCommittedTime),
+                                    ),
+                            ),
+                        ),
+                )
+                .panel(
                     Panel::named(AcceptAllLabels, "batch_lag")
                         .histogram(
                             Histogram::new_with_defaults("controller_us")
