@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - enabled committer instrumentation
 
+### ADDED
+
+- metrics for incoming chunks and frames
+
 ## [0.22.1] - 2020-05-05
 
 ### CHANGED

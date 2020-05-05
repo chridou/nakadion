@@ -374,12 +374,12 @@ mod instr {
                             )
                             .meter(
                                 Meter::new_with_defaults("per_second")
-                                    .for_label(Metric::CommitterCursorsCommittedTime)
-                                    .histogram(
-                                        Histogram::new_with_defaults("latency_ms")
-                                            .display_time_unit(TimeUnit::Milliseconds)
-                                            .for_label(Metric::CommitterCursorsCommittedTime),
-                                    ),
+                                    .for_label(Metric::CommitterCursorsCommittedTime),
+                            )
+                            .histogram(
+                                Histogram::new_with_defaults("latency_ms")
+                                    .display_time_unit(TimeUnit::Milliseconds)
+                                    .for_label(Metric::CommitterCursorsCommittedTime),
                             ),
                         )
                         .panel(
@@ -389,12 +389,12 @@ mod instr {
                             )
                             .meter(
                                 Meter::new_with_defaults("per_second")
-                                    .for_label(Metric::CommitterCursorsNotCommittedTime)
-                                    .histogram(
-                                        Histogram::new_with_defaults("latency_ms")
-                                            .display_time_unit(TimeUnit::Milliseconds)
-                                            .for_label(Metric::CommitterCursorsNotCommittedTime),
-                                    ),
+                                    .for_label(Metric::CommitterCursorsNotCommittedTime),
+                            )
+                            .histogram(
+                                Histogram::new_with_defaults("latency_ms")
+                                    .display_time_unit(TimeUnit::Milliseconds)
+                                    .for_label(Metric::CommitterCursorsNotCommittedTime),
                             ),
                         ),
                 )
@@ -418,6 +418,45 @@ mod instr {
                             Histogram::new_with_defaults("committer_us")
                                 .display_time_unit(TimeUnit::Microseconds)
                                 .accept(Metric::CommitterCursorsReceivedLag),
+                        ),
+                )
+                .panel(
+                    Panel::named(Metric::StreamTickEmitted, "ticks").meter(
+                        Meter::new_with_defaults("emitted_per_second")
+                            .for_label(Metric::StreamTickEmitted),
+                    ),
+                )
+                .panel(
+                    Panel::named(AcceptAllLabels, "stream")
+                        .panel(
+                            Panel::named(AcceptAllLabels, "chunks")
+                                .meter(
+                                    Meter::new_with_defaults("per_second")
+                                        .for_label(Metric::StreamChunkReceivedBytes),
+                                )
+                                .handler(
+                                    ValueMeter::new_with_defaults("bytes_per_second")
+                                        .for_label(Metric::StreamChunkReceivedBytes),
+                                )
+                                .histogram(
+                                    Histogram::new_with_defaults("size_distribution")
+                                        .accept(Metric::StreamChunkReceivedBytes),
+                                ),
+                        )
+                        .panel(
+                            Panel::named(AcceptAllLabels, "frames")
+                                .meter(
+                                    Meter::new_with_defaults("per_second")
+                                        .for_label(Metric::StreamFrameReceivedBytes),
+                                )
+                                .handler(
+                                    ValueMeter::new_with_defaults("bytes_per_second")
+                                        .for_label(Metric::StreamFrameReceivedBytes),
+                                )
+                                .histogram(
+                                    Histogram::new_with_defaults("size_distribution")
+                                        .accept(Metric::StreamFrameReceivedBytes),
+                                ),
                         ),
                 ),
         );
