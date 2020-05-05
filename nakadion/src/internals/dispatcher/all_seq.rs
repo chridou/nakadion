@@ -54,6 +54,7 @@ where
         );
         committer.set_config(stream_state.config.commit_config.clone());
         committer.set_logger(stream_state.clone());
+        committer.set_instrumentation(stream_state.instrumentation().clone());
 
         let (committer, committer_join_handle) = committer.run();
 
