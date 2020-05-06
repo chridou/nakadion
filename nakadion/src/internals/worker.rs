@@ -160,6 +160,9 @@ mod processor {
                     }
                 }
             }
+
+            stream_state.debug(format_args!("Worker stopped"));
+
             Ok(EnrichedOk::new(
                 processing_compound.handler_slot,
                 batches_processed,

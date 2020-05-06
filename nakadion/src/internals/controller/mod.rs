@@ -208,8 +208,15 @@ where
         let batch_line_message = match batch_line_message_or_err {
             Ok(msg) => msg,
             Err(batch_line_error) => match batch_line_error.kind() {
-                BatchLineErrorKind::Parser => return Err(ConsumerErrorKind::InvalidBatch.into()),
+                BatchLineErrorKind::Parser => {
+                    stream_state.error(format_args!(
+                        "Aborting consumer - Invalid frame: {}",
+                        batch_line_error
+                    ));
+                    return Err(ConsumerErrorKind::InvalidBatch.into());
+                }
                 BatchLineErrorKind::Io => {
+                    stream_state.warn(format_args!("Aborting stream: {}", batch_line_error));
                     stream_state.request_stream_cancellation();
                     break;
                 }
@@ -219,7 +226,6 @@ where
         let msg_for_dispatcher = match batch_line_message {
             BatchLineMessage::StreamEnded => {
                 stream_state.info(format_args!("Stream ended"));
-                stream_state.request_stream_cancellation();
                 break;
             }
             BatchLineMessage::Tick(timestamp) => {
@@ -268,7 +274,7 @@ where
                 if batch.is_keep_alive_line() {
                     instrumentation.controller_keep_alive_received(frame_received_at);
                     stream_state.debug(format_args!(
-                        "Keep alive line received for {}.",
+                        "received keep alive line for {}.",
                         event_type_partition
                     ));
                     continue;
@@ -283,6 +289,7 @@ where
 
         let was_batch_with_events = msg_for_dispatcher.is_batch_with_events();
         if batch_lines_sink.send(msg_for_dispatcher).is_err() {
+            stream_state.warn(format_args!("Failed to send batch to dispatcher"));
             stream_state.request_stream_cancellation();
             break;
         } else if was_batch_with_events {
@@ -292,10 +299,14 @@ where
         }
     }
 
-    let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
+    if let Err(_err) = batch_lines_sink.send(DispatcherMessage::StreamEnded) {
+        stream_state.warn(format_args!(
+            "Failed to send 'StreamEnded' notification to dispatcher"
+        ));
+    }
 
-    stream_state.info(format_args!(
-        "Streaming ending after {:?}.",
+    stream_state.debug(format_args!(
+        "Streaming ending after {:?}. Waiting for stream infrastructure to shut down.",
         stream_started_at.elapsed()
     ));
 

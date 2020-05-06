@@ -322,12 +322,6 @@ mod instr {
                     )),
                 )
                 .panel(
-                    Panel::named(Metric::ControllerNoFramesForWarning, "frames").handler(
-                        create_staircase_timer("no_frames_warning", &config)
-                            .for_label(Metric::ControllerNoFramesForWarning),
-                    ),
-                )
-                .panel(
                     Panel::named(AcceptAllLabels, "events")
                         .handler(
                             ValueMeter::new_with_defaults("per_second")
@@ -466,6 +460,10 @@ mod instr {
                                     Histogram::new_with_defaults("completion_time_us")
                                         .display_time_unit(TimeUnit::Microseconds)
                                         .accept(Metric::StreamFrameCompletedTime),
+                                )
+                                .handler(
+                                    create_staircase_timer("no_frames_warning", &config)
+                                        .for_label(Metric::ControllerNoFramesForWarning),
                                 ),
                         ),
                 ),

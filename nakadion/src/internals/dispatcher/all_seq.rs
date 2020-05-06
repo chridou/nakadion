@@ -59,9 +59,7 @@ where
         let (committer, committer_join_handle) = committer.run();
 
         let worker_stream = messages.map(move |dm| match dm {
-            DispatcherMessage::BatchWithEvents(_etp, batch) => {
-                WorkerMessage::BatchWithEvents(batch)
-            }
+            DispatcherMessage::BatchWithEvents(_, batch) => WorkerMessage::BatchWithEvents(batch),
             DispatcherMessage::Tick(timestamp) => WorkerMessage::Tick(timestamp),
             DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });
