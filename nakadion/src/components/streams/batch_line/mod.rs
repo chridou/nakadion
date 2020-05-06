@@ -17,7 +17,7 @@ mod line_parser;
 
 use crate::api::IoError;
 use crate::components::streams::NakadiFrame;
-use crate::instrumentation::{Instrumentation, Instruments};
+use crate::instrumentation::Instrumentation;
 use crate::nakadi_types::subscription::EventTypePartition;
 
 use line_parser::{parse_line, LineItems, ParseLineError};
@@ -28,7 +28,7 @@ where
     St: Stream<Item = Result<NakadiFrame, IoError>>,
 {
     frame_stream: St,
-    instrumentation: Instrumentation,
+    _instrumentation: Instrumentation,
     is_source_done: bool,
 }
 
@@ -43,7 +43,7 @@ where
         Self {
             frame_stream,
             is_source_done: false,
-            instrumentation,
+            _instrumentation: instrumentation,
         }
     }
 }
@@ -61,18 +61,13 @@ where
             let next_frame = ready!(self.as_mut().frame_stream().poll_next(cx));
 
             match next_frame {
-                Some(Ok(frame)) => {
-                    self.instrumentation
-                        .stream_frame_received(frame.bytes.len());
-
-                    match BatchLine::try_from_frame(frame) {
-                        Ok(line) => Poll::Ready(Some(Ok(line))),
-                        Err(err) => {
-                            *self.as_mut().is_source_done() = true;
-                            Poll::Ready(Some(Err(err.into())))
-                        }
+                Some(Ok(frame)) => match BatchLine::try_from_frame(frame) {
+                    Ok(line) => Poll::Ready(Some(Ok(line))),
+                    Err(err) => {
+                        *self.as_mut().is_source_done() = true;
+                        Poll::Ready(Some(Err(err.into())))
                     }
-                }
+                },
                 Some(Err(err)) => {
                     *self.as_mut().is_source_done() = true;
                     Poll::Ready(Some(Err(err.into())))

@@ -117,9 +117,13 @@ impl Instruments for Metrix {
         self.tx
             .observed_one_value_now(Metric::StreamChunkReceivedBytes, n_bytes);
     }
-    fn stream_frame_received(&self, n_bytes: usize) {
+    fn stream_frame_completed(&self, n_bytes: usize, time: Duration) {
         self.tx
-            .observed_one_value_now(Metric::StreamFrameReceivedBytes, n_bytes);
+            .observed_one_value_now(Metric::StreamFrameCompletedBytes, n_bytes)
+            .observed_one_value_now(
+                Metric::StreamFrameCompletedTime,
+                (time, TimeUnit::Microseconds),
+            );
     }
     fn stream_tick_emitted(&self) {
         self.tx.observed_one_now(Metric::StreamTickEmitted);
@@ -240,7 +244,8 @@ pub enum Metric {
     StreamConnectAttemptSuccessTime,
     StreamConnectAttemptFailedTime,
     StreamChunkReceivedBytes,
-    StreamFrameReceivedBytes,
+    StreamFrameCompletedBytes,
+    StreamFrameCompletedTime,
     ControllerBatchReceivedBytes,
     ControllerBatchReceivedLag,
     ControllerInfoReceivedLag,
@@ -447,15 +452,20 @@ mod instr {
                             Panel::named(AcceptAllLabels, "frames")
                                 .meter(
                                     Meter::new_with_defaults("per_second")
-                                        .for_label(Metric::StreamFrameReceivedBytes),
+                                        .for_label(Metric::StreamFrameCompletedBytes),
                                 )
                                 .handler(
                                     ValueMeter::new_with_defaults("bytes_per_second")
-                                        .for_label(Metric::StreamFrameReceivedBytes),
+                                        .for_label(Metric::StreamFrameCompletedBytes),
                                 )
                                 .histogram(
                                     Histogram::new_with_defaults("size_distribution")
-                                        .accept(Metric::StreamFrameReceivedBytes),
+                                        .accept(Metric::StreamFrameCompletedBytes),
+                                )
+                                .histogram(
+                                    Histogram::new_with_defaults("completion_time_us")
+                                        .display_time_unit(TimeUnit::Microseconds)
+                                        .accept(Metric::StreamFrameCompletedTime),
                                 ),
                         ),
                 ),

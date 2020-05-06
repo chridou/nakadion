@@ -110,6 +110,7 @@ where
 
             Poll::Ready(None)
         } else {
+            let instrumentation = self.instrumentation.clone();
             loop {
                 match self.as_mut().bytes_stream().poll_next(cx) {
                     Poll::Ready(Some(Ok(mut bytes))) => {
@@ -117,7 +118,7 @@ where
                             continue;
                         }
 
-                        self.instrumentation.stream_chunk_received(bytes.len());
+                        instrumentation.stream_chunk_received(bytes.len());
 
                         let state = self.as_mut().state();
                         if state.unfinished_frame.is_empty() {
@@ -130,15 +131,22 @@ where
                             }
 
                             if let Some(pos) = bytes.iter().position(|b| *b == b'\n') {
-                                let to_append = bytes.split_to(pos);
+                                let to_append_to_complete = bytes.split_to(pos);
                                 bytes.advance(1);
 
-                                state.unfinished_frame.extend_from_slice(&to_append);
+                                state
+                                    .unfinished_frame
+                                    .extend_from_slice(&to_append_to_complete);
 
                                 if !state.unfinished_frame.is_empty() {
                                     let finished_frame = std::mem::replace(
                                         &mut state.unfinished_frame,
                                         Vec::with_capacity(4096),
+                                    );
+
+                                    instrumentation.stream_frame_completed(
+                                        finished_frame.len(),
+                                        state.first_byte_received_at.elapsed(),
                                     );
 
                                     state.frames.push_back(NakadiFrame {
@@ -160,13 +168,14 @@ where
                         }
                     }
                     Poll::Ready(None) => {
+                        /*
                         let unframed_bytes = self.state.unfinished_frame.len();
                         if unframed_bytes > 0 {
-                            /* warn!(
+                             warn!(
                                 "unexpected end of stream, {} unframed bytes left",
                                 unframed_bytes
-                            )*/
-                        }
+                            )
+                        }*/
 
                         let state = self.as_mut().state();
                         state.is_source_done = true;

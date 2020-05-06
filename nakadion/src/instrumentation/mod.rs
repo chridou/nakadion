@@ -56,7 +56,7 @@ pub trait Instruments {
     /// A chunk of data with `n_bytes` was received over the network
     fn stream_chunk_received(&self, n_bytes: usize);
     /// Chunks have been assembled to a complete frame containing all required data
-    fn stream_frame_received(&self, n_bytes: usize);
+    fn stream_frame_completed(&self, n_bytes: usize, time: Duration);
     /// An internal tick signal has been emitted
     fn stream_tick_emitted(&self);
 
@@ -317,13 +317,17 @@ impl Instruments for Instrumentation {
             }
         }
     }
-    fn stream_frame_received(&self, n_bytes: usize) {
+    fn stream_frame_completed(&self, n_bytes: usize, time: Duration) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
                 InstrumentationSelection::Off => {}
-                InstrumentationSelection::Custom(ref instr) => instr.stream_frame_received(n_bytes),
+                InstrumentationSelection::Custom(ref instr) => {
+                    instr.stream_frame_completed(n_bytes, time)
+                }
                 #[cfg(feature = "metrix")]
-                InstrumentationSelection::Metrix(ref instr) => instr.stream_frame_received(n_bytes),
+                InstrumentationSelection::Metrix(ref instr) => {
+                    instr.stream_frame_completed(n_bytes, time)
+                }
             }
         }
     }
