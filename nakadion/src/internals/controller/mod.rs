@@ -218,7 +218,6 @@ where
             BatchLineMessage::StreamEnded => {
                 stream_state.info(format_args!("Stream ended"));
                 stream_state.request_stream_cancellation();
-                let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
                 break;
             }
             BatchLineMessage::Tick(timestamp) => {
@@ -226,13 +225,12 @@ where
                     .is_stream_dead(last_frame_received_at, last_events_received_at)
                 {
                     stream_state.warn(format_args!("The stream is dead boys..."));
-                    let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
                     break;
                 }
 
                 let elapsed = last_frame_received_at.elapsed();
                 if elapsed >= warn_no_frames {
-                    stream_state.warn(format_args!("No events frames for {:?}.", elapsed));
+                    stream_state.warn(format_args!("No frames for {:?}.", elapsed));
                     stream_state
                         .instrumentation()
                         .controller_no_frames_warning(elapsed);
@@ -292,13 +290,15 @@ where
         }
     }
 
-    drop(stream);
-    drop(partition_tracker);
+    let _ = batch_lines_sink.send(DispatcherMessage::StreamEnded);
 
-    stream_state.debug(format_args!(
+    stream_state.info(format_args!(
         "Streaming ending after {:?}.",
         stream_started_at.elapsed()
     ));
+
+    drop(stream);
+    drop(partition_tracker);
 
     // Wait for the infrastructure to completely shut down before making further connect attempts for
     // new streams

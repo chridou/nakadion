@@ -16,11 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .configure_committer(|cfg| cfg.attempt_timeout_millis(1500))
         .configure_connector(|cfg| {
             cfg.attempt_timeout_secs(5)
-                .configure_stream_parameters(|p| {
-                    p.batch_limit(10)
-                        .max_uncommitted_events(1000)
-                        .stream_timeout_secs(60)
-                })
+                .configure_stream_parameters(|p| p.batch_limit(100).max_uncommitted_events(5000))
         })
         .warn_no_frames_secs(10);
 
@@ -50,6 +46,8 @@ fn main() {
 }
 
 mod handler {
+    use std::time::SystemTime;
+
     use futures::future::{BoxFuture, FutureExt};
 
     use nakadi_types::event::DataChangeEvent;
@@ -68,12 +66,16 @@ mod handler {
         ) -> EventsHandlerFuture {
             async move {
                 self.events_received += events.len();
-                if meta.frame_id % 2_000 == 0 {
+                if meta.frame_id % 500 == 0 {
+                    let time = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
                     println!(
-                        "events: {} - frame id: {}",
-                        self.events_received, meta.frame_id,
+                        "[{}] events: {} - frame id: {}",
+                        time, self.events_received, meta.frame_id,
                     );
-                    println!("{:#?}", events);
                 }
                 EventsPostAction::Commit
             }

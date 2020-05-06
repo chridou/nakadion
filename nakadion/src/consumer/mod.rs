@@ -144,17 +144,26 @@ impl Consumer {
         });
 
         let f = async move {
-            consumer_state.info(format_args!(
-                "Consumer for subscription {} stopped",
-                subscription_id
-            ));
-
             match join.await {
-                Ok(outcome) => outcome,
-                Err(join_error) => ConsumptionOutcome {
-                    stop_reason: join_error.into(),
-                    consumer: Consumer { inner: kept_inner },
-                },
+                Ok(outcome) => {
+                    consumer_state.info(format_args!(
+                        "Consumer for subscription {} stopped",
+                        subscription_id
+                    ));
+
+                    outcome
+                }
+                Err(join_error) => {
+                    consumer_state.error(format_args!(
+                        "Consumer for subscription {} stopped with a join error!!!",
+                        subscription_id
+                    ));
+
+                    ConsumptionOutcome {
+                        stop_reason: join_error.into(),
+                        consumer: Consumer { inner: kept_inner },
+                    }
+                }
             }
         };
 
