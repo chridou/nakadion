@@ -210,7 +210,7 @@ where
                     if retry {
                         if let Some(delay) = backoff.next_backoff() {
                             self.logger.warn(format_args!(
-                                "commit attempt failed (retry in {:?}: {}",
+                                "commit attempt failed (retry in {:?}): {}",
                                 delay, err
                             ));
                             delay_for(delay).await;

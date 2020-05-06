@@ -349,7 +349,7 @@ where
                     .stream_connect_attempt_failed(started.elapsed());
                 Err(ConnectError::io()
                     .context(format!(
-                        "Request to Nakadi for a stream timed ot after {:?}.",
+                        "Request to Nakadi for a stream timed out after {:?}.",
                         started.elapsed()
                     ))
                     .caused_by(err))
