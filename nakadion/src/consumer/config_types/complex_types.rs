@@ -127,7 +127,7 @@ impl FromStr for DispatchMode {
 /// Once a stream is considered dead a reconnect for a new stream
 /// will be attempted.
 ///
-/// The default is `Never`
+/// The default is `NoFramesFor { seconds: 300 }`
 ///
 /// # FromStr
 ///
@@ -238,7 +238,7 @@ impl fmt::Display for StreamDeadPolicy {
 
 impl Default for StreamDeadPolicy {
     fn default() -> Self {
-        StreamDeadPolicy::Never
+        StreamDeadPolicy::NoFramesFor { seconds: 300 }
     }
 }
 

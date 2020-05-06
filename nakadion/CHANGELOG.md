@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### CHANGED
 
 - `BatchLine::received_at` is now the timestamp when the batch was completely received.
+- Default of `StreamDeadPolicy` is to cancel the stream after 300s with no frames received. Previous was to never abort
 
 ## [0.22.5] - 2020-05-06
 

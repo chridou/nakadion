@@ -24,8 +24,10 @@ use crate::logging::Logger;
 
 mod connect_stream;
 mod partition_tracker;
+mod sleep_ticker;
 pub(crate) mod types;
 
+use sleep_ticker::SleepTicker;
 use types::*;
 
 /// The controller controls the life cycle of the `Consumer` over multiple streams
