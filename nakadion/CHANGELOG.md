@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.5] - 2020-05-06
+
+### CHANGED
+
+- ensure that stream end message is always sent
+- log before shutting down internals
+
 ## [0.22.4] - 2020-05-06
 
 ### CHANGED

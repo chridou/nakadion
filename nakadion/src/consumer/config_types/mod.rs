@@ -147,13 +147,11 @@ impl Builder {
         }
 
         if self.warn_no_frames_secs.is_none() {
-            self.warn_no_frames_secs =
-                WarnNoFramesSecs::try_from_env_prefixed(prefix.as_ref())?;
+            self.warn_no_frames_secs = WarnNoFramesSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.warn_no_events_secs.is_none() {
-            self.warn_no_events_secs =
-                WarnNoEventsSecs::try_from_env_prefixed(prefix.as_ref())?;
+            self.warn_no_events_secs = WarnNoEventsSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.dispatch_mode.is_none() {
