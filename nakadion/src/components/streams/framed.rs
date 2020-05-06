@@ -171,7 +171,7 @@ where
                                     // Append the new frame to the collected frame
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
-                                        received_at: state.first_byte_received_at,
+                                        received_at: Instant::now(),
                                         frame_id: state.frame_id,
                                     });
 
