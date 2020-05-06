@@ -663,4 +663,15 @@ mod test {
         assert!(result.is_err());
         assert!(result.unwrap_err().is_empty());
     }
+
+    #[tokio::test(basic_scheduler)]
+    async fn error_10() {
+        let input: Vec<Result<&[u8], IoError>> = vec![Ok(b"\n"), Err(IoError::new("x"))];
+        let stream = stream_from_results(input);
+        let result = poll_for_err(stream).await;
+
+        assert!(result.is_err());
+        let frames = result.unwrap_err();
+        assert_eq!(frames.len(), 0);
+    }
 }
