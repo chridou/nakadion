@@ -120,6 +120,7 @@ where
                     Poll::Ready(Some(Ok(mut bytes))) => {
                         // do not process empty chunks
                         if bytes.is_empty() {
+                            println!("EMPTY, THIS IS THE END MY FRIEND?!");
                             continue;
                         }
 
