@@ -99,6 +99,9 @@ where
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         if self.state.is_source_done {
+            // If the source stream is finished flush all
+            // collected frames or return otherwise return a
+            // previous error
             let state = self.as_mut().state();
             if let Some(frame) = state.frames.pop_front() {
                 return Poll::Ready(Some(Ok(frame)));
@@ -112,8 +115,10 @@ where
         } else {
             let instrumentation = self.instrumentation.clone();
             loop {
+                // Receive the next chunk
                 match self.as_mut().bytes_stream().poll_next(cx) {
                     Poll::Ready(Some(Ok(mut bytes))) => {
+                        // do not process empty chunks
                         if bytes.is_empty() {
                             continue;
                         }
@@ -121,24 +126,37 @@ where
                         instrumentation.stream_chunk_received(bytes.len());
 
                         let state = self.as_mut().state();
+                        // If we have nothing collected so far
+                        // the non empty chunk must start a new frame
                         if state.unfinished_frame.is_empty() {
                             state.first_byte_received_at = Instant::now();
                         }
 
                         loop {
+                            // If there are no bytes left to process
+                            // proceed with the potentially next chunk
                             if bytes.is_empty() {
                                 break;
                             }
 
                             if let Some(pos) = bytes.iter().position(|b| *b == b'\n') {
+                                // Extract the missing part of the chunk
+                                // up to before the new line
                                 let to_append_to_complete = bytes.split_to(pos);
+                                // Skip the new line
                                 bytes.advance(1);
 
+                                // append the rest to the current unfinished chunk
+                                // to complete it
                                 state
                                     .unfinished_frame
                                     .extend_from_slice(&to_append_to_complete);
 
+                                // if the completed chunk is not empty
+                                // "collect" it
                                 if !state.unfinished_frame.is_empty() {
+                                    // Take the completed chunk and prepare a new
+                                    // buffer for the next frame
                                     let finished_frame = std::mem::replace(
                                         &mut state.unfinished_frame,
                                         Vec::with_capacity(4096),
@@ -149,6 +167,7 @@ where
                                         state.first_byte_received_at.elapsed(),
                                     );
 
+                                    // Append the new frame to the collected frame
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
                                         received_at: state.first_byte_received_at,
@@ -158,12 +177,14 @@ where
                                     state.frame_id += 1;
                                 }
                             } else {
+                                // No new line, new bytes for the unfinished chunk
                                 state.unfinished_frame.extend_from_slice(&bytes);
                                 break;
                             }
                         }
 
                         if let Some(frame) = state.frames.pop_front() {
+                            // deliver the first of the completed chunks
                             return Poll::Ready(Some(Ok(frame)));
                         }
                     }
