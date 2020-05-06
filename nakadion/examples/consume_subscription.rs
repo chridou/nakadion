@@ -69,7 +69,7 @@ mod handler {
         ) -> EventsHandlerFuture {
             async move {
                 self.events_received += events.len();
-                if meta.frame_id % 500 == 0 {
+                if meta.frame_id % 100 == 0 {
                     let time = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .unwrap()
