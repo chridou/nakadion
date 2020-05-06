@@ -16,9 +16,7 @@ use crate::nakadi_types::{
 
 use super::*;
 
-pub fn start<C>(
-    committer: Committer<C>,
-) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>)
+pub fn start<C>(committer: Committer<C>) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>)
 where
     C: SubscriptionCommitApi + Send + Sync + 'static,
 {
@@ -53,6 +51,7 @@ where
     let delay_on_no_cursor = Duration::from_millis(50);
 
     let mut next_commit_earliest_at = Instant::now();
+
     loop {
         let now = Instant::now();
         let cursor_received = match to_commit.try_recv() {
@@ -79,6 +78,7 @@ where
 
         if !pending.commit_required(now) {
             if !cursor_received {
+                // Wait a bit because the channel was empty
                 delay_for(delay_on_no_cursor).await;
             }
             continue;
@@ -107,6 +107,10 @@ where
             }
         };
     }
+
+    committer
+        .logger
+        .debug(format_args!("Committer loop exited"));
 
     if !pending.is_empty() {
         // try to commit the rest

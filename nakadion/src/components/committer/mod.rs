@@ -246,13 +246,21 @@ where
         .await
         {
             Ok(Ok(results)) => Ok(results),
-            Ok(Err(err)) => Err(err.into()),
-            Err(err) => Err(CommitError::io()
-                .context(format!(
-                    "Commit attempt timed out after {:?}",
-                    started.elapsed()
-                ))
-                .caused_by(err)),
+            Ok(Err(err)) => {
+                self.instrumentation
+                    .committer_commit_attempt_failed(cursors.len(), started.elapsed());
+                Err(err.into())
+            }
+            Err(err) => {
+                self.instrumentation
+                    .committer_commit_attempt_failed(cursors.len(), started.elapsed());
+                Err(CommitError::io()
+                    .context(format!(
+                        "Commit attempt timed out after {:?}",
+                        started.elapsed()
+                    ))
+                    .caused_by(err))
+            }
         }
     }
 }

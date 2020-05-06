@@ -233,6 +233,15 @@ impl Instruments for Metrix {
                 (time, TimeUnit::Milliseconds),
             );
     }
+
+    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+        self.tx
+            .observed_one_value_now(Metric::CommitterAttemptFailedCount, n_cursors)
+            .observed_one_value_now(
+                Metric::CommitterAttemptFailedTime,
+                (time, TimeUnit::Milliseconds),
+            );
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -266,6 +275,8 @@ pub enum Metric {
     CommitterCommitFailed,
     CommitterCursorsNotCommittedTime,
     CommitterCursorsNotCommittedCount,
+    CommitterAttemptFailedTime,
+    CommitterAttemptFailedCount,
 }
 
 mod instr {
@@ -364,36 +375,49 @@ mod instr {
                                 .handler(
                                     ValueMeter::new_with_defaults("not_committed_per_second")
                                         .for_label(Metric::CommitterCursorsNotCommittedCount),
+                                )
+                                .handler(
+                                    ValueMeter::new_with_defaults("attempt_failed_per_second")
+                                        .for_label(Metric::CommitterCursorsNotCommittedCount),
+                                ),
+                        )
+                        .panel(
+                            Panel::named(Metric::CommitterCursorsCommittedTime, "committed")
+                                .meter(
+                                    Meter::new_with_defaults("per_second")
+                                        .for_label(Metric::CommitterCursorsCommittedTime),
+                                )
+                                .histogram(
+                                    Histogram::new_with_defaults("latency_ms")
+                                        .display_time_unit(TimeUnit::Milliseconds)
+                                        .for_label(Metric::CommitterCursorsCommittedTime),
+                                ),
+                        )
+                        .panel(
+                            Panel::named(Metric::CommitterCursorsNotCommittedTime, "not_committed")
+                                .meter(
+                                    Meter::new_with_defaults("per_second")
+                                        .for_label(Metric::CommitterCursorsNotCommittedTime),
+                                )
+                                .histogram(
+                                    Histogram::new_with_defaults("latency_ms")
+                                        .display_time_unit(TimeUnit::Milliseconds)
+                                        .for_label(Metric::CommitterCursorsNotCommittedTime),
                                 ),
                         )
                         .panel(
                             Panel::named(
-                                Metric::CommitterCursorsCommittedTime,
-                                "ok_commit_requests",
-                            )
-                            .meter(
-                                Meter::new_with_defaults("per_second")
-                                    .for_label(Metric::CommitterCursorsCommittedTime),
-                            )
-                            .histogram(
-                                Histogram::new_with_defaults("latency_ms")
-                                    .display_time_unit(TimeUnit::Milliseconds)
-                                    .for_label(Metric::CommitterCursorsCommittedTime),
-                            ),
-                        )
-                        .panel(
-                            Panel::named(
                                 Metric::CommitterCursorsNotCommittedTime,
-                                "failed_commit_requests",
+                                "failed_attempts",
                             )
                             .meter(
                                 Meter::new_with_defaults("per_second")
-                                    .for_label(Metric::CommitterCursorsNotCommittedTime),
+                                    .for_label(Metric::CommitterAttemptFailedCount),
                             )
                             .histogram(
                                 Histogram::new_with_defaults("latency_ms")
                                     .display_time_unit(TimeUnit::Milliseconds)
-                                    .for_label(Metric::CommitterCursorsNotCommittedTime),
+                                    .for_label(Metric::CommitterAttemptFailedTime),
                             ),
                         ),
                 )

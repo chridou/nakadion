@@ -122,6 +122,10 @@ pub trait Instruments {
     ///
     /// The time request took is passed
     fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration);
+    /// An attempt to commit cursors failed. There might still be a retry
+    ///
+    /// The time request took is passed
+    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration);
 }
 
 /// This defines the level of metrics being collected
@@ -513,6 +517,19 @@ impl Instruments for Instrumentation {
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
                 instr.committer_cursors_not_committed(n_cursors, time)
+            }
+        }
+    }
+
+    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.committer_commit_attempt_failed(n_cursors, time)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.committer_commit_attempt_failed(n_cursors, time)
             }
         }
     }

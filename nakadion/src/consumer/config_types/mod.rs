@@ -391,6 +391,7 @@ impl Builder {
             ))
         }
 
+        set_stream_commit_timeout(&mut self.commit_config, &self.connect_config);
         self.commit_config.apply_defaults();
 
         self.instrumentation = Some(instrumentation);
@@ -460,6 +461,7 @@ impl Builder {
             commit_config.commit_strategy =
                 Some(guess_commit_strategy(&connect_config.stream_parameters));
         }
+        set_stream_commit_timeout(&mut commit_config, &connect_config);
         commit_config.apply_defaults();
 
         let config = Config {
@@ -477,6 +479,16 @@ impl Builder {
         };
 
         Ok(config)
+    }
+}
+
+fn set_stream_commit_timeout(commit_config: &mut CommitConfig, connect_config: &ConnectConfig) {
+    if commit_config.stream_commit_timeout_secs.is_none() {
+        let timeout = connect_config
+            .stream_parameters
+            .commit_timeout_secs
+            .unwrap_or_default();
+        commit_config.stream_commit_timeout_secs = Some(timeout);
     }
 }
 

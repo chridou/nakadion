@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `BatchLine::received_at` is now the timestamp when the batch was completely received.
 - Default of `StreamDeadPolicy` is to cancel the stream after 300s with no frames received. Previous was to never abort
+- metrics names on committer (requests renamed to "committed" "not committed")
+- default commit config in consumer sets stream commit timeout if not explicitly set as a stream commit timeout
 
 ### ADDED
 
 - log why a stream was aborted
+- metrics for failed commit attempts
 
 ## [0.22.5] - 2020-05-06
 
