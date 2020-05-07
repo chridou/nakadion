@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::nakadi_types::Error;
 
+use crate::components::{committer::CommitError, connector::ConnectError, streams::BatchLineError};
+
 #[cfg(feature = "metrix")]
 mod metrix_impl;
 
@@ -51,7 +53,7 @@ pub trait Instruments {
     /// Triggered when connecting to a stream finally failed after maybe multiple attempts
     ///
     /// `time` is the time for the whole cycle until a connection attempts finally failed
-    fn stream_not_connected(&self, time: Duration);
+    fn stream_not_connected(&self, time: Duration, err: &ConnectError);
 
     /// A chunk of data with `n_bytes` was received over the network
     fn stream_chunk_received(&self, n_bytes: usize);
@@ -59,6 +61,9 @@ pub trait Instruments {
     fn stream_frame_completed(&self, n_bytes: usize, time: Duration);
     /// An internal tick signal has been emitted
     fn stream_tick_emitted(&self);
+
+    /// The stream was aborted due to a streaming related error
+    fn stream_error(&self, err: &BatchLineError);
 
     // === CONTROLLER ===
 
@@ -121,7 +126,7 @@ pub trait Instruments {
     /// Cursors were not successfully committed.
     ///
     /// The time request took is passed
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration);
+    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
     /// An attempt to commit cursors failed. There might still be a retry
     ///
     /// The time request took is passed
@@ -282,6 +287,7 @@ impl Instruments for Instrumentation {
             }
         }
     }
+
     fn stream_connect_attempt_failed(&self, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
@@ -302,12 +308,13 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => instr.stream_connected(time),
         }
     }
-    fn stream_not_connected(&self, time: Duration) {
+
+    fn stream_not_connected(&self, time: Duration, err: &ConnectError) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.stream_not_connected(time),
+            InstrumentationSelection::Custom(ref instr) => instr.stream_not_connected(time, err),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.stream_not_connected(time),
+            InstrumentationSelection::Metrix(ref instr) => instr.stream_not_connected(time, err),
         }
     }
 
@@ -342,6 +349,17 @@ impl Instruments for Instrumentation {
                 InstrumentationSelection::Custom(ref instr) => instr.stream_tick_emitted(),
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => instr.stream_tick_emitted(),
+            }
+        }
+    }
+
+    fn stream_error(&self, err: &BatchLineError) {
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => instr.stream_error(err),
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => instr.stream_error(err),
             }
         }
     }
@@ -508,15 +526,15 @@ impl Instruments for Instrumentation {
             }
         }
     }
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {
+    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time)
+                instr.committer_cursors_not_committed(n_cursors, time, err)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time)
+                instr.committer_cursors_not_committed(n_cursors, time, err)
             }
         }
     }

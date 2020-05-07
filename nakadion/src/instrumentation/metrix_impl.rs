@@ -8,6 +8,12 @@ use metrix::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::components::{
+    committer::CommitError,
+    connector::ConnectError,
+    streams::{BatchLineError, BatchLineErrorKind},
+};
+
 use super::Instruments;
 
 /// Instrumentation with Metrix
@@ -106,7 +112,7 @@ impl Instruments for Metrix {
         self.tx
             .observed_one_value_now(Metric::StreamConnectedTime, (time, TimeUnit::Milliseconds));
     }
-    fn stream_not_connected(&self, time: Duration) {
+    fn stream_not_connected(&self, time: Duration, err: &ConnectError) {
         self.tx.observed_one_value_now(
             Metric::StreamNotConnectedTime,
             (time, TimeUnit::Milliseconds),
@@ -127,6 +133,17 @@ impl Instruments for Metrix {
     }
     fn stream_tick_emitted(&self) {
         self.tx.observed_one_now(Metric::StreamTickEmitted);
+    }
+
+    fn stream_error(&self, err: &BatchLineError) {
+        match err.kind() {
+            BatchLineErrorKind::Io => {
+                self.tx.observed_one_now(Metric::StreamErrorIo);
+            }
+            BatchLineErrorKind::Parser => {
+                self.tx.observed_one_now(Metric::StreamErrorParse);
+            }
+        }
     }
 
     // === CONTROLLER ===
@@ -224,7 +241,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration) {
+    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
@@ -255,6 +272,8 @@ pub enum Metric {
     StreamChunkReceivedBytes,
     StreamFrameCompletedBytes,
     StreamFrameCompletedTime,
+    StreamErrorIo,
+    StreamErrorParse,
     ControllerBatchReceivedBytes,
     ControllerBatchReceivedLag,
     ControllerInfoReceivedLag,
@@ -489,6 +508,20 @@ mod instr {
                                     create_staircase_timer("no_frames_warning", &config)
                                         .for_label(Metric::ControllerNoFramesForWarning),
                                 ),
+                        )
+                        .panel(
+                            Panel::named(
+                                (Metric::StreamErrorParse, Metric::StreamErrorIo),
+                                "errors",
+                            )
+                            .handler(
+                                create_staircase_timer("io", &config)
+                                    .for_label(Metric::StreamErrorIo),
+                            )
+                            .handler(
+                                create_staircase_timer("parse", &config)
+                                    .for_label(Metric::StreamErrorParse),
+                            ),
                         ),
                 ),
         );

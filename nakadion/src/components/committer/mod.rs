@@ -165,8 +165,11 @@ where
                 Ok(results)
             }
             Err(err) => {
-                self.instrumentation()
-                    .committer_cursors_not_committed(cursors.len(), started.elapsed());
+                self.instrumentation().committer_cursors_not_committed(
+                    cursors.len(),
+                    started.elapsed(),
+                    &err,
+                );
                 Err(err)
             }
         }

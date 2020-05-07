@@ -233,13 +233,15 @@ where
             {
                 Ok(r) => r,
                 Err(err) => {
-                    self.instrumentation.stream_not_connected(started.elapsed());
-                    Err(ConnectError::aborted()
+                    let err = ConnectError::aborted()
                         .context(format!(
                             "Connecting to Nakadi for a stream completely timed out after {:?}.",
                             started.elapsed()
                         ))
-                        .caused_by(err))
+                        .caused_by(err);
+                    self.instrumentation
+                        .stream_not_connected(started.elapsed(), &err);
+                    Err(err)
                 }
             }
         } else {
@@ -310,7 +312,7 @@ where
                         delay_for(delay).await;
                         continue;
                     } else {
-                        instrumentation.stream_not_connected(connect_started_at.elapsed());
+                        instrumentation.stream_not_connected(connect_started_at.elapsed(), &err);
                         return Err(err);
                     }
                 }

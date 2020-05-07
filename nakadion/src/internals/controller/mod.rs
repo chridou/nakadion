@@ -305,6 +305,9 @@ where
         ));
     }
 
+    // THIS MUST BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
+    drop(batch_lines_sink);
+
     stream_state.debug(format_args!(
         "Streaming ending after {:?}. Waiting for stream infrastructure to shut down.",
         stream_started_at.elapsed()
