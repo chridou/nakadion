@@ -110,8 +110,8 @@ pub struct Builder {
     /// This e.g. configures parallelism.
     pub dispatch_mode: Option<DispatchMode>,
 
-    /// If `true` partition related events (like activation, etc.) will be logged.
-    pub log_partition_events: Option<LogPartitionEvents>,
+    /// Configure how partition events are logged.
+    pub log_partition_events_mode: Option<LogPartitionEventsMode>,
 
     /// Defines when to commit cursors.
     ///
@@ -162,8 +162,9 @@ impl Builder {
             self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
-        if self.log_partition_events.is_none() {
-            self.log_partition_events = LogPartitionEvents::try_from_env_prefixed(prefix.as_ref())?;
+        if self.log_partition_events_mode.is_none() {
+            self.log_partition_events_mode =
+                LogPartitionEventsMode::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         self.commit_config.fill_from_env_prefixed(prefix.as_ref())?;
@@ -265,14 +266,12 @@ impl Builder {
         self
     }
 
-    /// Defines how batches are internally dispatched.
-    ///
-    /// This e.g. configures parallelism.
-    pub fn log_partition_events<T: Into<LogPartitionEvents>>(
+    /// Configure how partition events are logged.
+    pub fn log_partition_events_mode(
         mut self,
-        log_partition_events: T,
+        log_partition_events_mode: LogPartitionEventsMode,
     ) -> Self {
-        self.log_partition_events = Some(log_partition_events.into());
+        self.log_partition_events_mode = Some(log_partition_events_mode);
         self
     }
 
@@ -402,7 +401,7 @@ impl Builder {
         let warn_no_frames_secs = Some(self.warn_no_frames_secs.unwrap_or_default());
         let warn_no_events_secs = Some(self.warn_no_events_secs.unwrap_or_default());
         let dispatch_mode = Some(self.dispatch_mode.unwrap_or_default());
-        let log_partition_events = Some(self.log_partition_events.unwrap_or_default());
+        let log_partition_events_mode = Some(self.log_partition_events_mode.unwrap_or_default());
 
         self.connect_config.apply_defaults();
 
@@ -423,7 +422,7 @@ impl Builder {
         self.warn_no_frames_secs = warn_no_frames_secs;
         self.warn_no_events_secs = warn_no_events_secs;
         self.dispatch_mode = dispatch_mode;
-        self.log_partition_events = log_partition_events;
+        self.log_partition_events_mode = log_partition_events_mode;
     }
 
     /// Create a `Consumer`
@@ -472,7 +471,7 @@ impl Builder {
         let warn_no_events = self.warn_no_events_secs.unwrap_or_default();
 
         let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
-        let log_partition_events = self.log_partition_events.unwrap_or_default();
+        let log_partition_events_mode = self.log_partition_events_mode.unwrap_or_default();
 
         let mut connect_config = self.connect_config.clone();
         connect_config.apply_defaults();
@@ -498,7 +497,7 @@ impl Builder {
             warn_no_frames,
             warn_no_events,
             dispatch_mode,
-            log_partition_events,
+            log_partition_events_mode,
             commit_config,
             connect_config,
         };

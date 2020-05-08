@@ -353,7 +353,7 @@ pub(crate) struct Config {
     pub warn_no_frames: WarnNoFramesSecs,
     pub warn_no_events: WarnNoEventsSecs,
     pub dispatch_mode: DispatchMode,
-    pub log_partition_events: LogPartitionEvents,
+    pub log_partition_events_mode: LogPartitionEventsMode,
     pub connect_config: ConnectConfig,
     pub commit_config: CommitConfig,
 }

@@ -311,3 +311,109 @@ fn parse_no_events_for(parts: Vec<&str>) -> Result<StreamDeadPolicy, Error> {
         Err(Error::new("not StreamDeadPolicy::NoEventsFor"))
     }
 }
+
+/// Configures the logging for partition events.
+///
+/// A partition event occurs if a new partition is discovered for the
+/// first time on a stream (`AfterConnect`) or if it was deactivated or reactivated
+/// (`ActivityChange`) caused by `PartitionInactivityTimeoutSecs`.
+///
+/// The default is `LogPartitionEventsMode::All`.
+///
+/// Disabled log messages will still be logged at DEBUG level.
+///
+/// # FromStr
+///
+/// ```rust
+/// use nakadion::consumer::LogPartitionEventsMode;
+///
+/// let strategy = "off".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::Off);
+///
+/// let strategy = "after_connect".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::AfterConnect);
+///
+/// let strategy = "activity_change".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::ActivityChange);
+///
+/// let strategy = "all".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::All);
+/// ```
+///
+/// JSON is also valid:
+///
+/// ```rust
+/// use nakadion::consumer::LogPartitionEventsMode;
+///
+/// let strategy = "\"off\"".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::Off);
+///
+/// let strategy = "\"after_connect\"".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::AfterConnect);
+///
+/// let strategy = "\"activity_change\"".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::ActivityChange);
+///
+/// let strategy = "\"all\"".parse::<LogPartitionEventsMode>().unwrap();
+/// assert_eq!(strategy, LogPartitionEventsMode::All);
+/// ```
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum LogPartitionEventsMode {
+    /// Do not log
+    Off,
+    /// Log partitions only when encountered the first time after a stream
+    /// connect
+    AfterConnect,
+    /// Log partitions only when inactivated or reactivated
+    ActivityChange,
+    /// Log all
+    All,
+}
+
+impl LogPartitionEventsMode {
+    env_funs!("LOG_PARTITION_EVENTS_MODE");
+}
+
+impl fmt::Display for LogPartitionEventsMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogPartitionEventsMode::Off => write!(f, "off")?,
+            LogPartitionEventsMode::AfterConnect => write!(f, "after_connect")?,
+            LogPartitionEventsMode::ActivityChange => write!(f, "activity_change")?,
+            LogPartitionEventsMode::All => write!(f, "all")?,
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for LogPartitionEventsMode {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+
+        if s.starts_with('"') {
+            return Ok(serde_json::from_str(s)?);
+        }
+
+        match s {
+            "off" => Ok(LogPartitionEventsMode::Off),
+            "after_connect" => Ok(LogPartitionEventsMode::AfterConnect),
+            "activity_change" => Ok(LogPartitionEventsMode::ActivityChange),
+            "all" => Ok(LogPartitionEventsMode::All),
+            _ => Err(Error::new(format!(
+                "not a valid LogPartitionEventsMode: {}",
+                s
+            ))),
+        }
+    }
+}
+
+impl Default for LogPartitionEventsMode {
+    fn default() -> Self {
+        LogPartitionEventsMode::All
+    }
+}
