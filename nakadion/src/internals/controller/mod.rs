@@ -207,20 +207,23 @@ where
     while let Some(batch_line_message_or_err) = stream.next().await {
         let batch_line_message = match batch_line_message_or_err {
             Ok(msg) => msg,
-            Err(batch_line_error) => match batch_line_error.kind() {
-                BatchLineErrorKind::Parser => {
-                    stream_state.error(format_args!(
-                        "Aborting consumer - Invalid frame: {}",
-                        batch_line_error
-                    ));
-                    return Err(ConsumerErrorKind::InvalidBatch.into());
+            Err(batch_line_error) => {
+                instrumentation.stream_error(&batch_line_error);
+                match batch_line_error.kind() {
+                    BatchLineErrorKind::Parser => {
+                        stream_state.error(format_args!(
+                            "Aborting consumer - Invalid frame: {}",
+                            batch_line_error
+                        ));
+                        return Err(ConsumerErrorKind::InvalidBatch.into());
+                    }
+                    BatchLineErrorKind::Io => {
+                        stream_state.warn(format_args!("Aborting stream: {}", batch_line_error));
+                        stream_state.request_stream_cancellation();
+                        break;
+                    }
                 }
-                BatchLineErrorKind::Io => {
-                    stream_state.warn(format_args!("Aborting stream: {}", batch_line_error));
-                    stream_state.request_stream_cancellation();
-                    break;
-                }
-            },
+            }
         };
 
         let msg_for_dispatcher = match batch_line_message {
