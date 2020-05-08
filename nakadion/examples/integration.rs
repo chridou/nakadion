@@ -358,7 +358,8 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
 
     let check_value = factory.get();
 
-    let logging_adapter = StdOutLoggingAdapter::from_env()?;
+    let config = LogConfig::from_env()?;
+    let logging_adapter = StdOutLoggingAdapter::new(config);
 
     let consumer = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
