@@ -358,12 +358,14 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
 
     let check_value = factory.get();
 
+    let logging_adapter = StdOutLoggingAdapter::from_env()?;
+
     let consumer = Consumer::builder_from_env()?
         .subscription_id(subscription_id)
         .dispatch_mode(dispatch_mode)
         .stream_parameters(params)
         .configure_committer(|cfg| cfg.commit_strategy(CommitStrategy::after_seconds(1)))
-        .build_with(api_client.clone(), factory, StdOutLoggingAdapter::default())?;
+        .build_with(api_client.clone(), factory, logging_adapter)?;
 
     println!("Consume");
     let (consumer_handle, consuming) = consumer.start();
