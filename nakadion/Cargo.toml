@@ -33,7 +33,6 @@ crc = {version = "1.8", optional = true }
 
 [features]
 default = ["reqwest"]
-debug-mode = []
 partitioner = ["crc"]
 
 [dev-dependencies]

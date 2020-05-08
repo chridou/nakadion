@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [X]
 
+### CHANGED
+
+- debug logging can no longer be enabled with a feature but with `DebugLoggingEnabled` instead.
+
 ### ADDED
 
 - `LogPartitionEventsMode` to configure how life cycle events for partitions are logged

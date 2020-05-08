@@ -2,6 +2,8 @@ use std::fmt::{self, Arguments};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use crate::nakadi_types::{
     event_type::EventTypeName,
     partition::PartitionId,
@@ -21,13 +23,9 @@ impl<T> Logger for T
 where
     T: LoggingAdapter,
 {
-    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         LoggingAdapter::debug(self, &LoggingContext::default(), args)
     }
-
-    #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         LoggingAdapter::info(self, &LoggingContext::default(), args)
@@ -100,13 +98,9 @@ impl ContextualLogger {
 }
 
 impl Logger for ContextualLogger {
-    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logging_adapter.debug(&self.context, args);
     }
-
-    #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logging_adapter.info(&self.context, args);
@@ -150,8 +144,11 @@ impl Default for StdOutLoggingAdapter {
 
 impl LoggingAdapter for StdOutLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        println!("[DEBUG]{} {}", context.create_display(&self.0), args);
+        if self.0.debug_enabled {
+            println!("[DEBUG]{} {}", context.create_display(&self.0), args);
+        }
     }
+
     fn info(&self, context: &LoggingContext, args: Arguments) {
         println!("[INFO]{} {}", context.create_display(&self.0), args);
     }
@@ -184,7 +181,9 @@ impl Default for StdErrLoggingAdapter {
 
 impl LoggingAdapter for StdErrLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[DEBUG]{} {}", context.create_display(&self.0), args);
+        if self.0.debug_enabled {
+            eprintln!("[DEBUG]{} {}", context.create_display(&self.0), args);
+        }
     }
 
     fn info(&self, context: &LoggingContext, args: Arguments) {
@@ -228,6 +227,7 @@ pub struct LogConfig {
     pub show_stream_id: bool,
     pub show_event_type: bool,
     pub show_partition_id: bool,
+    pub debug_enabled: bool,
 }
 
 impl LogConfig {
@@ -240,8 +240,14 @@ impl LogConfig {
             LogDetailLevel::Medium => *self = Self::medium(),
             LogDetailLevel::High => *self = Self::high(),
         }
+
+        self.debug_enabled = DebugLoggingEnabled::try_from_env_prefixed(prefix.as_ref())?
+            .unwrap_or_default()
+            .into();
+
         Ok(())
     }
+
     /// Only display the stream id and the partition id
     pub fn low() -> Self {
         Self {
@@ -249,6 +255,7 @@ impl LogConfig {
             show_stream_id: true,
             show_event_type: false,
             show_partition_id: true,
+            debug_enabled: false,
         }
     }
 
@@ -259,6 +266,7 @@ impl LogConfig {
             show_stream_id: true,
             show_event_type: true,
             show_partition_id: true,
+            debug_enabled: false,
         }
     }
 
@@ -269,6 +277,7 @@ impl LogConfig {
             show_stream_id: true,
             show_event_type: true,
             show_partition_id: true,
+            debug_enabled: false,
         }
     }
 }
@@ -276,6 +285,18 @@ impl LogConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         Self::medium()
+    }
+}
+
+new_type! {
+    #[doc="If `true` debug logging is enabled.\n\n\
+    The default is `false`\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct DebugLoggingEnabled(bool, env="DEBUG_LOGGING_ENABLED");
+}
+impl Default for DebugLoggingEnabled {
+    fn default() -> Self {
+        false.into()
     }
 }
 
@@ -425,13 +446,15 @@ pub mod slog_adapter {
 
     impl LoggingAdapter for SlogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
-            let ctx_display = context.create_display(&self.config);
-            let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+            if self.config.debug_enabled {
+                let ctx_display = context.create_display(&self.config);
+                let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
 
-            debug!(&self.logger, "{} {}", ctx_display, args; kvs)
+                debug!(&self.logger, "{} {}", ctx_display, args; kvs)
+            }
         }
 
         fn info(&self, context: &LoggingContext, args: Arguments) {
@@ -494,7 +517,9 @@ pub mod log_adapter {
 
     impl LoggingAdapter for LogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
-            debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
+            if self.0.debug_enabled {
+                debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
+            }
         }
         fn info(&self, context: &LoggingContext, args: Arguments) {
             info!("[INFO]{} {}", context.create_display(&self.0), args);

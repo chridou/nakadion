@@ -49,8 +49,8 @@ pub use crate::components::{
     },
 };
 pub use crate::logging::{
-    DevNullLoggingAdapter, LogConfig, LogDetailLevel, LoggingAdapter, StdErrLoggingAdapter,
-    StdOutLoggingAdapter,
+    DebugLoggingEnabled, DevNullLoggingAdapter, LogConfig, LogDetailLevel, LoggingAdapter,
+    StdErrLoggingAdapter, StdOutLoggingAdapter,
 };
 pub use config_types::*;
 pub use error::*;
