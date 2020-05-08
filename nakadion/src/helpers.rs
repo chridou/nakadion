@@ -7,11 +7,11 @@ pub const TOKEN_FIXED_ENV_VAR: &str = "ACCESS_TOKEN_FIXED";
 pub const ALLOW_NO_TOKEN_ENV_VAR: &str = "ACCESS_TOKEN_ALLOW_NONE";
 
 macro_rules! env_ctors {
-    () => {
+    (no_fill) => {
         #[doc="Initializes all fields from environment variables prefixed with \"NAKADION_\""]
         pub fn from_env() -> Result<Self, $crate::Error> {
             let mut me = Self::default();
-            me.fill_from_env()?;
+            me.fill_from_env_prefixed_internal($crate::helpers::NAKADION_PREFIX)?;
             Ok(me)
         }
 
@@ -19,17 +19,20 @@ macro_rules! env_ctors {
         #[doc="The underscore is omitted if `prefix` is empty"]
         pub fn from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Self, $crate::Error> {
             let mut me = Self::default();
-            me.fill_from_env_prefixed(prefix)?;
+            me.fill_from_env_prefixed_internal(prefix)?;
             Ok(me)
         }
 
         #[doc="Initializes all fields from environment variables without any prefix"]
         pub fn from_env_type_names() -> Result<Self, $crate::Error> {
             let mut me = Self::default();
-            me.fill_from_env_type_names()?;
+            me.fill_from_env_prefixed_internal("")?;
             Ok(me)
         }
+    };
 
+    () => {
+        env_ctors!(no_fill);
         #[doc="Updates all not yet set fields from environment variables prefixed with \"NAKADION_\""]
         pub fn fill_from_env(&mut self) -> Result<(), $crate::Error> {
             self.fill_from_env_prefixed_internal($crate::helpers::NAKADION_PREFIX)

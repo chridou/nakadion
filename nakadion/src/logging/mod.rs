@@ -231,9 +231,9 @@ pub struct LogConfig {
 }
 
 impl LogConfig {
-    env_ctors!();
+    env_ctors!(no_fill);
     fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
-        let level = LogDetailLevel::from_env_prefixed(prefix.as_ref())?;
+        let level = LogDetailLevel::try_from_env_prefixed(prefix.as_ref())?.unwrap_or_default();
 
         match level {
             LogDetailLevel::Low => *self = Self::low(),
