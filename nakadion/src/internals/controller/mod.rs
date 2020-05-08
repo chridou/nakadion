@@ -283,7 +283,9 @@ where
                     ));
                     continue;
                 } else {
-                    last_events_received_at = now;
+                    if batch.has_events() {
+                        last_events_received_at = now;
+                    }
                     let bytes = batch.bytes().len();
                     instrumentation.controller_batch_received(frame_received_at, bytes);
                     DispatcherMessage::BatchWithEvents(event_type_partition, batch)
