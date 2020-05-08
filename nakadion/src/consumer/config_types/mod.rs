@@ -63,13 +63,13 @@ pub use complex_types::*;
 ///
 /// For `stream_parameters`:
 ///
-/// * "MAX_UNCOMMITTED_EVENTS"
-/// * "BATCH_LIMIT"
+/// * "STREAM_MAX_UNCOMMITTED_EVENTS"
+/// * "STREAM_BATCH_LIMIT"
 /// * "STREAM_LIMIT"
-/// * "BATCH_FLUSH_TIMEOUT_SECS"
-/// * "BATCH_TIMESPAN_SECS"
+/// * "STREAM_BATCH_FLUSH_TIMEOUT_SECS"
+/// * "STREAM_BATCH_TIMESPAN_SECS"
 /// * "STREAM_TIMEOUT_SECS"
-/// * "COMMIT_TIMEOUT_SECS"
+/// * "STREAM_COMMIT_TIMEOUT_SECS"
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Builder {
@@ -109,6 +109,10 @@ pub struct Builder {
     ///
     /// This e.g. configures parallelism.
     pub dispatch_mode: Option<DispatchMode>,
+
+    /// If `true` partition related events (like activation, etc.) will be logged.
+    pub log_partition_events: Option<LogPartitionEvents>,
+
     /// Defines when to commit cursors.
     ///
     /// It is recommended to set this value instead of letting Nakadion
@@ -156,6 +160,10 @@ impl Builder {
 
         if self.dispatch_mode.is_none() {
             self.dispatch_mode = DispatchMode::try_from_env_prefixed(prefix.as_ref())?;
+        }
+
+        if self.log_partition_events.is_none() {
+            self.log_partition_events = LogPartitionEvents::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         self.commit_config.fill_from_env_prefixed(prefix.as_ref())?;
@@ -254,6 +262,17 @@ impl Builder {
     /// This e.g. configures parallelism.
     pub fn dispatch_mode(mut self, dispatch_mode: DispatchMode) -> Self {
         self.dispatch_mode = Some(dispatch_mode);
+        self
+    }
+
+    /// Defines how batches are internally dispatched.
+    ///
+    /// This e.g. configures parallelism.
+    pub fn log_partition_events<T: Into<LogPartitionEvents>>(
+        mut self,
+        log_partition_events: T,
+    ) -> Self {
+        self.log_partition_events = Some(log_partition_events.into());
         self
     }
 
@@ -382,6 +401,8 @@ impl Builder {
         let stream_dead_policy = self.stream_dead_policy.unwrap_or_default();
         let warn_no_frames_secs = Some(self.warn_no_frames_secs.unwrap_or_default());
         let warn_no_events_secs = Some(self.warn_no_events_secs.unwrap_or_default());
+        let dispatch_mode = Some(self.dispatch_mode.unwrap_or_default());
+        let log_partition_events = Some(self.log_partition_events.unwrap_or_default());
 
         self.connect_config.apply_defaults();
 
@@ -401,6 +422,8 @@ impl Builder {
         self.stream_dead_policy = Some(stream_dead_policy);
         self.warn_no_frames_secs = warn_no_frames_secs;
         self.warn_no_events_secs = warn_no_events_secs;
+        self.dispatch_mode = dispatch_mode;
+        self.log_partition_events = log_partition_events;
     }
 
     /// Create a `Consumer`
@@ -449,6 +472,7 @@ impl Builder {
         let warn_no_events = self.warn_no_events_secs.unwrap_or_default();
 
         let dispatch_mode = self.dispatch_mode.clone().unwrap_or_default();
+        let log_partition_events = self.log_partition_events.unwrap_or_default();
 
         let mut connect_config = self.connect_config.clone();
         connect_config.apply_defaults();
@@ -474,6 +498,7 @@ impl Builder {
             warn_no_frames,
             warn_no_events,
             dispatch_mode,
+            log_partition_events,
             commit_config,
             connect_config,
         };

@@ -201,7 +201,11 @@ where
             .config()
             .partition_inactivity_timeout
             .into_duration(),
-        stream_state.clone(),
+        if stream_state.config().log_partition_events.into() {
+            Some(stream_state.clone())
+        } else {
+            None
+        },
     );
 
     while let Some(batch_line_message_or_err) = stream.next().await {

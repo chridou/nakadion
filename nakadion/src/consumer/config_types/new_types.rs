@@ -67,3 +67,15 @@ impl Default for WarnNoEventsSecs {
         Self(60)
     }
 }
+
+new_type! {
+    #[doc="If `true` partition related events (like activation, etc.) will be logged.\n\n\
+    Default is true.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct LogPartitionEvents(bool, env="LOG_PARTITION_EVENTS");
+}
+impl Default for LogPartitionEvents {
+    fn default() -> Self {
+        Self(true)
+    }
+}

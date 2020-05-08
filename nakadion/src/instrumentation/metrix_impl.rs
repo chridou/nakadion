@@ -112,7 +112,7 @@ impl Instruments for Metrix {
         self.tx
             .observed_one_value_now(Metric::StreamConnectedTime, (time, TimeUnit::Milliseconds));
     }
-    fn stream_not_connected(&self, time: Duration, err: &ConnectError) {
+    fn stream_not_connected(&self, time: Duration, _err: &ConnectError) {
         self.tx.observed_one_value_now(
             Metric::StreamNotConnectedTime,
             (time, TimeUnit::Milliseconds),
@@ -241,7 +241,12 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
+    fn committer_cursors_not_committed(
+        &self,
+        n_cursors: usize,
+        time: Duration,
+        _err: &CommitError,
+    ) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
