@@ -209,6 +209,7 @@ where
         let batch_line_message = match batch_line_message_or_err {
             Ok(msg) => msg,
             Err(batch_line_error) => {
+                stream_state.request_stream_cancellation();
                 instrumentation.stream_error(&batch_line_error);
                 match batch_line_error.kind() {
                     BatchLineErrorKind::Parser => {
@@ -220,7 +221,6 @@ where
                     }
                     BatchLineErrorKind::Io => {
                         stream_state.warn(format_args!("Aborting stream: {}", batch_line_error));
-                        stream_state.request_stream_cancellation();
                         break;
                     }
                 }

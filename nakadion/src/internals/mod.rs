@@ -52,6 +52,7 @@ impl ConsumerState {
 
     /// Triggering this will cause the `Consumer` to abort
     pub fn request_global_cancellation(&self) {
+        self.info(format_args!("Consumer cancellation requested"));
         self.is_globally_cancelled.store(true, Ordering::SeqCst)
     }
 
