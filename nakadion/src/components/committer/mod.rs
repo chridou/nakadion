@@ -41,12 +41,20 @@ impl CommitData {
     }
 }
 
+/// Handle to send commit messages to the background task.
+///
+/// The background task will stop, once the last handle is dropped.
 #[derive(Clone)]
 pub struct CommitHandle {
-    sender: UnboundedSender<CommitterMessage>,
+    sender: UnboundedSender<CommitData>,
 }
 
 impl CommitHandle {
+    /// Commit the given cursor with additional information.
+    ///
+    /// Fails if the data could not be send which means
+    /// that the backend is gone. The appropriate action is then
+    /// to stop streaming.
     pub fn commit(
         &self,
         cursor: SubscriptionCursor,
@@ -60,25 +68,19 @@ impl CommitHandle {
         })
     }
 
+    /// Commit the given cursor with  additional information packed in the struct
+    /// `CommitData`.
+    ///
+    /// Fails if the data could not be send which means
+    /// that the backend is gone. The appropriate action is then
+    /// to stop streaming.
     pub fn commit_data(&self, data: CommitData) -> Result<(), CommitData> {
-        if let Err(err) = self.sender.send(CommitterMessage::Data(data)) {
-            match err.0 {
-                CommitterMessage::Data(data) => Err(data),
-                _ => panic!("WRONG MESSAGE SENT IN COMMITTER[commit_data] - THIS IS A BUG"),
-            }
+        if let Err(err) = self.sender.send(data) {
+            Err(err.0)
         } else {
             Ok(())
         }
     }
-
-    pub fn stop(&self) {
-        let _ = self.sender.send(CommitterMessage::Stop);
-    }
-}
-
-enum CommitterMessage {
-    Data(CommitData),
-    Stop,
 }
 
 /// Commits cursors for a stream

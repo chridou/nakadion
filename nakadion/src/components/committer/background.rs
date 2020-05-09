@@ -30,7 +30,7 @@ where
 }
 
 async fn run_committer<C>(
-    mut to_commit: UnboundedReceiver<CommitterMessage>,
+    mut to_commit: UnboundedReceiver<CommitData>,
     mut committer: Committer<C>,
 ) -> Result<(), Error>
 where
@@ -55,19 +55,16 @@ where
     loop {
         let now = Instant::now();
         let cursor_received = match to_commit.try_recv() {
-            Ok(CommitterMessage::Data(next)) => {
+            Ok(next) => {
                 instrumentation.committer_cursor_received(next.cursor_received_at);
                 pending.add(next, now);
                 true
             }
-            Ok(CommitterMessage::Stop) => {
-                break;
-            }
             Err(TryRecvError::Empty) => false,
             Err(TryRecvError::Closed) => {
-                committer
-                    .logger
-                    .debug(format_args!("Exiting committer. Channel closed."));
+                committer.logger.debug(format_args!(
+                    "Channel closed. Last handle gone. Exiting committer."
+                ));
                 break;
             }
         };
