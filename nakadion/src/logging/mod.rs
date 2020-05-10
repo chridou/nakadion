@@ -2,6 +2,8 @@ use std::fmt::{self, Arguments};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use chrono::Utc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::nakadi_types::{
@@ -145,19 +147,39 @@ impl Default for StdOutLoggingAdapter {
 impl LoggingAdapter for StdOutLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         if self.0.debug_enabled {
-            println!("[DEBUG]{} {}", context.create_display(&self.0), args);
+            println!(
+                "[{}][DEBUG]{} {}",
+                Utc::now(),
+                context.create_display(&self.0),
+                args
+            );
         }
     }
 
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        println!("[INFO]{} {}", context.create_display(&self.0), args);
+        println!(
+            "[{}][INFO]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        println!("[WARN]{} {}", context.create_display(&self.0), args);
+        println!(
+            "[{}][WARN]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        println!("[ERROR]{} {}", context.create_display(&self.0), args);
+        println!(
+            "[{}][ERROR]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
 }
 
@@ -182,19 +204,39 @@ impl Default for StdErrLoggingAdapter {
 impl LoggingAdapter for StdErrLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         if self.0.debug_enabled {
-            eprintln!("[DEBUG]{} {}", context.create_display(&self.0), args);
+            eprintln!(
+                "[{}][DEBUG]{} {}",
+                Utc::now(),
+                context.create_display(&self.0),
+                args
+            );
         }
     }
 
     fn info(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[INFO]{} {}", context.create_display(&self.0), args);
+        eprintln!(
+            "[{}][INFO]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
 
     fn warn(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[WARN]{} {}", context.create_display(&self.0), args);
+        eprintln!(
+            "[{}][WARN]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
     fn error(&self, context: &LoggingContext, args: Arguments) {
-        eprintln!("[ERROR]{} {}", context.create_display(&self.0), args);
+        eprintln!(
+            "[{}][ERROR]{} {}",
+            Utc::now(),
+            context.create_display(&self.0),
+            args
+        );
     }
 }
 
