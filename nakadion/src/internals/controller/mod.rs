@@ -89,7 +89,9 @@ enum BatchLineMessage {
     /// An evaluated frame from Nakadi. It can can contain any kind of line (events, keep alive, info parts)
     BatchLine(BatchLine),
     Tick(Instant),
-    StreamEnded,
+    /// We need this to notify the controller since the
+    /// consumed stream will never end because of the ticks
+    NakadiStreamEnded,
 }
 
 /// Consume a stream and return the (now inactive) sleeping dispatcher one finished
@@ -195,21 +197,19 @@ where
 
     // Track the activity of partitions on event types to collect metrics
     // on active (used) partitions
-    let mut partition_tracker = partition_tracker::PartitionTracker::new(
-        stream_state.instrumentation().clone(),
-        stream_state
-            .config()
-            .partition_inactivity_timeout
-            .into_duration(),
-        stream_state.clone(),
-        stream_state.config().log_partition_events_mode,
-    );
+    let mut partition_tracker = partition_tracker::PartitionTracker::new(stream_state.clone());
 
     while let Some(batch_line_message_or_err) = stream.next().await {
+        if stream_state.cancellation_requested() {
+            stream_state.debug(format_args!(
+                "Stream was cancelled by request - shutting down stream"
+            ));
+            break;
+        }
+
         let batch_line_message = match batch_line_message_or_err {
             Ok(msg) => msg,
             Err(batch_line_error) => {
-                stream_state.request_stream_cancellation();
                 instrumentation.stream_error(&batch_line_error);
                 match batch_line_error.kind() {
                     BatchLineErrorKind::Parser => {
@@ -220,7 +220,10 @@ where
                         return Err(ConsumerErrorKind::InvalidBatch.into());
                     }
                     BatchLineErrorKind::Io => {
-                        stream_state.warn(format_args!("Aborting stream: {}", batch_line_error));
+                        stream_state.warn(format_args!(
+                            "Aborting stream due to IO error: {}",
+                            batch_line_error
+                        ));
                         break;
                     }
                 }
@@ -228,8 +231,7 @@ where
         };
 
         let msg_for_dispatcher = match batch_line_message {
-            BatchLineMessage::StreamEnded => {
-                stream_state.info(format_args!("Stream ended"));
+            BatchLineMessage::NakadiStreamEnded => {
                 break;
             }
             BatchLineMessage::Tick(timestamp) => {
@@ -303,12 +305,6 @@ where
             instrumentation.consumer_batches_in_flight_inc();
             batches_sent_to_dispatcher += 1;
         }
-    }
-
-    if let Err(_err) = batch_lines_sink.send(DispatcherMessage::StreamEnded) {
-        stream_state.warn(format_args!(
-            "Failed to send 'StreamEnded' notification to dispatcher"
-        ));
     }
 
     // THIS MUST BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
@@ -411,9 +407,9 @@ where
         loop {
             if let Some(next) = stream.next().await {
                 match next {
-                    Ok(BatchLineMessage::StreamEnded) => {
-                        stream_state.warn(format_args!(
-                            "Stream ended before receiving a batch line after {:?}",
+                    Ok(BatchLineMessage::NakadiStreamEnded) => {
+                        stream_state.info(format_args!(
+                            "Stream ended before receiving a batch after {:?}",
                             nothing_received_since.elapsed()
                         ));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
@@ -471,8 +467,8 @@ where
                     },
                 }
             } else {
-                stream_state.warn(format_args!(
-                    "Stream ended without `BatchLineMessage::StreamEnded` after {:?}. This should not happen.",
+                stream_state.info(format_args!(
+                    "(Should not happen) Stream ended before receiving a batch after {:?}",
                     nothing_received_since.elapsed()
                 ));
                 let sleeping_dispatcher = sleep_ticker.join().await?;
@@ -506,7 +502,9 @@ fn make_ticked_batch_line_stream(
 
     let batch_stream = BatchLineStream::new(frame_stream, instrumentation.clone())
         .map_ok(BatchLineMessage::BatchLine)
-        .chain(stream::once(async { Ok(BatchLineMessage::StreamEnded) }));
+        .chain(stream::once(async {
+            Ok(BatchLineMessage::NakadiStreamEnded)
+        }));
 
     let tick_interval = tick_interval.into_duration();
     let ticker =

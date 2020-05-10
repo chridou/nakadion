@@ -20,7 +20,6 @@ use processor::HandlerSlot;
 pub enum WorkerMessage {
     BatchWithEvents(BatchLine),
     Tick(Instant),
-    StreamEnded,
 }
 
 pub struct Worker;
@@ -138,7 +137,6 @@ mod processor {
                         processing_compound.handler_slot.tick();
                         continue;
                     }
-                    WorkerMessage::StreamEnded => break,
                 };
 
                 match processing_compound.process_batch_line(batch).await {
@@ -160,6 +158,8 @@ mod processor {
                     }
                 }
             }
+
+            drop(batches);
 
             stream_state.debug(format_args!("Worker stopped"));
 

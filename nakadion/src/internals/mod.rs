@@ -79,13 +79,9 @@ impl ConsumerState {
 }
 
 impl Logger for ConsumerState {
-    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);
     }
-
-    #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logger.info(args);
@@ -179,13 +175,9 @@ impl StreamState {
 }
 
 impl Logger for StreamState {
-    #[cfg(feature = "debug-mode")]
     fn debug(&self, args: Arguments) {
         self.logger.debug(args);
     }
-
-    #[cfg(not(feature = "debug-mode"))]
-    fn debug(&self, _args: Arguments) {}
 
     fn info(&self, args: Arguments) {
         self.logger.info(args);

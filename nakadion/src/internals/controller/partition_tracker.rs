@@ -3,33 +3,28 @@ use std::fmt::Arguments;
 use std::time::{Duration, Instant};
 
 use crate::consumer::LogPartitionEventsMode;
-use crate::instrumentation::{Instrumentation, Instruments};
 use crate::logging::Logger;
-use crate::nakadi_types::subscription::EventTypePartition;
+use crate::{
+    instrumentation::Instruments, internals::StreamState,
+    nakadi_types::subscription::EventTypePartition,
+};
 
 pub(crate) struct PartitionTracker {
     partitions: BTreeMap<EventTypePartition, Entry>,
-    instrumentation: Instrumentation,
-    logger: Box<dyn Logger + Send>,
-    inactivity_after: Duration,
+    stream_state: StreamState,
+    inactivity_timeout: Duration,
     mode: LogPartitionEventsMode,
 }
 
 impl PartitionTracker {
-    pub fn new<L>(
-        instrumentation: Instrumentation,
-        inactivity_after: Duration,
-        logger: L,
-        mode: LogPartitionEventsMode,
-    ) -> Self
-    where
-        L: Logger + Send + 'static,
-    {
+    pub fn new(stream_state: StreamState) -> Self {
+        let inactivity_timeout = stream_state.config().partition_inactivity_timeout.into();
+        let mode = stream_state.config().log_partition_events_mode;
+
         Self {
             partitions: BTreeMap::new(),
-            instrumentation,
-            logger: Box::new(logger),
-            inactivity_after,
+            stream_state,
+            inactivity_timeout,
             mode,
         }
     }
@@ -40,14 +35,16 @@ impl PartitionTracker {
         if let Some(entry) = self.partitions.get_mut(partition) {
             if let Some(was_inactive_for) = entry.activity(now) {
                 log_activity(
-                    self.logger.as_ref(),
+                    &self.stream_state,
                     format_args!(
                         "Event type partition {} is active again after {:?} of inactivity",
                         partition, was_inactive_for,
                     ),
                     self.mode,
                 );
-                self.instrumentation.controller_partition_activated();
+                self.stream_state
+                    .instrumentation()
+                    .controller_partition_activated();
             }
         } else {
             let entry = Entry {
@@ -59,23 +56,26 @@ impl PartitionTracker {
                 "New active event type partition {}",
                 partition
             ));
-            self.instrumentation.controller_partition_activated();
+            self.stream_state
+                .instrumentation
+                .controller_partition_activated();
         }
     }
 
     /// Call on tick to check inactivity
     pub fn check_for_inactivity(&mut self, now: Instant) {
         for (partition, entry) in self.partitions.iter_mut() {
-            if let Some(was_active_for) = entry.check_for_inactivity(now, self.inactivity_after) {
+            if let Some(was_active_for) = entry.check_for_inactivity(now, self.inactivity_timeout) {
                 log_activity(
-                    self.logger.as_ref(),
+                    &self.stream_state,
                     format_args!(
                         "Partition {} became inactive after {:?}",
                         partition, was_active_for
                     ),
                     self.mode,
                 );
-                self.instrumentation
+                self.stream_state
+                    .instrumentation
                     .controller_partition_deactivated(was_active_for)
             }
         }
@@ -84,22 +84,22 @@ impl PartitionTracker {
     fn log_after_connect(&self, args: Arguments) {
         match self.mode {
             LogPartitionEventsMode::All | LogPartitionEventsMode::AfterConnect => {
-                self.logger.info(args);
+                self.stream_state.info(args);
             }
             _ => {
-                self.logger.debug(args);
+                self.stream_state.debug(args);
             }
         }
     }
 }
 
-fn log_activity(logger: &dyn Logger, args: Arguments, mode: LogPartitionEventsMode) {
+fn log_activity(stream_state: &StreamState, args: Arguments, mode: LogPartitionEventsMode) {
     match mode {
         LogPartitionEventsMode::All | LogPartitionEventsMode::ActivityChange => {
-            logger.info(args);
+            stream_state.info(args);
         }
         _ => {
-            logger.debug(args);
+            stream_state.debug(args);
         }
     }
 }
@@ -109,7 +109,8 @@ impl Drop for PartitionTracker {
         for entry in self.partitions.iter().map(|(_, entry)| entry) {
             match entry.state {
                 PartitionActivationState::ActiveSince(when) => self
-                    .instrumentation
+                    .stream_state
+                    .instrumentation()
                     .controller_partition_deactivated(when.elapsed()),
                 PartitionActivationState::InactiveSince(_when) => {}
             }

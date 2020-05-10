@@ -61,7 +61,6 @@ where
         let worker_stream = messages.map(move |dm| match dm {
             DispatcherMessage::BatchWithEvents(_, batch) => WorkerMessage::BatchWithEvents(batch),
             DispatcherMessage::Tick(timestamp) => WorkerMessage::Tick(timestamp),
-            DispatcherMessage::StreamEnded => WorkerMessage::StreamEnded,
         });
 
         let active_worker = worker.start(stream_state.clone(), committer, worker_stream);
