@@ -142,12 +142,6 @@ where
                     });
                     continue;
                 }
-                DispatcherMessage::StreamEnded => {
-                    activated.values().for_each(|w| {
-                        w.process(WorkerMessage::StreamEnded);
-                    });
-                    break;
-                }
             };
 
             let worker = if let Some(worker) = activated.get(&event_type_partition) {
@@ -177,10 +171,16 @@ where
             }
         }
 
+        stream_state.debug(format_args!(
+            "'etp_par'-Dispatcher loop exited. Waiting for {} workers to fall asleep.",
+            activated.len()
+        ));
+
         let mut consumer_error_ocurred = false;
         let mut processed_batches_total = 0;
         let mut sleeping_workers: BTreeMap<EventTypePartition, SleepingWorker> =
             BTreeMap::default();
+
         for (event_type_partition, worker) in activated {
             match worker.join().await {
                 Ok(EnrichedOk {
@@ -205,6 +205,8 @@ where
                 }
             }
         }
+
+        stream_state.debug(format_args!("'etp_par'-Dispatcher: All workers sleeping.",));
 
         if consumer_error_ocurred {
             Err(EnrichedErr::new(

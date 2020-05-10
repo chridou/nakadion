@@ -131,7 +131,7 @@ where
         pin_mut!(stream);
         while let Some(next_message) = stream.next().await {
             if stream_state.cancellation_requested() {
-                stream_state.info(format_args!("Cancellation requested"));
+                stream_state.debug(format_args!("Cancellation requested"));
                 break;
             }
             let ((event_type, _partition), batch) = match next_message {
@@ -141,12 +141,6 @@ where
                         w.process(WorkerMessage::Tick(timestamp));
                     });
                     continue;
-                }
-                DispatcherMessage::StreamEnded => {
-                    activated.values().for_each(|w| {
-                        w.process(WorkerMessage::StreamEnded);
-                    });
-                    break;
                 }
             };
 
@@ -176,6 +170,11 @@ where
             }
         }
 
+        stream_state.debug(format_args!(
+            "'et_par'-Dispatcher loop exited. Waiting for {} workers to fall asleep.",
+            activated.len()
+        ));
+
         let mut consumer_error_ocurred = false;
         let mut processed_batches_total = 0;
         let mut sleeping_workers: BTreeMap<String, SleepingWorker> = BTreeMap::default();
@@ -203,6 +202,8 @@ where
                 }
             }
         }
+
+        stream_state.debug(format_args!("'et_par'-Dispatcher: All workers sleeping.",));
 
         if consumer_error_ocurred {
             Err(EnrichedErr::new(

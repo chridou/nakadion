@@ -21,7 +21,6 @@ pub enum DispatcherMessage {
     /// A batch containing events along with the `EventTypePartition` extracted from the cursor
     BatchWithEvents(EventTypePartition, BatchLine),
     Tick(Instant),
-    StreamEnded,
 }
 
 impl DispatcherMessage {
