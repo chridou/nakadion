@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### CHANGED
 
 - debug logging can no longer be enabled with a feature but with `DebugLoggingEnabled` instead.
+- internal code reorganization
 
 ### ADDED
 
