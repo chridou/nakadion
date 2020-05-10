@@ -15,6 +15,7 @@ use crate::logging::Logger;
 use crate::Error;
 
 use super::*;
+use nakadi_types::subscription::EventTypePartition;
 use partition_tracker::PartitionTracker;
 
 mod partition_tracker;
@@ -70,13 +71,8 @@ where
                 }
             }
             Some(Ok(BatchLineMessage::Tick(tick_timestamp))) => {
-                if let Err(err) = handle_tick(
-                    tick_timestamp,
-                    &stream_state,
-                    &mut controller_state,
-                    &mut dispatcher_sink,
-                )
-                .await
+                if let Err(err) =
+                    handle_tick(tick_timestamp, &mut controller_state, &mut dispatcher_sink).await
                 {
                     stream_state.warn(format_args!("Could not send tick: {}", err));
                     break Ok(());
@@ -162,40 +158,11 @@ async fn handle_batch_line(
     controller_state: &mut ControllerState,
     dispatcher_sink: &mut UnboundedSender<DispatcherMessage>,
 ) -> Result<(), Error> {
-    let frame_received_at = batch_line.received_at();
-    let now = Instant::now();
-    controller_state.last_frame_received_at = now;
-
     let event_type_partition = batch_line.to_event_type_partition();
-    controller_state
-        .partition_tracker
-        .activity(&event_type_partition);
 
-    if let Some(info_str) = batch_line.info_str() {
-        stream_state
-            .instrumentation
-            .controller_info_received(frame_received_at);
-        stream_state.info(format_args!(
-            "Received info line for {}: {}",
-            event_type_partition, info_str
-        ));
-    }
+    controller_state.received_frame(&event_type_partition, &batch_line);
 
-    if batch_line.is_keep_alive_line() {
-        stream_state
-            .instrumentation
-            .controller_keep_alive_received(frame_received_at);
-        /*stream_state.debug(format_args!(
-            "received keep alive line for {}.",
-            event_type_partition
-        ));*/
-        Ok(())
-    } else {
-        controller_state.last_events_received_at = now;
-        let bytes = batch_line.bytes().len();
-        stream_state
-            .instrumentation
-            .controller_batch_received(frame_received_at, bytes);
+    if batch_line.has_events() {
         if dispatcher_sink
             .send(DispatcherMessage::BatchWithEvents(
                 event_type_partition,
@@ -212,41 +179,17 @@ async fn handle_batch_line(
             controller_state.batches_sent_to_dispatcher += 1;
             Ok(())
         }
+    } else {
+        Ok(())
     }
 }
 
 async fn handle_tick(
     tick_timestamp: Instant,
-    stream_state: &StreamState,
     controller_state: &mut ControllerState,
     dispatcher_sink: &mut UnboundedSender<DispatcherMessage>,
 ) -> Result<(), Error> {
-    if controller_state.stream_dead_policy.is_stream_dead(
-        controller_state.last_frame_received_at,
-        controller_state.last_events_received_at,
-    ) {
-        return Err(Error::new("The stream is dead boys..."));
-    }
-
-    let elapsed = controller_state.last_frame_received_at.elapsed();
-    if elapsed >= controller_state.warn_no_frames {
-        stream_state.warn(format_args!("No frames for {:?}.", elapsed));
-        stream_state
-            .instrumentation()
-            .controller_no_frames_warning(elapsed);
-    }
-
-    let elapsed = controller_state.last_events_received_at.elapsed();
-    if elapsed >= controller_state.warn_no_events {
-        stream_state.warn(format_args!("No events received for {:?}.", elapsed));
-        stream_state
-            .instrumentation()
-            .controller_no_events_warning(elapsed);
-    }
-
-    controller_state
-        .partition_tracker
-        .check_for_inactivity(Instant::now());
+    controller_state.received_tick(tick_timestamp)?;
 
     match dispatcher_sink.send(DispatcherMessage::Tick(tick_timestamp)) {
         Ok(()) => Ok(()),
@@ -330,6 +273,7 @@ struct ControllerState {
     /// If streaming ends, we use this to correct the in flight metrics
     batches_sent_to_dispatcher: usize,
     partition_tracker: PartitionTracker,
+    stream_state: StreamState,
 }
 
 impl ControllerState {
@@ -344,7 +288,68 @@ impl ControllerState {
             last_events_received_at: now,
             last_frame_received_at: now,
             batches_sent_to_dispatcher: 0,
-            partition_tracker: PartitionTracker::new(stream_state),
+            partition_tracker: PartitionTracker::new(stream_state.clone()),
+            stream_state,
         }
+    }
+
+    pub fn received_frame(&mut self, event_type_partition: &EventTypePartition, frame: &BatchLine) {
+        let frame_received_at = frame.received_at();
+        let now = Instant::now();
+        self.last_frame_received_at = now;
+
+        self.partition_tracker.activity(event_type_partition);
+
+        if let Some(info_str) = frame.info_str() {
+            self.stream_state
+                .instrumentation
+                .controller_info_received(frame_received_at);
+            self.stream_state.info(format_args!(
+                "Received info line for {}: {}",
+                event_type_partition, info_str
+            ));
+        }
+
+        if frame.is_keep_alive_line() {
+            self.stream_state
+                .instrumentation
+                .controller_keep_alive_received(frame_received_at);
+        } else {
+            let bytes = frame.bytes().len();
+            self.stream_state
+                .instrumentation
+                .controller_batch_received(frame_received_at, bytes);
+            self.last_events_received_at = now;
+        }
+    }
+
+    pub fn received_tick(&mut self, _tick_timestamp: Instant) -> Result<(), Error> {
+        if self
+            .stream_dead_policy
+            .is_stream_dead(self.last_frame_received_at, self.last_events_received_at)
+        {
+            return Err(Error::new("The stream is dead boys..."));
+        }
+
+        let elapsed = self.last_frame_received_at.elapsed();
+        if elapsed >= self.warn_no_frames {
+            self.stream_state
+                .warn(format_args!("No frames for {:?}.", elapsed));
+            self.stream_state
+                .instrumentation()
+                .controller_no_frames_warning(elapsed);
+        }
+
+        let elapsed = self.last_events_received_at.elapsed();
+        if elapsed >= self.warn_no_events {
+            self.stream_state
+                .warn(format_args!("No events received for {:?}.", elapsed));
+            self.stream_state
+                .instrumentation()
+                .controller_no_events_warning(elapsed);
+        }
+
+        self.partition_tracker.check_for_inactivity(Instant::now());
+        Ok(())
     }
 }
