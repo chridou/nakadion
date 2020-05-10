@@ -1,11 +1,11 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use futures::{Stream, StreamExt};
 use tokio::{self, sync::mpsc::UnboundedSender};
 
 use crate::api::SubscriptionCommitApi;
 use crate::components::streams::{BatchLineError, BatchLineErrorKind};
-use crate::consumer::{ConsumerError, ConsumerErrorKind, StreamDeadPolicy};
+use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::{
     dispatcher::{ActiveDispatcher, DispatcherMessage, SleepingDispatcher},
@@ -15,10 +15,10 @@ use crate::logging::Logger;
 use crate::Error;
 
 use super::*;
-use nakadi_types::subscription::EventTypePartition;
-use partition_tracker::PartitionTracker;
 
-mod partition_tracker;
+use controller_state::ControllerState;
+
+mod controller_state;
 
 /// Wakes up the infrastructure and then consumes the stream until it ends
 /// or the consumption is aborted.
@@ -258,98 +258,4 @@ where
     }
 
     result
-}
-
-struct ControllerState {
-    /// We might want to abort if we do not receive data from Nakadi in time
-    /// This is basically to prevents us from being locked in a dead stream.
-    stream_dead_policy: StreamDeadPolicy,
-    warn_no_frames: Duration,
-    warn_no_events: Duration,
-
-    stream_started_at: Instant,
-    last_events_received_at: Instant,
-    last_frame_received_at: Instant,
-    /// If streaming ends, we use this to correct the in flight metrics
-    batches_sent_to_dispatcher: usize,
-    partition_tracker: PartitionTracker,
-    stream_state: StreamState,
-}
-
-impl ControllerState {
-    pub fn new(stream_state: StreamState) -> Self {
-        let now = Instant::now();
-        Self {
-            stream_dead_policy: stream_state.config().stream_dead_policy,
-            warn_no_frames: stream_state.config().warn_no_frames.into_duration(),
-            warn_no_events: stream_state.config().warn_no_events.into_duration(),
-
-            stream_started_at: now,
-            last_events_received_at: now,
-            last_frame_received_at: now,
-            batches_sent_to_dispatcher: 0,
-            partition_tracker: PartitionTracker::new(stream_state.clone()),
-            stream_state,
-        }
-    }
-
-    pub fn received_frame(&mut self, event_type_partition: &EventTypePartition, frame: &BatchLine) {
-        let frame_received_at = frame.received_at();
-        let now = Instant::now();
-        self.last_frame_received_at = now;
-
-        self.partition_tracker.activity(event_type_partition);
-
-        if let Some(info_str) = frame.info_str() {
-            self.stream_state
-                .instrumentation
-                .controller_info_received(frame_received_at);
-            self.stream_state.info(format_args!(
-                "Received info line for {}: {}",
-                event_type_partition, info_str
-            ));
-        }
-
-        if frame.is_keep_alive_line() {
-            self.stream_state
-                .instrumentation
-                .controller_keep_alive_received(frame_received_at);
-        } else {
-            let bytes = frame.bytes().len();
-            self.stream_state
-                .instrumentation
-                .controller_batch_received(frame_received_at, bytes);
-            self.last_events_received_at = now;
-        }
-    }
-
-    pub fn received_tick(&mut self, _tick_timestamp: Instant) -> Result<(), Error> {
-        if self
-            .stream_dead_policy
-            .is_stream_dead(self.last_frame_received_at, self.last_events_received_at)
-        {
-            return Err(Error::new("The stream is dead boys..."));
-        }
-
-        let elapsed = self.last_frame_received_at.elapsed();
-        if elapsed >= self.warn_no_frames {
-            self.stream_state
-                .warn(format_args!("No frames for {:?}.", elapsed));
-            self.stream_state
-                .instrumentation()
-                .controller_no_frames_warning(elapsed);
-        }
-
-        let elapsed = self.last_events_received_at.elapsed();
-        if elapsed >= self.warn_no_events {
-            self.stream_state
-                .warn(format_args!("No events received for {:?}.", elapsed));
-            self.stream_state
-                .instrumentation()
-                .controller_no_events_warning(elapsed);
-        }
-
-        self.partition_tracker.check_for_inactivity(Instant::now());
-        Ok(())
-    }
 }
