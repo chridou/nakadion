@@ -24,7 +24,6 @@ use crate::logging::Logger;
 
 mod connect_stream;
 mod consume_to_end;
-mod partition_tracker;
 mod sleep_ticker;
 pub(crate) mod types;
 
