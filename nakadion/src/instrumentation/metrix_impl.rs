@@ -58,11 +58,24 @@ impl Default for MetrixGaugeTrackingSecs {
     }
 }
 
+new_type! {
+    #[doc="The time an alert will stay on after trigger.\n\nDefault is 60s.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct AlertDurationSecs(u32, env="METRIX_ALERT_DURATION_SECS");
+}
+impl Default for AlertDurationSecs {
+    fn default() -> Self {
+        60.into()
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct MetrixConfig {
     /// Enables tracking for gauges for the given amount of seconds
     pub gauge_tracking_secs: Option<MetrixGaugeTrackingSecs>,
+    /// Enables tracking for gauges for the given amount of seconds
+    pub alert_duration_secs: Option<AlertDurationSecs>,
 }
 
 impl MetrixConfig {
@@ -75,27 +88,14 @@ impl MetrixConfig {
             self.gauge_tracking_secs =
                 MetrixGaugeTrackingSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
+        if self.alert_duration_secs.is_none() {
+            self.alert_duration_secs = AlertDurationSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
         Ok(())
     }
 }
 
 impl Instruments for Metrix {
-    // === GLOBAL ===
-
-    fn consumer_batches_in_flight_inc(&self) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, Increment);
-    }
-    fn consumer_batches_in_flight_dec(&self) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, Decrement);
-    }
-    fn consumer_batches_in_flight_dec_by(&self, by: usize) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, DecrementBy(by as u32));
-    }
-
-    // === STREAM ===
     fn stream_connect_attempt_success(&self, time: Duration) {
         self.tx.observed_one_value_now(
             Metric::StreamConnectAttemptSuccessTime,
@@ -135,6 +135,40 @@ impl Instruments for Metrix {
         self.tx.observed_one_now(Metric::StreamTickEmitted);
     }
 
+    fn info_frame_received(&self, frame_received_at: Instant) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerInfoReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+    fn keep_alive_frame_received(&self, frame_received_at: Instant) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerKeepAliveReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize) {
+        self.tx
+            .observed_one_value_now(Metric::ControllerBatchReceivedBytes, events_bytes);
+        self.tx.observed_one_value_now(
+            Metric::ControllerBatchReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+
+    fn no_frames_warning(&self, no_frames_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerNoFramesForWarning,
+            (no_frames_for, TimeUnit::Milliseconds),
+        );
+    }
+    fn no_events_warning(&self, no_events_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ControllerNoEventsForWarning,
+            (no_events_for, TimeUnit::Milliseconds),
+        );
+    }
+
     fn stream_error(&self, err: &BatchLineError) {
         match err.kind() {
             BatchLineErrorKind::Io => {
@@ -146,75 +180,51 @@ impl Instruments for Metrix {
         }
     }
 
-    // === CONTROLLER ===
-    fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize) {
+    fn batches_in_flight_inc(&self) {
         self.tx
-            .observed_one_value_now(Metric::ControllerBatchReceivedBytes, events_bytes);
-        self.tx.observed_one_value_now(
-            Metric::ControllerBatchReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, Increment);
     }
-    fn controller_info_received(&self, frame_received_at: Instant) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerInfoReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+    fn batches_in_flight_dec(&self) {
+        self.tx
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, Decrement);
     }
-    fn controller_keep_alive_received(&self, frame_received_at: Instant) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerKeepAliveReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+    fn batches_in_flight_dec_by(&self, by: usize) {
+        self.tx
+            .observed_one_value_now(Metric::ConsumerInFlightChanged, DecrementBy(by as u32));
     }
 
-    fn controller_partition_activated(&self) {
+    fn event_type_partition_activated(&self) {
         self.tx
             .observed_one_value_now(Metric::ControllerPartitionActivated, Increment);
     }
-    fn controller_partition_deactivated(&self, active_for: Duration) {
+
+    fn event_type_partition_deactivated(&self, active_for: Duration) {
         self.tx.observed_one_value_now(
             Metric::ControllerPartitionDeactivatedAfter,
             (active_for, TimeUnit::Milliseconds),
         );
     }
 
-    fn controller_no_frames_warning(&self, no_frames_for: Duration) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerNoFramesForWarning,
-            (no_frames_for, TimeUnit::Milliseconds),
-        );
-    }
-    fn controller_no_events_warning(&self, no_events_for: Duration) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerNoEventsForWarning,
-            (no_events_for, TimeUnit::Milliseconds),
-        );
-    }
+    fn batch_processing_started(&self) {}
 
-    // === DISPATCHER ===
-
-    // === HANDLERS ===
-
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
-        if let Some(n_events) = n_events {
-            self.tx
-                .observed_one_value_now(Metric::HandlerProcessedEvents, n_events);
-        }
-        self.tx.observed_one_value_now(
-            Metric::HandlerBatchProcessedTime,
-            (time, TimeUnit::Microseconds),
-        );
-    }
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+    fn batch_processed(&self, frame_received_at: Instant, n_bytes: usize, time: Duration) {
         self.tx
+            .observed_one_value_now(
+                Metric::HandlerBatchProcessedTime,
+                (time, TimeUnit::Microseconds),
+            )
             .observed_one_value_now(Metric::HandlerBatchProcessedBytes, n_bytes)
             .observed_one_value_now(
                 Metric::HandlerBatchLag,
                 (frame_received_at.elapsed(), TimeUnit::Microseconds),
             );
     }
-    fn handler_deserialization(&self, n_bytes: usize, time: Duration) {
+    fn batch_processed_n_events(&self, n_events: usize) {
+        self.tx
+            .observed_one_value_now(Metric::HandlerProcessedEvents, n_events);
+    }
+
+    fn batch_deserialized(&self, n_bytes: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::HandlerBatchDeserializationBytes, n_bytes)
             .observed_one_value_now(
@@ -222,8 +232,6 @@ impl Instruments for Metrix {
                 (time, TimeUnit::Microseconds),
             );
     }
-
-    // === COMMITTER ===
 
     fn committer_cursor_received(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
@@ -546,6 +554,6 @@ fn create_staircase_timer(
     name: &str,
     config: &MetrixConfig,
 ) -> metrix::instruments::StaircaseTimer {
-    let switch_off_after = config.gauge_tracking_secs.unwrap_or_default();
+    let switch_off_after = config.alert_duration_secs.unwrap_or_default();
     metrix::instruments::StaircaseTimer::new(name).switch_off_after(switch_off_after.into())
 }

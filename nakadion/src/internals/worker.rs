@@ -141,15 +141,11 @@ mod processor {
 
                 match processing_compound.process_batch_line(batch).await {
                     Ok(true) => {
-                        stream_state
-                            .instrumentation()
-                            .consumer_batches_in_flight_dec();
+                        stream_state.instrumentation().batches_in_flight_dec();
                         batches_processed += 1;
                     }
                     Ok(false) => {
-                        stream_state
-                            .instrumentation()
-                            .consumer_batches_in_flight_dec();
+                        stream_state.instrumentation().batches_in_flight_dec();
                         batches_processed += 1;
                         break;
                     }
@@ -207,6 +203,9 @@ mod processor {
 
             let n_events_bytes = events.len();
             let batch_processing_started_at = Instant::now();
+            self.stream_state
+                .instrumentation()
+                .batch_processing_started();
             match self.handler_slot.process_batch(events, meta).await? {
                 BatchPostAction::Commit(BatchStats {
                     n_events,
@@ -221,7 +220,7 @@ mod processor {
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .handler_deserialization(n_events_bytes, t_deserialize);
+                            .batch_deserialized(n_events_bytes, t_deserialize);
                     }
 
                     if let Err(err) = self.committer.commit(cursor, frame_received_at, n_events) {
@@ -244,12 +243,19 @@ mod processor {
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
                             .instrumentation
-                            .handler_deserialization(n_events_bytes, t_deserialize);
+                            .batch_deserialized(n_events_bytes, t_deserialize);
                     }
 
                     Ok(true)
                 }
                 BatchPostAction::AbortStream(reason) => {
+                    self.report_processed_stats(
+                        n_events_bytes,
+                        None,
+                        batch_processing_started_at,
+                        frame_received_at,
+                    );
+
                     self.stream_state.warn(format_args!(
                         "Stream cancellation requested by handler: {}",
                         reason
@@ -258,6 +264,13 @@ mod processor {
                     Ok(false)
                 }
                 BatchPostAction::ShutDown(reason) => {
+                    self.report_processed_stats(
+                        n_events_bytes,
+                        None,
+                        batch_processing_started_at,
+                        frame_received_at,
+                    );
+
                     self.stream_state.warn(format_args!(
                         "Consumer shut down requested by handler: {}",
                         reason
@@ -276,12 +289,16 @@ mod processor {
             batch_processing_started_at: Instant,
             frame_received_at: Instant,
         ) {
-            self.stream_state
-                .instrumentation
-                .handler_batch_processed_1(n_events, batch_processing_started_at.elapsed());
-            self.stream_state
-                .instrumentation
-                .handler_batch_processed_2(frame_received_at, n_events_bytes);
+            self.stream_state.instrumentation.batch_processed(
+                frame_received_at,
+                n_events_bytes,
+                batch_processing_started_at.elapsed(),
+            );
+            if let Some(n_events) = n_events {
+                self.stream_state
+                    .instrumentation
+                    .batch_processed_n_events(n_events);
+            }
         }
     }
 

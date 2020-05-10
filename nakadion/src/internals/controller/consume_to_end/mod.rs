@@ -173,9 +173,7 @@ async fn handle_batch_line(
             Err(Error::new("Failed to send batch to dispatcher"))
         } else {
             // Only here we know for sure whether we sent events
-            stream_state
-                .instrumentation
-                .consumer_batches_in_flight_inc();
+            stream_state.instrumentation.batches_in_flight_inc();
             controller_state.batches_sent_to_dispatcher += 1;
             Ok(())
         }
@@ -253,7 +251,7 @@ where
             ));
             stream_state
                 .instrumentation
-                .consumer_batches_in_flight_dec_by(unprocessed_batches);
+                .batches_in_flight_dec_by(unprocessed_batches);
         }
     }
 
