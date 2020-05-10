@@ -127,17 +127,18 @@ where
                         instrumentation.stream_chunk_received(bytes.len());
 
                         let state = self.as_mut().state();
-                        // If we have nothing collected so far
-                        // the non empty chunk must start a new frame
-                        if state.unfinished_frame.is_empty() {
-                            state.first_byte_received_at = Instant::now();
-                        }
 
                         loop {
                             // If there are no bytes left to process
                             // proceed with the potentially next chunk
                             if bytes.is_empty() {
                                 break;
+                            }
+
+                            // If we have nothing collected so far
+                            // the non empty chunk must start a new frame
+                            if state.unfinished_frame.is_empty() {
+                                state.first_byte_received_at = Instant::now();
                             }
 
                             if let Some(pos) = bytes.iter().position(|b| *b == b'\n') {
@@ -171,7 +172,7 @@ where
                                     // Append the new frame to the collected frame
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
-                                        received_at: Instant::now(),
+                                        received_at: state.first_byte_received_at,
                                         frame_id: state.frame_id,
                                     });
 
