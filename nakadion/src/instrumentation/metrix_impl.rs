@@ -169,6 +169,11 @@ impl Instruments for Metrix {
         );
     }
 
+    fn stream_dead(&self, after: Duration) {
+        self.tx
+            .observed_one_value_now(Metric::NoEventsForWarning, (after, TimeUnit::Milliseconds));
+    }
+
     fn stream_error(&self, err: &BatchLineError) {
         match err.kind() {
             BatchLineErrorKind::Io => {
@@ -281,6 +286,7 @@ pub enum Metric {
     StreamKeepAliveFrameReceivedLag,
     StreamBatchFrameReceivedBytes,
     StreamBatchFrameReceivedLag,
+    StreamDeadAfter,
     NoFramesForWarning,
     NoEventsForWarning,
     StreamErrorIo,
@@ -327,6 +333,7 @@ mod instr {
         create_batch_metrics(&mut cockpit, config);
         create_events_metrics(&mut cockpit, config);
         create_committer_metrics(&mut cockpit, config);
+        create_event_type_partition_metrics(&mut cockpit, config);
 
         rx.add_cockpit(cockpit);
 
@@ -335,21 +342,17 @@ mod instr {
 
     fn create_alerts(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         use Metric::*;
-        let panel = Panel::named(
-            (
-                StreamErrorIo,
-                StreamErrorParse,
-                NoEventsForWarning,
-                NoFramesForWarning,
-                CommitterCommitFailed,
-            ),
-            "alerts",
-        )
-        .handler(create_staircase_timer("stream_io_error", config).for_label(StreamErrorIo))
-        .handler(create_staircase_timer("stream_parse_error", config).for_label(StreamErrorParse))
-        .handler(create_staircase_timer("no_events", config).for_label(NoEventsForWarning))
-        .handler(create_staircase_timer("no_frames", config).for_label(NoFramesForWarning))
-        .handler(create_staircase_timer("commit_failed", config).for_label(CommitterCommitFailed));
+        let panel = Panel::named(AcceptAllLabels, "alerts")
+            .handler(create_staircase_timer("stream_io_error", config).for_label(StreamErrorIo))
+            .handler(
+                create_staircase_timer("stream_parse_error", config).for_label(StreamErrorParse),
+            )
+            .handler(create_staircase_timer("no_events", config).for_label(NoEventsForWarning))
+            .handler(create_staircase_timer("no_frames", config).for_label(NoFramesForWarning))
+            .handler(
+                create_staircase_timer("commit_failed", config).for_label(CommitterCommitFailed),
+            )
+            .handler(create_staircase_timer("stream_dead", config).for_label(StreamDeadAfter));
 
         cockpit.add_panel(panel);
     }
@@ -362,6 +365,9 @@ mod instr {
 
     fn create_stream_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "stream")
+            .panel(Panel::named(AcceptAllLabels, "ticks").meter(
+                Meter::new_with_defaults("emitted_per_second").for_label(Metric::StreamTickEmitted),
+            ))
             .panel(
                 Panel::named(AcceptAllLabels, "chunks")
                     .meter(
@@ -533,17 +539,34 @@ mod instr {
                     ),
             )
             .panel(
-                Panel::named((Metric::CommitterAttemptFailedCount, Metric::CommitterAttemptFailedTime), "failed_attempts")
-                    .meter(
-                        Meter::new_with_defaults("per_second")
-                            .for_label(Metric::CommitterAttemptFailedCount),
-                    )
-                    .histogram(
-                        Histogram::new_with_defaults("latency_ms")
-                            .display_time_unit(TimeUnit::Milliseconds)
-                            .for_label(Metric::CommitterAttemptFailedTime),
+                Panel::named(
+                    (
+                        Metric::CommitterAttemptFailedCount,
+                        Metric::CommitterAttemptFailedTime,
                     ),
+                    "failed_attempts",
+                )
+                .meter(
+                    Meter::new_with_defaults("per_second")
+                        .for_label(Metric::CommitterAttemptFailedCount),
+                )
+                .histogram(
+                    Histogram::new_with_defaults("latency_ms")
+                        .display_time_unit(TimeUnit::Milliseconds)
+                        .for_label(Metric::CommitterAttemptFailedTime),
+                ),
             );
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_event_type_partition_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "event_type_partitions").gauge(
+            create_gauge("active", config).inc_dec_on(
+                Metric::EventTypePartitionActivated,
+                Metric::EventTypePartitionDeactivatedAfter,
+            ),
+        );
 
         cockpit.add_panel(panel);
     }

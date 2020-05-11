@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.2] - 2020-05-11
+
+### ADDED
+
+- metric triggered when stream is dead
+- metrics for ticks
+- metrics for active event type partition (was forgotten in `metrix` feature)
+
 ## [0.23.1] - 2020-05-11
 
 ### CHANGED

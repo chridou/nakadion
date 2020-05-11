@@ -237,10 +237,14 @@ where
                         break (active_dispatcher, batch_lines_sink, first_frame);
                     }
                     Ok(BatchLineMessage::Tick(_timestamp)) => {
-                        if stream_dead_policy
+                        if let Some(dead_for) = stream_dead_policy
                             .is_stream_dead(nothing_received_since, nothing_received_since)
                         {
-                            stream_state.warn(format_args!("The stream is dead boys..."));
+                            stream_state.warn(format_args!(
+                                "The stream is dead boys... for {:?}",
+                                dead_for
+                            ));
+                            stream_state.instrumentation().stream_dead(dead_for);
                             let sleeping_dispatcher = sleep_ticker.join().await?;
                             return Ok(WaitForFirstFrameResult::Aborted {
                                 sleeping_dispatcher,

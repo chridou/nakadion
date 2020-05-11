@@ -197,14 +197,24 @@ impl StreamDeadPolicy {
         self,
         last_frame_received_at: Instant,
         last_events_received_at: Instant,
-    ) -> bool {
+    ) -> Option<Duration> {
         match self {
-            StreamDeadPolicy::Never => false,
+            StreamDeadPolicy::Never => None,
             StreamDeadPolicy::NoFramesFor { seconds } => {
-                last_frame_received_at.elapsed() > Duration::from_secs(u64::from(seconds))
+                let elapsed = last_frame_received_at.elapsed();
+                if elapsed > Duration::from_secs(u64::from(seconds)) {
+                    Some(elapsed)
+                } else {
+                    None
+                }
             }
             StreamDeadPolicy::NoEventsFor { seconds } => {
-                last_events_received_at.elapsed() > Duration::from_secs(u64::from(seconds))
+                let elapsed = last_events_received_at.elapsed();
+                if elapsed > Duration::from_secs(u64::from(seconds)) {
+                    Some(elapsed)
+                } else {
+                    None
+                }
             }
         }
     }

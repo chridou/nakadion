@@ -73,11 +73,17 @@ impl ControllerState {
     }
 
     pub fn received_tick(&mut self, _tick_timestamp: Instant) -> Result<(), Error> {
-        if self
+        if let Some(dead_for) = self
             .stream_dead_policy
             .is_stream_dead(self.last_frame_received_at, self.last_events_received_at)
         {
-            return Err(Error::new("The stream is dead boys..."));
+            self.stream_state
+                .instrumentation()
+                .stream_dead(dead_for);
+            return Err(Error::new(format!(
+                "The stream is dead boys... for {:?}",
+                dead_for
+            )));
         }
 
         let elapsed = self.last_frame_received_at.elapsed();

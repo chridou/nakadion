@@ -73,6 +73,8 @@ pub trait Instruments {
     /// No events have been received for the given time and the warning threshold has already elapsed
     fn no_events_warning(&self, no_events_for: Duration);
 
+    fn stream_dead(&self, after: Duration);
+
     /// The stream was aborted due to a streaming related error
     fn stream_error(&self, err: &BatchLineError);
 
@@ -360,6 +362,15 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Custom(ref instr) => instr.no_events_warning(no_events_for),
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => instr.no_events_warning(no_events_for),
+        }
+    }
+
+    fn stream_dead(&self, after: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.stream_dead(after),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.stream_dead(after),
         }
     }
 
