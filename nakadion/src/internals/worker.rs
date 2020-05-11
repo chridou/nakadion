@@ -205,7 +205,7 @@ mod processor {
             let batch_processing_started_at = Instant::now();
             self.stream_state
                 .instrumentation()
-                .batch_processing_started();
+                .batch_processing_started(frame_received_at);
             match self.handler_slot.process_batch(events, meta).await? {
                 BatchPostAction::Commit(BatchStats {
                     n_events,
@@ -215,7 +215,6 @@ mod processor {
                         n_events_bytes,
                         n_events,
                         batch_processing_started_at,
-                        frame_received_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
@@ -238,7 +237,6 @@ mod processor {
                         n_events_bytes,
                         n_events,
                         batch_processing_started_at,
-                        frame_received_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
                         self.stream_state
@@ -249,12 +247,7 @@ mod processor {
                     Ok(true)
                 }
                 BatchPostAction::AbortStream(reason) => {
-                    self.report_processed_stats(
-                        n_events_bytes,
-                        None,
-                        batch_processing_started_at,
-                        frame_received_at,
-                    );
+                    self.report_processed_stats(n_events_bytes, None, batch_processing_started_at);
 
                     self.stream_state.warn(format_args!(
                         "Stream cancellation requested by handler: {}",
@@ -264,12 +257,7 @@ mod processor {
                     Ok(false)
                 }
                 BatchPostAction::ShutDown(reason) => {
-                    self.report_processed_stats(
-                        n_events_bytes,
-                        None,
-                        batch_processing_started_at,
-                        frame_received_at,
-                    );
+                    self.report_processed_stats(n_events_bytes, None, batch_processing_started_at);
 
                     self.stream_state.warn(format_args!(
                         "Consumer shut down requested by handler: {}",
@@ -287,13 +275,10 @@ mod processor {
             n_events_bytes: usize,
             n_events: Option<usize>,
             batch_processing_started_at: Instant,
-            frame_received_at: Instant,
         ) {
-            self.stream_state.instrumentation.batch_processed(
-                frame_received_at,
-                n_events_bytes,
-                batch_processing_started_at.elapsed(),
-            );
+            self.stream_state
+                .instrumentation
+                .batch_processed(n_events_bytes, batch_processing_started_at.elapsed());
             if let Some(n_events) = n_events {
                 self.stream_state
                     .instrumentation

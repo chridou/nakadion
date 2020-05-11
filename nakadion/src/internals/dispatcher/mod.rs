@@ -23,15 +23,6 @@ pub enum DispatcherMessage {
     Tick(Instant),
 }
 
-impl DispatcherMessage {
-    pub fn is_batch_with_events(&self) -> bool {
-        match self {
-            DispatcherMessage::BatchWithEvents(_, _) => true,
-            _ => false,
-        }
-    }
-}
-
 /// The dispatcher has 2 states: Sleeping and active.
 ///
 /// * When sleeping it does not have any infrastructure for stream consumption running

@@ -90,10 +90,10 @@ pub trait Instruments {
     /// A partition did not receive data for some time is is therefore considered inactive.
     fn event_type_partition_deactivated(&self, active_for: Duration);
 
-    fn batch_processing_started(&self);
+    fn batch_processing_started(&self, frame_received_at: Instant);
 
     /// Events were processed.
-    fn batch_processed(&self, frame_received_at: Instant, n_bytes: usize, time: Duration);
+    fn batch_processed(&self, n_bytes: usize, time: Duration);
     /// Events were processed.
     fn batch_processed_n_events(&self, n_events: usize);
     /// Events have been deserialized.
@@ -405,6 +405,7 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => instr.event_type_partition_activated(),
         }
     }
+
     fn event_type_partition_deactivated(&self, active_for: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
@@ -418,25 +419,25 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn batch_processing_started(&self) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.batch_processing_started(),
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.batch_processing_started(),
-        }
-    }
-
-    fn batch_processed(&self, frame_received_at: Instant, n_bytes: usize, time: Duration) {
+    fn batch_processing_started(&self, frame_received_at: Instant) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.batch_processed(frame_received_at, n_bytes, time)
+                instr.batch_processing_started(frame_received_at)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.batch_processed(frame_received_at, n_bytes, time)
+                instr.batch_processing_started(frame_received_at)
             }
+        }
+    }
+
+    fn batch_processed(&self, n_bytes: usize, time: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.batch_processed(n_bytes, time),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.batch_processed(n_bytes, time),
         }
     }
     fn batch_processed_n_events(&self, n_events: usize) {
