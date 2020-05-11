@@ -104,19 +104,19 @@ pub trait Instruments {
     /// Cursors to be committed have reached the commit stage.
     ///
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
-    fn committer_cursor_received(&self, frame_received_at: Instant);
+    fn cursor_to_commit_received(&self, frame_received_at: Instant);
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration);
+    fn cursors_committed(&self, n_cursors: usize, time: Duration);
     /// Cursors were not successfully committed.
     ///
     /// The time request took is passed
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
     /// An attempt to commit cursors failed. There might still be a retry
     ///
     /// The time request took is passed
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration);
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration);
 }
 
 /// This defines the level of metrics being collected
@@ -463,47 +463,43 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn committer_cursor_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
-                    instr.committer_cursor_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_received_at)
                 }
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => {
-                    instr.committer_cursor_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_received_at)
                 }
             }
         }
     }
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+    fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_cursors_committed(n_cursors, time)
-            }
+            InstrumentationSelection::Custom(ref instr) => instr.cursors_committed(n_cursors, time),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_cursors_committed(n_cursors, time)
-            }
+            InstrumentationSelection::Metrix(ref instr) => instr.cursors_committed(n_cursors, time),
         }
     }
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time, err)
+                instr.cursors_not_committed(n_cursors, time, err)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time, err)
+                instr.cursors_not_committed(n_cursors, time, err)
             }
         }
     }
 
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {

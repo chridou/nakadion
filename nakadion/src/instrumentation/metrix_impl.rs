@@ -231,14 +231,14 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_cursor_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::CommitterCursorsReceivedLag,
             (frame_received_at.elapsed(), TimeUnit::Milliseconds),
         );
     }
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+    fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsCommittedCount, n_cursors)
             .observed_one_value_now(
@@ -247,12 +247,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_cursors_not_committed(
-        &self,
-        n_cursors: usize,
-        time: Duration,
-        _err: &CommitError,
-    ) {
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
