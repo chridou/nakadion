@@ -503,11 +503,11 @@ impl Instruments for Instrumentation {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_commit_attempt_failed(n_cursors, time)
+                instr.commit_cursors_attempt_failed(n_cursors, time)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_commit_attempt_failed(n_cursors, time)
+                instr.commit_cursors_attempt_failed(n_cursors, time)
             }
         }
     }

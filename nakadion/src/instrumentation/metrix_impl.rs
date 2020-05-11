@@ -247,7 +247,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
@@ -257,7 +257,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterAttemptFailedCount, n_cursors)
             .observed_one_value_now(
