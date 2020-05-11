@@ -346,12 +346,12 @@ impl StdError for CommitError {
 
 impl fmt::Display for CommitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref context) = self.context {
-            write!(f, "{}", context)?;
-        } else {
-            write!(f, "could not connect to stream: {}", self.kind)?;
+        match (self.context.as_ref(), self.source.as_ref()) {
+            (None, None) =>  write!(f, "{}", self.kind),
+            (None, Some(source)) =>  write!(f, "{} - Caused by: {}", self.kind, source),
+            (Some(context), None) =>  write!(f, "{} - {}", self.kind, context),
+            (Some(context), Some(source)) =>  write!(f, "{} - {} - Caused by: {}", self.kind, context, source),
         }
-        Ok(())
     }
 }
 

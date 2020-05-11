@@ -533,7 +533,7 @@ mod instr {
                     ),
             )
             .panel(
-                Panel::named(Metric::CommitterCursorsNotCommittedTime, "failed_attempts")
+                Panel::named((Metric::CommitterAttemptFailedCount, Metric::CommitterAttemptFailedTime), "failed_attempts")
                     .meter(
                         Meter::new_with_defaults("per_second")
                             .for_label(Metric::CommitterAttemptFailedCount),

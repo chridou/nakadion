@@ -82,12 +82,11 @@ where
             let stream_state = stream_state.clone();
             async move {
                 let workers_result = join_workers.await;
+                stream_state.debug(format_args!("Waiting for committer to shut down"));
                 if let Err(err) = committer_join_handle.await {
-                    stream_state.error(format_args!("Committer exited with error: {}", err));
-                    Err(EnrichedErr::no_data(err))
-                } else {
-                    workers_result
-                }
+                    stream_state.warn(format_args!("Committer exited with error: {}", err));
+                };
+                workers_result
             }
             .boxed()
         };

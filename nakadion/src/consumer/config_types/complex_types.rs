@@ -8,6 +8,8 @@ use crate::Error;
 
 /// Defines how to dispatch batches to handlers.
 ///
+/// The default is `DispatchMode::AllSeq`
+///
 /// # FromStr
 ///
 /// ```rust
@@ -87,7 +89,7 @@ impl DispatchMode {
 
 impl Default for DispatchMode {
     fn default() -> Self {
-        DispatchMode::EventTypePar
+        DispatchMode::AllSeq
     }
 }
 
