@@ -25,19 +25,6 @@ pub use metrix::{
 /// An implementor of this interface can be used with
 /// `Instrumentation::new`
 pub trait Instruments {
-    // === CONSUMER ===
-
-    /// Triggered when a new batch with events was received
-    fn consumer_batches_in_flight_inc(&self);
-    /// Triggered when a batch with events was processed
-    fn consumer_batches_in_flight_dec(&self);
-    /// Usually triggered when there are still batches in flight and the stream aborts.
-    ///
-    /// This is a correction for the inflight metrics.
-    fn consumer_batches_in_flight_dec_by(&self, by: usize);
-
-    // === STREAM ===
-
     /// Triggered when a single connect attempt for a stream was successful
     ///
     /// `time` is the time for the request
@@ -62,75 +49,74 @@ pub trait Instruments {
     /// An internal tick signal has been emitted
     fn stream_tick_emitted(&self);
 
-    /// The stream was aborted due to a streaming related error
-    fn stream_error(&self, err: &BatchLineError);
-
-    // === CONTROLLER ===
+    /// The controller received a frame which contained info data
+    ///
+    /// The time it took from receiving the first chunk until it reached the controller are passed
+    /// along with the complete bytes of the frame
+    fn info_frame_received(&self, frame_received_at: Instant);
+    /// The controller received a frame which contained no events
+    ///
+    /// The time it took from receiving the first chunk until it reached the controller are passed
+    /// along with the complete bytes of the frame
+    fn keep_alive_frame_received(&self, frame_received_at: Instant);
+    /// A partition which was formerly not known to be active was sent
+    /// data on
 
     /// The controller received a frame which contained events
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize);
-    /// The controller received a frame which contained info data
-    ///
-    /// The time it took from receiving the first chunk until it reached the controller are passed
-    /// along with the complete bytes of the frame
-    fn controller_info_received(&self, frame_received_at: Instant);
-    /// The controller received a frame which contained no events
-    ///
-    /// The time it took from receiving the first chunk until it reached the controller are passed
-    /// along with the complete bytes of the frame
-    fn controller_keep_alive_received(&self, frame_received_at: Instant);
-    /// A partition which was formerly not known to be active was sent
-    /// data on
-    fn controller_partition_activated(&self);
-    /// A partition did not receive data for some time is is therefore considered inactive.
-    fn controller_partition_deactivated(&self, active_for: Duration);
+    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize);
 
     /// No frames have been received for the given time and the warning has already  threshold elapsed
-    fn controller_no_frames_warning(&self, no_frames_for: Duration);
+    fn no_frames_warning(&self, no_frames_for: Duration);
     /// No events have been received for the given time and the warning threshold has already elapsed
-    fn controller_no_events_warning(&self, no_events_for: Duration);
+    fn no_events_warning(&self, no_events_for: Duration);
 
-    // === DISPATCHER ===
+    /// The stream was aborted due to a streaming related error
+    fn stream_error(&self, err: &BatchLineError);
 
-    // === WORKERS ===
+    /// Triggered when a new batch with events was received
+    fn batches_in_flight_inc(&self);
+    /// Triggered when a batch with events was processed
+    fn batches_in_flight_dec(&self);
+    /// Usually triggered when there are still batches in flight and the stream aborts.
+    ///
+    /// This is a correction for the inflight metrics.
+    fn batches_in_flight_dec_by(&self, by: usize);
+
+    fn event_type_partition_activated(&self);
+
+    /// A partition did not receive data for some time is is therefore considered inactive.
+    fn event_type_partition_deactivated(&self, active_for: Duration);
+
+    fn batch_processing_started(&self, frame_received_at: Instant);
 
     /// Events were processed.
-    ///
-    /// The time the processing took for all events and the number of events are passed.
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration);
+    fn batch_processed(&self, n_bytes: usize, time: Duration);
     /// Events were processed.
-    ///
-    /// The bytes for all events and time elapsed from receiving the first chunk
-    /// of the frame are passed.
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize);
+    fn batch_processed_n_events(&self, n_events: usize);
     /// Events have been deserialized.
     ///
     /// The amount of bytes deserialized and the time it took are passed.
-    fn handler_deserialization(&self, n_bytes: usize, time: Duration);
-
-    // === HANDLERS ===
-
-    // === COMMITTER ===
+    fn batch_deserialized(&self, n_bytes: usize, time: Duration);
 
     /// Cursors to be committed have reached the commit stage.
     ///
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
-    fn committer_cursor_received(&self, frame_received_at: Instant);
+    fn cursor_to_commit_received(&self, frame_received_at: Instant);
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration);
+    fn cursors_committed(&self, n_cursors: usize, time: Duration);
     /// Cursors were not successfully committed.
     ///
     /// The time request took is passed
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
     /// An attempt to commit cursors failed. There might still be a retry
     ///
     /// The time request took is passed
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration);
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration);
 }
 
 /// This defines the level of metrics being collected
@@ -241,38 +227,6 @@ impl fmt::Debug for Instrumentation {
 }
 
 impl Instruments for Instrumentation {
-    // === CONSUMER ===
-
-    fn consumer_batches_in_flight_inc(&self) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.consumer_batches_in_flight_inc(),
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.consumer_batches_in_flight_inc(),
-        }
-    }
-    fn consumer_batches_in_flight_dec(&self) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.consumer_batches_in_flight_dec(),
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.consumer_batches_in_flight_dec(),
-        }
-    }
-    fn consumer_batches_in_flight_dec_by(&self, by: usize) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.consumer_batches_in_flight_dec_by(by)
-            }
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.consumer_batches_in_flight_dec_by(by)
-            }
-        }
-    }
-
-    // === STREAM ===
     fn stream_connect_attempt_success(&self, time: Duration) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
@@ -329,7 +283,7 @@ impl Instruments for Instrumentation {
         }
     }
     fn stream_frame_completed(&self, n_bytes: usize, time: Duration) {
-        if self.detail >= MetricsDetailLevel::Medium {
+        if self.detail == MetricsDetailLevel::High {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
@@ -353,201 +307,207 @@ impl Instruments for Instrumentation {
         }
     }
 
+    fn info_frame_received(&self, frame_received_at: Instant) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.info_frame_received(frame_received_at)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.info_frame_received(frame_received_at)
+            }
+        }
+    }
+    fn keep_alive_frame_received(&self, frame_received_at: Instant) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.keep_alive_frame_received(frame_received_at)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.keep_alive_frame_received(frame_received_at)
+            }
+        }
+    }
+
+    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.batch_frame_received(frame_received_at, events_bytes)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.batch_frame_received(frame_received_at, events_bytes)
+            }
+        }
+    }
+
+    fn no_frames_warning(&self, no_frames_for: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.no_frames_warning(no_frames_for),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.no_frames_warning(no_frames_for),
+        }
+    }
+
+    fn no_events_warning(&self, no_events_for: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.no_events_warning(no_events_for),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.no_events_warning(no_events_for),
+        }
+    }
+
     fn stream_error(&self, err: &BatchLineError) {
-        if self.detail >= MetricsDetailLevel::Medium {
-            match self.instr {
-                InstrumentationSelection::Off => {}
-                InstrumentationSelection::Custom(ref instr) => instr.stream_error(err),
-                #[cfg(feature = "metrix")]
-                InstrumentationSelection::Metrix(ref instr) => instr.stream_error(err),
-            }
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.stream_error(err),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.stream_error(err),
         }
     }
 
-    // === CONTROLLER ===
-    fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize) {
-        if self.detail >= MetricsDetailLevel::Medium {
-            match self.instr {
-                InstrumentationSelection::Off => {}
-                InstrumentationSelection::Custom(ref instr) => {
-                    instr.controller_batch_received(frame_received_at, events_bytes)
-                }
-                #[cfg(feature = "metrix")]
-                InstrumentationSelection::Metrix(ref instr) => {
-                    instr.controller_batch_received(frame_received_at, events_bytes)
-                }
-            }
+    fn batches_in_flight_inc(&self) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_inc(),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_inc(),
         }
     }
-    fn controller_info_received(&self, frame_received_at: Instant) {
+    fn batches_in_flight_dec(&self) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_dec(),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_dec(),
+        }
+    }
+    fn batches_in_flight_dec_by(&self, by: usize) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_dec_by(by),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_dec_by(by),
+        }
+    }
+
+    fn event_type_partition_activated(&self) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.event_type_partition_activated(),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.event_type_partition_activated(),
+        }
+    }
+
+    fn event_type_partition_deactivated(&self, active_for: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_info_received(frame_received_at)
+                instr.event_type_partition_deactivated(active_for)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_info_received(frame_received_at)
+                instr.event_type_partition_deactivated(active_for)
             }
         }
     }
-    fn controller_keep_alive_received(&self, frame_received_at: Instant) {
+
+    fn batch_processing_started(&self, frame_received_at: Instant) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_keep_alive_received(frame_received_at)
+                instr.batch_processing_started(frame_received_at)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_keep_alive_received(frame_received_at)
+                instr.batch_processing_started(frame_received_at)
             }
         }
     }
 
-    fn controller_partition_activated(&self) {
+    fn batch_processed(&self, n_bytes: usize, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.controller_partition_activated(),
+            InstrumentationSelection::Custom(ref instr) => instr.batch_processed(n_bytes, time),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.controller_partition_activated(),
+            InstrumentationSelection::Metrix(ref instr) => instr.batch_processed(n_bytes, time),
         }
     }
-    fn controller_partition_deactivated(&self, active_for: Duration) {
+    fn batch_processed_n_events(&self, n_events: usize) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_partition_deactivated(active_for)
-            }
+            InstrumentationSelection::Custom(ref instr) => instr.batch_processed_n_events(n_events),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_partition_deactivated(active_for)
-            }
+            InstrumentationSelection::Metrix(ref instr) => instr.batch_processed_n_events(n_events),
         }
     }
-
-    fn controller_no_frames_warning(&self, no_frames_for: Duration) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_no_frames_warning(no_frames_for)
-            }
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_no_frames_warning(no_frames_for)
-            }
-        }
-    }
-
-    fn controller_no_events_warning(&self, no_events_for: Duration) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.controller_no_events_warning(no_events_for)
-            }
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.controller_no_events_warning(no_events_for)
-            }
-        }
-    }
-
-    // === DISPATCHER ===
-
-    // === WORKERS ===
-
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
-        match self.instr {
-            InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.handler_batch_processed_1(n_events, time)
-            }
-            #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.handler_batch_processed_1(n_events, time)
-            }
-        }
-    }
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+    fn batch_deserialized(&self, n_bytes: usize, time: Duration) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
-                    instr.handler_batch_processed_2(frame_received_at, n_bytes)
+                    instr.batch_deserialized(n_bytes, time)
                 }
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => {
-                    instr.handler_batch_processed_2(frame_received_at, n_bytes)
-                }
-            }
-        }
-    }
-    fn handler_deserialization(&self, n_bytes: usize, time: Duration) {
-        if self.detail >= MetricsDetailLevel::High {
-            match self.instr {
-                InstrumentationSelection::Off => {}
-                InstrumentationSelection::Custom(ref instr) => {
-                    instr.handler_deserialization(n_bytes, time)
-                }
-                #[cfg(feature = "metrix")]
-                InstrumentationSelection::Metrix(ref instr) => {
-                    instr.handler_deserialization(n_bytes, time)
+                    instr.batch_deserialized(n_bytes, time)
                 }
             }
         }
     }
 
-    // === HANDLERS ===
-
-    // === COMMITTER ===
-    fn committer_cursor_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
-                    instr.committer_cursor_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_received_at)
                 }
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => {
-                    instr.committer_cursor_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_received_at)
                 }
             }
         }
     }
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+    fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_cursors_committed(n_cursors, time)
-            }
+            InstrumentationSelection::Custom(ref instr) => instr.cursors_committed(n_cursors, time),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_cursors_committed(n_cursors, time)
-            }
+            InstrumentationSelection::Metrix(ref instr) => instr.cursors_committed(n_cursors, time),
         }
     }
-    fn committer_cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time, err)
+                instr.cursors_not_committed(n_cursors, time, err)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_cursors_not_committed(n_cursors, time, err)
+                instr.cursors_not_committed(n_cursors, time, err)
             }
         }
     }
 
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.committer_commit_attempt_failed(n_cursors, time)
+                instr.commit_cursors_attempt_failed(n_cursors, time)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.committer_commit_attempt_failed(n_cursors, time)
+                instr.commit_cursors_attempt_failed(n_cursors, time)
             }
         }
     }

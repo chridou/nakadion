@@ -56,7 +56,7 @@ where
         let now = Instant::now();
         let cursor_received = match cursors_to_commit.try_recv() {
             Ok(next) => {
-                instrumentation.committer_cursor_received(next.cursor_received_at);
+                instrumentation.cursor_to_commit_received(next.cursor_received_at);
                 pending.add(next, now);
                 true
             }

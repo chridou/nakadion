@@ -58,11 +58,24 @@ impl Default for MetrixGaugeTrackingSecs {
     }
 }
 
+new_type! {
+    #[doc="The time an alert will stay on after trigger.\n\nDefault is 60s.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct AlertDurationSecs(u32, env="METRIX_ALERT_DURATION_SECS");
+}
+impl Default for AlertDurationSecs {
+    fn default() -> Self {
+        60.into()
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct MetrixConfig {
     /// Enables tracking for gauges for the given amount of seconds
     pub gauge_tracking_secs: Option<MetrixGaugeTrackingSecs>,
+    /// Enables tracking for gauges for the given amount of seconds
+    pub alert_duration_secs: Option<AlertDurationSecs>,
 }
 
 impl MetrixConfig {
@@ -75,27 +88,14 @@ impl MetrixConfig {
             self.gauge_tracking_secs =
                 MetrixGaugeTrackingSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
+        if self.alert_duration_secs.is_none() {
+            self.alert_duration_secs = AlertDurationSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
         Ok(())
     }
 }
 
 impl Instruments for Metrix {
-    // === GLOBAL ===
-
-    fn consumer_batches_in_flight_inc(&self) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, Increment);
-    }
-    fn consumer_batches_in_flight_dec(&self) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, Decrement);
-    }
-    fn consumer_batches_in_flight_dec_by(&self, by: usize) {
-        self.tx
-            .observed_one_value_now(Metric::ConsumerInFlightChanged, DecrementBy(by as u32));
-    }
-
-    // === STREAM ===
     fn stream_connect_attempt_success(&self, time: Duration) {
         self.tx.observed_one_value_now(
             Metric::StreamConnectAttemptSuccessTime,
@@ -135,6 +135,40 @@ impl Instruments for Metrix {
         self.tx.observed_one_now(Metric::StreamTickEmitted);
     }
 
+    fn info_frame_received(&self, frame_received_at: Instant) {
+        self.tx.observed_one_value_now(
+            Metric::StreamInfoFrameReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+    fn keep_alive_frame_received(&self, frame_received_at: Instant) {
+        self.tx.observed_one_value_now(
+            Metric::StreamKeepAliveFrameReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize) {
+        self.tx
+            .observed_one_value_now(Metric::StreamBatchFrameReceivedBytes, events_bytes);
+        self.tx.observed_one_value_now(
+            Metric::StreamBatchFrameReceivedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+        );
+    }
+
+    fn no_frames_warning(&self, no_frames_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::NoFramesForWarning,
+            (no_frames_for, TimeUnit::Milliseconds),
+        );
+    }
+    fn no_events_warning(&self, no_events_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::NoEventsForWarning,
+            (no_events_for, TimeUnit::Milliseconds),
+        );
+    }
+
     fn stream_error(&self, err: &BatchLineError) {
         match err.kind() {
             BatchLineErrorKind::Io => {
@@ -146,93 +180,65 @@ impl Instruments for Metrix {
         }
     }
 
-    // === CONTROLLER ===
-    fn controller_batch_received(&self, frame_received_at: Instant, events_bytes: usize) {
+    fn batches_in_flight_inc(&self) {
         self.tx
-            .observed_one_value_now(Metric::ControllerBatchReceivedBytes, events_bytes);
-        self.tx.observed_one_value_now(
-            Metric::ControllerBatchReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Increment);
     }
-    fn controller_info_received(&self, frame_received_at: Instant) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerInfoReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+    fn batches_in_flight_dec(&self) {
+        self.tx
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement);
     }
-    fn controller_keep_alive_received(&self, frame_received_at: Instant) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerKeepAliveReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
-        );
+    fn batches_in_flight_dec_by(&self, by: usize) {
+        self.tx
+            .observed_one_value_now(Metric::BatchesInFlightChanged, DecrementBy(by as u32));
     }
 
-    fn controller_partition_activated(&self) {
+    fn event_type_partition_activated(&self) {
         self.tx
-            .observed_one_value_now(Metric::ControllerPartitionActivated, Increment);
+            .observed_one_value_now(Metric::EventTypePartitionActivated, Increment);
     }
-    fn controller_partition_deactivated(&self, active_for: Duration) {
+
+    fn event_type_partition_deactivated(&self, active_for: Duration) {
         self.tx.observed_one_value_now(
-            Metric::ControllerPartitionDeactivatedAfter,
+            Metric::EventTypePartitionDeactivatedAfter,
             (active_for, TimeUnit::Milliseconds),
         );
     }
 
-    fn controller_no_frames_warning(&self, no_frames_for: Duration) {
+    fn batch_processing_started(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
-            Metric::ControllerNoFramesForWarning,
-            (no_frames_for, TimeUnit::Milliseconds),
-        );
-    }
-    fn controller_no_events_warning(&self, no_events_for: Duration) {
-        self.tx.observed_one_value_now(
-            Metric::ControllerNoEventsForWarning,
-            (no_events_for, TimeUnit::Milliseconds),
+            Metric::BatchProcessingStartedLag,
+            (frame_received_at.elapsed(), TimeUnit::Microseconds),
         );
     }
 
-    // === DISPATCHER ===
-
-    // === HANDLERS ===
-
-    fn handler_batch_processed_1(&self, n_events: Option<usize>, time: Duration) {
-        if let Some(n_events) = n_events {
-            self.tx
-                .observed_one_value_now(Metric::HandlerProcessedEvents, n_events);
-        }
-        self.tx.observed_one_value_now(
-            Metric::HandlerBatchProcessedTime,
-            (time, TimeUnit::Microseconds),
-        );
-    }
-    fn handler_batch_processed_2(&self, frame_received_at: Instant, n_bytes: usize) {
+    fn batch_processed(&self, n_bytes: usize, time: Duration) {
         self.tx
-            .observed_one_value_now(Metric::HandlerBatchProcessedBytes, n_bytes)
-            .observed_one_value_now(
-                Metric::HandlerBatchLag,
-                (frame_received_at.elapsed(), TimeUnit::Microseconds),
-            );
+            .observed_one_value_now(Metric::BatchProcessedTime, (time, TimeUnit::Microseconds))
+            .observed_one_value_now(Metric::BatchProcessedBytes, n_bytes);
     }
-    fn handler_deserialization(&self, n_bytes: usize, time: Duration) {
+    fn batch_processed_n_events(&self, n_events: usize) {
         self.tx
-            .observed_one_value_now(Metric::HandlerBatchDeserializationBytes, n_bytes)
+            .observed_one_value_now(Metric::BatchProcessedNEvents, n_events);
+    }
+
+    fn batch_deserialized(&self, n_bytes: usize, time: Duration) {
+        self.tx
+            .observed_one_value_now(Metric::BatchDeserializationBytes, n_bytes)
             .observed_one_value_now(
-                Metric::HandlerBatchDeserializationTime,
+                Metric::BatchDeserializationTime,
                 (time, TimeUnit::Microseconds),
             );
     }
 
-    // === COMMITTER ===
-
-    fn committer_cursor_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::CommitterCursorsReceivedLag,
             (frame_received_at.elapsed(), TimeUnit::Milliseconds),
         );
     }
 
-    fn committer_cursors_committed(&self, n_cursors: usize, time: Duration) {
+    fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsCommittedCount, n_cursors)
             .observed_one_value_now(
@@ -241,12 +247,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_cursors_not_committed(
-        &self,
-        n_cursors: usize,
-        time: Duration,
-        _err: &CommitError,
-    ) {
+    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsNotCommittedCount, n_cursors)
@@ -256,7 +257,7 @@ impl Instruments for Metrix {
             );
     }
 
-    fn committer_commit_attempt_failed(&self, n_cursors: usize, time: Duration) {
+    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterAttemptFailedCount, n_cursors)
             .observed_one_value_now(
@@ -268,8 +269,6 @@ impl Instruments for Metrix {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Metric {
-    ConsumerInFlightChanged,
-    StreamTickEmitted,
     StreamConnectedTime,
     StreamNotConnectedTime,
     StreamConnectAttemptSuccessTime,
@@ -277,22 +276,24 @@ pub enum Metric {
     StreamChunkReceivedBytes,
     StreamFrameCompletedBytes,
     StreamFrameCompletedTime,
+    StreamTickEmitted,
+    StreamInfoFrameReceivedLag,
+    StreamKeepAliveFrameReceivedLag,
+    StreamBatchFrameReceivedBytes,
+    StreamBatchFrameReceivedLag,
+    NoFramesForWarning,
+    NoEventsForWarning,
     StreamErrorIo,
     StreamErrorParse,
-    ControllerBatchReceivedBytes,
-    ControllerBatchReceivedLag,
-    ControllerInfoReceivedLag,
-    ControllerKeepAliveReceivedLag,
-    ControllerPartitionActivated,
-    ControllerPartitionDeactivatedAfter,
-    ControllerNoFramesForWarning,
-    ControllerNoEventsForWarning,
-    HandlerBatchLag,
-    HandlerBatchProcessedBytes,
-    HandlerBatchProcessedTime,
-    HandlerBatchDeserializationBytes,
-    HandlerBatchDeserializationTime,
-    HandlerProcessedEvents,
+    BatchesInFlightChanged,
+    EventTypePartitionActivated,
+    EventTypePartitionDeactivatedAfter,
+    BatchProcessingStartedLag,
+    BatchProcessedBytes,
+    BatchProcessedTime,
+    BatchDeserializationBytes,
+    BatchDeserializationTime,
+    BatchProcessedNEvents,
     CommitterCursorsReceivedLag,
     CommitterCursorsCommittedTime,
     CommitterCursorsCommittedCount,
@@ -315,223 +316,236 @@ mod instr {
     pub fn create(
         config: &MetrixConfig,
     ) -> (TelemetryTransmitter<Metric>, TelemetryProcessor<Metric>) {
-        let (tx, rx) = TelemetryProcessor::new_pair_without_name();
+        let (tx, mut rx) = TelemetryProcessor::new_pair_without_name();
 
-        let rx = rx.cockpit(
-            Cockpit::without_name()
-                .panel(
-                    Panel::named(AcceptAllLabels, "batches")
-                        .gauge(
-                            create_gauge("in_flight", config)
-                                .deltas_only(Metric::ConsumerInFlightChanged),
-                        )
-                        .meter(
-                            Meter::new_with_defaults("per_second")
-                                .for_label(Metric::HandlerBatchProcessedTime),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("processing_time_us")
-                                .display_time_unit(TimeUnit::Microseconds)
-                                .for_label(Metric::HandlerBatchProcessedTime),
-                        )
-                        .handler(
-                            ValueMeter::new_with_defaults("bytes_per_second")
-                                .for_label(Metric::HandlerBatchProcessedBytes),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("bytes_per_batch")
-                                .for_label(Metric::HandlerBatchProcessedBytes),
-                        ),
-                )
-                .panel(
-                    Panel::named(
-                        (
-                            Metric::ControllerPartitionActivated,
-                            Metric::ControllerPartitionDeactivatedAfter,
-                        ),
-                        "partitions",
-                    )
-                    .gauge(create_gauge("active", config).inc_dec_on(
-                        Metric::ControllerPartitionActivated,
-                        Metric::ControllerPartitionDeactivatedAfter,
-                    )),
-                )
-                .panel(
-                    Panel::named(AcceptAllLabels, "events")
-                        .handler(
-                            ValueMeter::new_with_defaults("per_second")
-                                .for_label(Metric::HandlerProcessedEvents),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("per_batch")
-                                .for_label(Metric::HandlerProcessedEvents),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("batch_deserialization_us")
-                                .display_time_unit(TimeUnit::Microseconds)
-                                .for_label(Metric::HandlerBatchDeserializationTime),
-                        )
-                        .handler(
-                            ValueMeter::new_with_defaults("batch_deserialization_bytes_per_second")
-                                .for_label(Metric::HandlerBatchDeserializationBytes),
-                        )
-                        .handler(
-                            create_staircase_timer("no_events_warning", &config)
-                                .for_label(Metric::ControllerNoEventsForWarning),
-                        ),
-                )
-                .panel(
-                    Panel::named(AcceptAllLabels, "committer")
-                        .handler(
-                            create_staircase_timer("commit_failed_warning", &config)
-                                .for_label(Metric::CommitterCommitFailed),
-                        )
-                        .panel(
-                            Panel::named(AcceptAllLabels, "cursors")
-                                .meter(
-                                    Meter::new_with_defaults("received_per_second")
-                                        .for_label(Metric::CommitterCursorsReceivedLag),
-                                )
-                                .handler(
-                                    ValueMeter::new_with_defaults("committed_per_second")
-                                        .for_label(Metric::CommitterCursorsCommittedCount),
-                                )
-                                .handler(
-                                    ValueMeter::new_with_defaults("not_committed_per_second")
-                                        .for_label(Metric::CommitterCursorsNotCommittedCount),
-                                )
-                                .handler(
-                                    ValueMeter::new_with_defaults("attempt_failed_per_second")
-                                        .for_label(Metric::CommitterCursorsNotCommittedCount),
-                                ),
-                        )
-                        .panel(
-                            Panel::named(Metric::CommitterCursorsCommittedTime, "committed")
-                                .meter(
-                                    Meter::new_with_defaults("per_second")
-                                        .for_label(Metric::CommitterCursorsCommittedTime),
-                                )
-                                .histogram(
-                                    Histogram::new_with_defaults("latency_ms")
-                                        .display_time_unit(TimeUnit::Milliseconds)
-                                        .for_label(Metric::CommitterCursorsCommittedTime),
-                                ),
-                        )
-                        .panel(
-                            Panel::named(Metric::CommitterCursorsNotCommittedTime, "not_committed")
-                                .meter(
-                                    Meter::new_with_defaults("per_second")
-                                        .for_label(Metric::CommitterCursorsNotCommittedTime),
-                                )
-                                .histogram(
-                                    Histogram::new_with_defaults("latency_ms")
-                                        .display_time_unit(TimeUnit::Milliseconds)
-                                        .for_label(Metric::CommitterCursorsNotCommittedTime),
-                                ),
-                        )
-                        .panel(
-                            Panel::named(
-                                Metric::CommitterCursorsNotCommittedTime,
-                                "failed_attempts",
-                            )
-                            .meter(
-                                Meter::new_with_defaults("per_second")
-                                    .for_label(Metric::CommitterAttemptFailedCount),
-                            )
-                            .histogram(
-                                Histogram::new_with_defaults("latency_ms")
-                                    .display_time_unit(TimeUnit::Milliseconds)
-                                    .for_label(Metric::CommitterAttemptFailedTime),
-                            ),
-                        ),
-                )
-                .panel(
-                    Panel::named(AcceptAllLabels, "batch_lag")
-                        .histogram(
-                            Histogram::new_with_defaults("controller_us")
-                                .display_time_unit(TimeUnit::Microseconds)
-                                .accept((
-                                    Metric::ControllerBatchReceivedLag,
-                                    Metric::ControllerKeepAliveReceivedLag,
-                                    Metric::ControllerInfoReceivedLag,
-                                )),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("handlers_us")
-                                .display_time_unit(TimeUnit::Microseconds)
-                                .accept(Metric::HandlerBatchLag),
-                        )
-                        .histogram(
-                            Histogram::new_with_defaults("committer_us")
-                                .display_time_unit(TimeUnit::Microseconds)
-                                .accept(Metric::CommitterCursorsReceivedLag),
-                        ),
-                )
-                .panel(
-                    Panel::named(Metric::StreamTickEmitted, "ticks").meter(
-                        Meter::new_with_defaults("emitted_per_second")
-                            .for_label(Metric::StreamTickEmitted),
-                    ),
-                )
-                .panel(
-                    Panel::named(AcceptAllLabels, "stream")
-                        .panel(
-                            Panel::named(AcceptAllLabels, "chunks")
-                                .meter(
-                                    Meter::new_with_defaults("per_second")
-                                        .for_label(Metric::StreamChunkReceivedBytes),
-                                )
-                                .handler(
-                                    ValueMeter::new_with_defaults("bytes_per_second")
-                                        .for_label(Metric::StreamChunkReceivedBytes),
-                                )
-                                .histogram(
-                                    Histogram::new_with_defaults("size_distribution")
-                                        .accept(Metric::StreamChunkReceivedBytes),
-                                ),
-                        )
-                        .panel(
-                            Panel::named(AcceptAllLabels, "frames")
-                                .meter(
-                                    Meter::new_with_defaults("per_second")
-                                        .for_label(Metric::StreamFrameCompletedBytes),
-                                )
-                                .handler(
-                                    ValueMeter::new_with_defaults("bytes_per_second")
-                                        .for_label(Metric::StreamFrameCompletedBytes),
-                                )
-                                .histogram(
-                                    Histogram::new_with_defaults("size_distribution")
-                                        .accept(Metric::StreamFrameCompletedBytes),
-                                )
-                                .histogram(
-                                    Histogram::new_with_defaults("completion_time_us")
-                                        .display_time_unit(TimeUnit::Microseconds)
-                                        .accept(Metric::StreamFrameCompletedTime),
-                                )
-                                .handler(
-                                    create_staircase_timer("no_frames_warning", &config)
-                                        .for_label(Metric::ControllerNoFramesForWarning),
-                                ),
-                        )
-                        .panel(
-                            Panel::named(
-                                (Metric::StreamErrorParse, Metric::StreamErrorIo),
-                                "errors",
-                            )
-                            .handler(
-                                create_staircase_timer("io", &config)
-                                    .for_label(Metric::StreamErrorIo),
-                            )
-                            .handler(
-                                create_staircase_timer("parse", &config)
-                                    .for_label(Metric::StreamErrorParse),
-                            ),
-                        ),
-                ),
-        );
+        let mut cockpit = Cockpit::without_name();
+
+        create_alerts(&mut cockpit, config);
+        create_connector_metrics(&mut cockpit, config);
+        create_stream_metrics(&mut cockpit, config);
+        create_lag_metrics(&mut cockpit, config);
+        create_batch_metrics(&mut cockpit, config);
+        create_events_metrics(&mut cockpit, config);
+        create_committer_metrics(&mut cockpit, config);
+
+        rx.add_cockpit(cockpit);
 
         (tx, rx)
+    }
+
+    fn create_alerts(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
+        use Metric::*;
+        let panel = Panel::named(
+            (
+                StreamErrorIo,
+                StreamErrorParse,
+                NoEventsForWarning,
+                NoFramesForWarning,
+                CommitterCommitFailed,
+            ),
+            "alerts",
+        )
+        .handler(create_staircase_timer("stream_io_error", config).for_label(StreamErrorIo))
+        .handler(create_staircase_timer("stream_parse_error", config).for_label(StreamErrorParse))
+        .handler(create_staircase_timer("no_events", config).for_label(NoEventsForWarning))
+        .handler(create_staircase_timer("no_frames", config).for_label(NoFramesForWarning))
+        .handler(create_staircase_timer("commit_failed", config).for_label(CommitterCommitFailed));
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_connector_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "connector");
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_stream_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "stream")
+            .panel(
+                Panel::named(AcceptAllLabels, "chunks")
+                    .meter(
+                        Meter::new_with_defaults("per_second")
+                            .for_label(Metric::StreamChunkReceivedBytes),
+                    )
+                    .handler(
+                        ValueMeter::new_with_defaults("bytes_per_second")
+                            .for_label(Metric::StreamChunkReceivedBytes),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("size_distribution")
+                            .accept(Metric::StreamChunkReceivedBytes),
+                    ),
+            )
+            .panel(
+                Panel::named(AcceptAllLabels, "frames")
+                    .meter(
+                        Meter::new_with_defaults("per_second")
+                            .for_label(Metric::StreamFrameCompletedBytes),
+                    )
+                    .handler(
+                        ValueMeter::new_with_defaults("bytes_per_second")
+                            .for_label(Metric::StreamFrameCompletedBytes),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("size_distribution")
+                            .accept(Metric::StreamFrameCompletedBytes),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("completion_time_us")
+                            .display_time_unit(TimeUnit::Microseconds)
+                            .accept(Metric::StreamFrameCompletedTime),
+                    )
+                    .meter(
+                        Meter::new_with_defaults("info_frames_per_second")
+                            .for_label(Metric::StreamInfoFrameReceivedLag),
+                    )
+                    .meter(
+                        Meter::new_with_defaults("keep_alive_frames_per_second")
+                            .for_label(Metric::StreamKeepAliveFrameReceivedLag),
+                    )
+                    .meter(
+                        Meter::new_with_defaults("batch_frames_per_second")
+                            .for_label(Metric::StreamBatchFrameReceivedLag),
+                    ),
+            );
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_lag_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "frame_lag")
+            .histogram(
+                Histogram::new_with_defaults("stream_us")
+                    .display_time_unit(TimeUnit::Microseconds)
+                    .accept((
+                        Metric::StreamBatchFrameReceivedLag,
+                        Metric::StreamKeepAliveFrameReceivedLag,
+                        Metric::StreamInfoFrameReceivedLag,
+                    )),
+            )
+            .histogram(
+                Histogram::new_with_defaults("batch_handlers_us")
+                    .display_time_unit(TimeUnit::Microseconds)
+                    .accept(Metric::BatchProcessingStartedLag),
+            )
+            .histogram(
+                Histogram::new_with_defaults("committer_us")
+                    .display_time_unit(TimeUnit::Microseconds)
+                    .accept(Metric::CommitterCursorsReceivedLag),
+            );
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_batch_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "batches")
+            .gauge(create_gauge("in_flight", config).deltas_only(Metric::BatchesInFlightChanged))
+            .gauge(create_gauge("in_processing", config).inc_dec_on(
+                Metric::BatchProcessingStartedLag,
+                Metric::BatchProcessedBytes,
+            ))
+            .meter(
+                Meter::new_with_defaults("per_second").for_label(Metric::BatchProcessingStartedLag),
+            )
+            .histogram(
+                Histogram::new_with_defaults("processing_time_us")
+                    .display_time_unit(TimeUnit::Microseconds)
+                    .for_label(Metric::BatchProcessedTime),
+            )
+            .handler(
+                ValueMeter::new_with_defaults("bytes_per_second")
+                    .for_label(Metric::BatchProcessedBytes),
+            )
+            .histogram(
+                Histogram::new_with_defaults("bytes_per_batch")
+                    .for_label(Metric::BatchProcessedBytes),
+            );
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_events_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "events")
+            .handler(
+                ValueMeter::new_with_defaults("per_second")
+                    .for_label(Metric::BatchProcessedNEvents),
+            )
+            .histogram(
+                Histogram::new_with_defaults("per_batch").for_label(Metric::BatchProcessedNEvents),
+            )
+            .histogram(
+                Histogram::new_with_defaults("deserialization_time_us")
+                    .display_time_unit(TimeUnit::Microseconds)
+                    .for_label(Metric::BatchDeserializationTime),
+            )
+            .handler(
+                ValueMeter::new_with_defaults("deserialization_bytes_per_second")
+                    .for_label(Metric::BatchDeserializationBytes),
+            );
+
+        cockpit.add_panel(panel);
+    }
+
+    fn create_committer_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+        let panel = Panel::named(AcceptAllLabels, "committer")
+            .panel(
+                Panel::named(AcceptAllLabels, "cursors")
+                    .meter(
+                        Meter::new_with_defaults("received_per_second")
+                            .for_label(Metric::CommitterCursorsReceivedLag),
+                    )
+                    .handler(
+                        ValueMeter::new_with_defaults("committed_per_second")
+                            .for_label(Metric::CommitterCursorsCommittedCount),
+                    )
+                    .handler(
+                        ValueMeter::new_with_defaults("not_committed_per_second")
+                            .for_label(Metric::CommitterCursorsNotCommittedCount),
+                    )
+                    .handler(
+                        ValueMeter::new_with_defaults("attempt_failed_per_second")
+                            .for_label(Metric::CommitterCursorsNotCommittedCount),
+                    ),
+            )
+            .panel(
+                Panel::named(Metric::CommitterCursorsCommittedTime, "committed")
+                    .meter(
+                        Meter::new_with_defaults("per_second")
+                            .for_label(Metric::CommitterCursorsCommittedTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("latency_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .for_label(Metric::CommitterCursorsCommittedTime),
+                    ),
+            )
+            .panel(
+                Panel::named(Metric::CommitterCursorsNotCommittedTime, "not_committed")
+                    .meter(
+                        Meter::new_with_defaults("per_second")
+                            .for_label(Metric::CommitterCursorsNotCommittedTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("latency_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .for_label(Metric::CommitterCursorsNotCommittedTime),
+                    ),
+            )
+            .panel(
+                Panel::named(Metric::CommitterCursorsNotCommittedTime, "failed_attempts")
+                    .meter(
+                        Meter::new_with_defaults("per_second")
+                            .for_label(Metric::CommitterAttemptFailedCount),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("latency_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .for_label(Metric::CommitterAttemptFailedTime),
+                    ),
+            );
+
+        cockpit.add_panel(panel);
     }
 }
 
@@ -546,6 +560,6 @@ fn create_staircase_timer(
     name: &str,
     config: &MetrixConfig,
 ) -> metrix::instruments::StaircaseTimer {
-    let switch_off_after = config.gauge_tracking_secs.unwrap_or_default();
+    let switch_off_after = config.alert_duration_secs.unwrap_or_default();
     metrix::instruments::StaircaseTimer::new(name).switch_off_after(switch_off_after.into())
 }

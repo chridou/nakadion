@@ -52,7 +52,7 @@ impl ControllerState {
         if let Some(info_str) = frame.info_str() {
             self.stream_state
                 .instrumentation
-                .controller_info_received(frame_received_at);
+                .info_frame_received(frame_received_at);
             self.stream_state.info(format_args!(
                 "Received info line for {}: {}",
                 event_type_partition, info_str
@@ -62,12 +62,12 @@ impl ControllerState {
         if frame.is_keep_alive_line() {
             self.stream_state
                 .instrumentation
-                .controller_keep_alive_received(frame_received_at);
+                .keep_alive_frame_received(frame_received_at);
         } else {
             let bytes = frame.bytes().len();
             self.stream_state
                 .instrumentation
-                .controller_batch_received(frame_received_at, bytes);
+                .batch_frame_received(frame_received_at, bytes);
             self.last_events_received_at = now;
         }
     }
@@ -86,7 +86,7 @@ impl ControllerState {
                 .warn(format_args!("No frames for {:?}.", elapsed));
             self.stream_state
                 .instrumentation()
-                .controller_no_frames_warning(elapsed);
+                .no_frames_warning(elapsed);
         }
 
         let elapsed = self.last_events_received_at.elapsed();
@@ -95,7 +95,7 @@ impl ControllerState {
                 .warn(format_args!("No events received for {:?}.", elapsed));
             self.stream_state
                 .instrumentation()
-                .controller_no_events_warning(elapsed);
+                .no_events_warning(elapsed);
         }
 
         self.partition_tracker.check_for_inactivity(Instant::now());
@@ -138,7 +138,7 @@ impl PartitionTracker {
                 );
                 self.stream_state
                     .instrumentation()
-                    .controller_partition_activated();
+                    .event_type_partition_activated();
             }
         } else {
             let entry = Entry {
@@ -152,7 +152,7 @@ impl PartitionTracker {
             ));
             self.stream_state
                 .instrumentation
-                .controller_partition_activated();
+                .event_type_partition_activated();
         }
     }
 
@@ -170,7 +170,7 @@ impl PartitionTracker {
                 );
                 self.stream_state
                     .instrumentation
-                    .controller_partition_deactivated(was_active_for)
+                    .event_type_partition_deactivated(was_active_for)
             }
         }
     }
@@ -205,7 +205,7 @@ impl Drop for PartitionTracker {
                 PartitionActivationState::ActiveSince(when) => self
                     .stream_state
                     .instrumentation()
-                    .controller_partition_deactivated(when.elapsed()),
+                    .event_type_partition_deactivated(when.elapsed()),
                 PartitionActivationState::InactiveSince(_when) => {}
             }
         }

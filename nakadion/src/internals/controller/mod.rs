@@ -249,15 +249,11 @@ where
                         let elapsed = nothing_received_since.elapsed();
                         if elapsed >= warn_no_frames {
                             stream_state.warn(format_args!("No first frame for {:?}", elapsed));
-                            stream_state
-                                .instrumentation()
-                                .controller_no_frames_warning(elapsed);
+                            stream_state.instrumentation().no_frames_warning(elapsed);
                         }
                         if elapsed >= warn_no_events {
                             stream_state.warn(format_args!("No first event for {:?}", elapsed));
-                            stream_state
-                                .instrumentation()
-                                .controller_no_events_warning(elapsed);
+                            stream_state.instrumentation().no_events_warning(elapsed);
                         }
                     }
                     Err(batch_line_error) => match batch_line_error.kind() {

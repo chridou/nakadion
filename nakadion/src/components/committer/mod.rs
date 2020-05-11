@@ -163,11 +163,11 @@ where
         match self.retry_attempts(cursors).await {
             Ok(results) => {
                 self.instrumentation()
-                    .committer_cursors_committed(cursors.len(), started.elapsed());
+                    .cursors_committed(cursors.len(), started.elapsed());
                 Ok(results)
             }
             Err(err) => {
-                self.instrumentation().committer_cursors_not_committed(
+                self.instrumentation().cursors_not_committed(
                     cursors.len(),
                     started.elapsed(),
                     &err,
@@ -253,12 +253,12 @@ where
             Ok(Ok(results)) => Ok(results),
             Ok(Err(err)) => {
                 self.instrumentation
-                    .committer_commit_attempt_failed(cursors.len(), started.elapsed());
+                    .commit_cursors_attempt_failed(cursors.len(), started.elapsed());
                 Err(err.into())
             }
             Err(err) => {
                 self.instrumentation
-                    .committer_commit_attempt_failed(cursors.len(), started.elapsed());
+                    .commit_cursors_attempt_failed(cursors.len(), started.elapsed());
                 Err(CommitError::io()
                     .context(format!(
                         "Commit attempt timed out after {:?}",
