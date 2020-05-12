@@ -1,7 +1,7 @@
 //! Transformed Streams of a binary Nakadi Stream
 
-mod batch_line;
+mod event_stream;
 mod framed;
 
-pub use batch_line::*;
+pub use event_stream::*;
 pub use framed::*;

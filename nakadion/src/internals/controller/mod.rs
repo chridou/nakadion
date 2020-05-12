@@ -11,7 +11,7 @@ use tokio::{
 
 use crate::api::{BytesStream, SubscriptionCommitApi};
 use crate::components::{
-    streams::{BatchLine, BatchLineError, BatchLineErrorKind, BatchLineStream, FramedStream},
+    streams::{BatchLineError, BatchLineErrorKind, EventStream, EventStreamBatch, FramedStream},
     StreamingEssentials,
 };
 use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind, TickIntervalMillis};
@@ -85,13 +85,13 @@ where
     }
 }
 
-pub(crate) enum BatchLineMessage {
+pub(crate) enum EventStreamMessage {
     /// An evaluated frame from Nakadi. It can can contain any kind of line (events, keep alive, info parts)
-    BatchLine(BatchLine),
+    Batch(EventStreamBatch),
     Tick(Instant),
     /// We need this to notify the controller since the
     /// consumed stream will never end because of the ticks
-    NakadiStreamEnded,
+    EventStreamEnded,
 }
 
 /// Consume a stream and return the (now inactive) sleeping dispatcher one finished
@@ -190,16 +190,19 @@ enum WaitForFirstFrameResult<C, T> {
 /// since another connect attempt might be eligible
 /// * If a "real" error occurs an error is returned to abort the `Consumer`
 async fn wait_for_first_frame<C, S>(
-    stream: S,
+    event_stream: S,
     sleep_ticker: SleepTicker<C>,
     stream_state: StreamState,
 ) -> Result<
-    WaitForFirstFrameResult<C, impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send>,
+    WaitForFirstFrameResult<
+        C,
+        impl Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send,
+    >,
     ConsumerError,
 >
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
 {
     let now = Instant::now();
     let nothing_received_since = now; // Just pretend we received something now to have a start
@@ -207,13 +210,13 @@ where
     let warn_no_frames = stream_state.config().warn_no_frames.into_duration();
     let warn_no_events = stream_state.config().warn_no_events.into_duration();
 
-    let mut stream = stream.boxed();
+    let mut stream = event_stream.boxed();
     // wait for the first frame from Nakadi and maybe abort if none arrives in time
     let (active_dispatcher, batch_lines_sink, first_frame) = {
         loop {
             if let Some(next) = stream.next().await {
                 match next {
-                    Ok(BatchLineMessage::NakadiStreamEnded) => {
+                    Ok(EventStreamMessage::EventStreamEnded) => {
                         stream_state.info(format_args!(
                             "Stream ended before receiving a batch after {:?}",
                             nothing_received_since.elapsed()
@@ -223,7 +226,7 @@ where
                             sleeping_dispatcher,
                         });
                     }
-                    Ok(BatchLineMessage::BatchLine(first_frame)) => {
+                    Ok(EventStreamMessage::Batch(first_frame)) => {
                         stream_state.info(format_args!(
                             "Received first frame after {:?}.",
                             nothing_received_since.elapsed()
@@ -236,7 +239,7 @@ where
 
                         break (active_dispatcher, batch_lines_sink, first_frame);
                     }
-                    Ok(BatchLineMessage::Tick(_timestamp)) => {
+                    Ok(EventStreamMessage::Tick(_timestamp)) => {
                         if let Some(dead_for) = stream_dead_policy
                             .is_stream_dead(nothing_received_since, nothing_received_since)
                         {
@@ -286,7 +289,7 @@ where
     };
 
     // Recreate the stream by appending the rest to the already received first batch line
-    let stream = stream::once(async { Ok(BatchLineMessage::BatchLine(first_frame)) }).chain(stream);
+    let stream = stream::once(async { Ok(EventStreamMessage::Batch(first_frame)) }).chain(stream);
 
     Ok(WaitForFirstFrameResult::GotTheFrame {
         active_dispatcher,
@@ -303,20 +306,20 @@ fn make_ticked_batch_line_stream(
     bytes_stream: BytesStream,
     tick_interval: TickIntervalMillis,
     instrumentation: Instrumentation,
-) -> impl Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send {
+) -> impl Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send {
     let frame_stream = FramedStream::new(bytes_stream, instrumentation.clone());
 
-    let batch_stream = BatchLineStream::new(frame_stream, instrumentation.clone())
-        .map_ok(BatchLineMessage::BatchLine)
+    let batch_stream = EventStream::new(frame_stream, instrumentation.clone())
+        .map_ok(EventStreamMessage::Batch)
         .chain(stream::once(async {
-            Ok(BatchLineMessage::NakadiStreamEnded)
+            Ok(EventStreamMessage::EventStreamEnded)
         }));
 
     let tick_interval = tick_interval.into_duration();
     let ticker =
         interval_at((Instant::now() + tick_interval).into(), tick_interval).map(move |_| {
             instrumentation.stream_tick_emitted();
-            Ok(BatchLineMessage::Tick(Instant::now()))
+            Ok(EventStreamMessage::Tick(Instant::now()))
         });
 
     stream::select(batch_stream, ticker)

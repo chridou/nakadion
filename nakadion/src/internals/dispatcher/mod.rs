@@ -5,7 +5,7 @@ use std::time::Instant;
 use futures::{Stream, TryFutureExt};
 
 use crate::api::SubscriptionCommitApi;
-use crate::components::streams::BatchLine;
+use crate::components::streams::EventStreamBatch;
 use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
 use crate::internals::{EnrichedResult, StreamState};
@@ -19,7 +19,7 @@ mod par;
 #[allow(clippy::large_enum_variant)]
 pub enum DispatcherMessage {
     /// A batch containing events along with the `EventTypePartition` extracted from the cursor
-    BatchWithEvents(EventTypePartition, BatchLine),
+    BatchWithEvents(EventTypePartition, EventStreamBatch),
     Tick(Instant),
 }
 

@@ -9,7 +9,7 @@ use std::time::Instant;
 use futures::Stream;
 use tokio::{self, task::JoinHandle};
 
-use crate::components::{committer::CommitHandle, streams::BatchLine};
+use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
 use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{EnrichedErr, EnrichedResult, StreamState};
@@ -18,7 +18,7 @@ use processor::HandlerSlot;
 
 #[derive(Debug)]
 pub enum WorkerMessage {
-    BatchWithEvents(BatchLine),
+    BatchWithEvents(EventStreamBatch),
     Tick(Instant),
 }
 
@@ -92,7 +92,7 @@ mod processor {
 
     use crate::nakadi_types::subscription::SubscriptionCursor;
 
-    use crate::components::{committer::CommitHandle, streams::BatchLine};
+    use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
@@ -181,7 +181,7 @@ mod processor {
         /// Returns `false` if the stream was cancelled
         pub async fn process_batch_line(
             &mut self,
-            batch: BatchLine,
+            batch: EventStreamBatch,
         ) -> Result<bool, ConsumerError> {
             let events = if let Some(events) = batch.events_bytes() {
                 events

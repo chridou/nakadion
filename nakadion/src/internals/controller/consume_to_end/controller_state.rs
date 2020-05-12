@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::consumer::{LogPartitionEventsMode, StreamDeadPolicy};
 use crate::logging::Logger;
 use crate::{
-    components::connector::BatchLine, instrumentation::Instruments, internals::StreamState,
+    components::connector::EventStreamBatch, instrumentation::Instruments, internals::StreamState,
     nakadi_types::subscription::EventTypePartition, Error,
 };
 
@@ -42,7 +42,11 @@ impl ControllerState {
         }
     }
 
-    pub fn received_frame(&mut self, event_type_partition: &EventTypePartition, frame: &BatchLine) {
+    pub fn received_frame(
+        &mut self,
+        event_type_partition: &EventTypePartition,
+        frame: &EventStreamBatch,
+    ) {
         let frame_received_at = frame.received_at();
         let now = Instant::now();
         self.last_frame_received_at = now;
@@ -77,9 +81,7 @@ impl ControllerState {
             .stream_dead_policy
             .is_stream_dead(self.last_frame_received_at, self.last_events_received_at)
         {
-            self.stream_state
-                .instrumentation()
-                .stream_dead(dead_for);
+            self.stream_state.instrumentation().stream_dead(dead_for);
             return Err(Error::new(format!(
                 "The stream is dead boys... for {:?}",
                 dead_for

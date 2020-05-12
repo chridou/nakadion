@@ -8,7 +8,7 @@ use http::StatusCode;
 use tokio::time::{delay_for, timeout};
 
 pub use crate::components::{
-    streams::{BatchLine, BatchLineError, NakadiFrame},
+    streams::{BatchLineError, EventStreamBatch, NakadiFrame},
     IoError,
 };
 use crate::logging::{DevNullLoggingAdapter, Logger};
@@ -26,7 +26,7 @@ pub use config::*;
 
 pub type EventsStream<E> = BoxStream<'static, Result<(StreamedBatchMeta, Option<Vec<E>>), Error>>;
 pub type FramesStream = BoxStream<'static, Result<NakadiFrame, IoError>>;
-pub type BatchStream = BoxStream<'static, Result<BatchLine, BatchLineError>>;
+pub type BatchStream = BoxStream<'static, Result<EventStreamBatch, BatchLineError>>;
 
 /// A `Connector` to connect to a Nakadi Stream
 ///
@@ -174,8 +174,7 @@ where
     ) -> Result<(StreamId, BatchStream), ConnectError> {
         let (stream_id, frames) = self.frame_stream(subscription_id).await?;
 
-        let lines =
-            crate::components::streams::BatchLineStream::new(frames, self.instrumentation());
+        let lines = crate::components::streams::EventStream::new(frames, self.instrumentation());
 
         Ok((stream_id, lines.boxed()))
     }

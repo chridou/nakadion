@@ -25,20 +25,20 @@ mod controller_state;
 ///
 /// An error returned here means that we abort the `Consumer`
 pub(crate) async fn consume_stream_to_end<C, S>(
-    stream: S,
+    event_stream: S,
     active_dispatcher: ActiveDispatcher<'static, C>,
     mut dispatcher_sink: UnboundedSender<DispatcherMessage>,
     stream_state: StreamState,
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
 {
     let instrumentation = stream_state.instrumentation();
 
     let mut controller_state = ControllerState::new(stream_state.clone());
 
-    let mut stream = stream.boxed();
+    let mut event_stream = event_stream.boxed();
 
     let loop_result: Result<(), ConsumerError> = loop {
         if stream_state.cancellation_requested() {
@@ -48,14 +48,14 @@ where
             break Ok(());
         }
 
-        match stream.next().await {
+        match event_stream.next().await {
             None => {
                 break Ok(());
             }
-            Some(Ok(BatchLineMessage::NakadiStreamEnded)) => {
+            Some(Ok(EventStreamMessage::EventStreamEnded)) => {
                 break Ok(());
             }
-            Some(Ok(BatchLineMessage::BatchLine(batch_line))) => {
+            Some(Ok(EventStreamMessage::Batch(batch_line))) => {
                 if let Err(err) = handle_batch_line(
                     batch_line,
                     &stream_state,
@@ -70,7 +70,7 @@ where
                     continue;
                 }
             }
-            Some(Ok(BatchLineMessage::Tick(tick_timestamp))) => {
+            Some(Ok(EventStreamMessage::Tick(tick_timestamp))) => {
                 if let Err(err) =
                     handle_tick(tick_timestamp, &mut controller_state, &mut dispatcher_sink).await
                 {
@@ -103,7 +103,7 @@ where
     };
 
     let shut_down_result = shutdown(
-        stream,
+        event_stream,
         active_dispatcher,
         dispatcher_sink,
         stream_state.clone(),
@@ -153,20 +153,20 @@ where
 }
 
 async fn handle_batch_line(
-    batch_line: BatchLine,
+    batch: EventStreamBatch,
     stream_state: &StreamState,
     controller_state: &mut ControllerState,
     dispatcher_sink: &mut UnboundedSender<DispatcherMessage>,
 ) -> Result<(), Error> {
-    let event_type_partition = batch_line.to_event_type_partition();
+    let event_type_partition = batch.to_event_type_partition();
 
-    controller_state.received_frame(&event_type_partition, &batch_line);
+    controller_state.received_frame(&event_type_partition, &batch);
 
-    if batch_line.has_events() {
+    if batch.has_events() {
         if dispatcher_sink
             .send(DispatcherMessage::BatchWithEvents(
                 event_type_partition,
-                batch_line,
+                batch,
             ))
             .is_err()
         {
@@ -196,7 +196,7 @@ async fn handle_tick(
 }
 
 async fn shutdown<C, S>(
-    stream: S,
+    event_stream: S,
     active_dispatcher: ActiveDispatcher<'static, C>,
     dispatcher_sink: UnboundedSender<DispatcherMessage>,
     stream_state: StreamState,
@@ -204,12 +204,12 @@ async fn shutdown<C, S>(
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<BatchLineMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
 {
     // THIS MUST BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
     drop(dispatcher_sink);
 
-    drop(stream);
+    drop(event_stream);
 
     stream_state.debug(format_args!(
         "Streaming ending after {:?}. Waiting for stream infrastructure to shut down.",
