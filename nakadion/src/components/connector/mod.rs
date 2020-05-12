@@ -8,7 +8,7 @@ use http::StatusCode;
 use tokio::time::{delay_for, timeout};
 
 pub use crate::components::{
-    streams::{BatchLineError, EventStreamBatch, NakadiFrame},
+    streams::{EventStream, EventStreamBatch, EventStreamError, NakadiFrame},
     IoError,
 };
 use crate::logging::{DevNullLoggingAdapter, Logger};
@@ -24,9 +24,10 @@ pub use crate::nakadi_types::{
 mod config;
 pub use config::*;
 
-pub type EventsStream<E> = BoxStream<'static, Result<(StreamedBatchMeta, Option<Vec<E>>), Error>>;
-pub type FramesStream = BoxStream<'static, Result<NakadiFrame, IoError>>;
-pub type BatchStream = BoxStream<'static, Result<EventStreamBatch, BatchLineError>>;
+pub type BoxedParsedEventsStream<E> =
+    BoxStream<'static, Result<(StreamedBatchMeta, Option<Vec<E>>), Error>>;
+pub type BoxedFrameStream = BoxStream<'static, Result<NakadiFrame, IoError>>;
+pub type BoxedEventStream = BoxStream<'static, Result<EventStreamBatch, EventStreamError>>;
 
 /// A `Connector` to connect to a Nakadi Stream
 ///
@@ -159,7 +160,7 @@ where
     pub async fn frame_stream(
         &self,
         subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, FramesStream), ConnectError> {
+    ) -> Result<(StreamId, BoxedFrameStream), ConnectError> {
         let (stream_id, chunks) = self.connect(subscription_id).await?.parts();
 
         let framed = crate::components::streams::FramedStream::new(chunks, self.instrumentation());
@@ -168,10 +169,10 @@ where
     }
 
     /// Get a stream of analyzed (parsed) lines.
-    pub async fn batch_stream(
+    pub async fn event_stream(
         &self,
         subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, BatchStream), ConnectError> {
+    ) -> Result<(StreamId, BoxedEventStream), ConnectError> {
         let (stream_id, frames) = self.frame_stream(subscription_id).await?;
 
         let lines = crate::components::streams::EventStream::new(frames, self.instrumentation());
@@ -183,15 +184,15 @@ where
     pub async fn events_stream<E: serde::de::DeserializeOwned>(
         &self,
         subscription_id: SubscriptionId,
-    ) -> Result<(StreamId, EventsStream<E>), ConnectError> {
-        let (stream_id, batches) = self.batch_stream(subscription_id).await?;
+    ) -> Result<(StreamId, BoxedParsedEventsStream<E>), ConnectError> {
+        let (stream_id, batches) = self.event_stream(subscription_id).await?;
 
         let events = batches.map(|r| match r {
             Ok(batch_line) => {
                 let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
                 let meta = StreamedBatchMeta {
                     cursor,
-                    received_at: batch_line.received_at(),
+                    received_at: batch_line.frame_received_at(),
                     frame_id: batch_line.frame_id(),
                 };
 

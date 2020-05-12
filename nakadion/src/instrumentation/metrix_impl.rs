@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     committer::CommitError,
     connector::ConnectError,
-    streams::{BatchLineError, BatchLineErrorKind},
+    streams::{EventStreamError, EventStreamErrorKind},
 };
 
 use super::Instruments;
@@ -174,12 +174,12 @@ impl Instruments for Metrix {
             .observed_one_value_now(Metric::NoEventsForWarning, (after, TimeUnit::Milliseconds));
     }
 
-    fn stream_error(&self, err: &BatchLineError) {
+    fn stream_error(&self, err: &EventStreamError) {
         match err.kind() {
-            BatchLineErrorKind::Io => {
+            EventStreamErrorKind::Io => {
                 self.tx.observed_one_now(Metric::StreamErrorIo);
             }
-            BatchLineErrorKind::Parser => {
+            EventStreamErrorKind::Parser => {
                 self.tx.observed_one_now(Metric::StreamErrorParse);
             }
         }

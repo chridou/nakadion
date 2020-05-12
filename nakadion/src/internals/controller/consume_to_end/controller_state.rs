@@ -47,7 +47,7 @@ impl ControllerState {
         event_type_partition: &EventTypePartition,
         frame: &EventStreamBatch,
     ) {
-        let frame_received_at = frame.received_at();
+        let frame_received_at = frame.frame_received_at();
         let now = Instant::now();
         self.last_frame_received_at = now;
 

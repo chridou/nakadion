@@ -16,15 +16,22 @@ use crate::instrumentation::{Instrumentation, Instruments};
 pub struct NakadiFrame {
     pub bytes: Bytes,
     pub received_at: Instant,
+    pub completed_at: Instant,
     pub frame_id: usize,
 }
 
 impl NakadiFrame {
     #[allow(dead_code)]
-    pub fn new(bytes: Vec<u8>, received_at: Instant, frame_id: usize) -> Self {
+    pub fn new(
+        bytes: Vec<u8>,
+        received_at: Instant,
+        completed_at: Instant,
+        frame_id: usize,
+    ) -> Self {
         Self {
             bytes: bytes.into(),
             received_at,
+            completed_at,
             frame_id,
         }
     }
@@ -173,6 +180,7 @@ where
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
                                         received_at: state.first_byte_received_at,
+                                        completed_at: Instant::now(),
                                         frame_id: state.frame_id,
                                     });
 

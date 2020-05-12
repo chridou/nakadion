@@ -190,7 +190,7 @@ mod processor {
                 return Ok(true);
             };
 
-            let frame_received_at = batch.received_at();
+            let frame_received_at = batch.frame_received_at();
             let frame_id = batch.frame_id();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 

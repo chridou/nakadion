@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 
 use crate::nakadi_types::Error;
 
-use crate::components::{committer::CommitError, connector::ConnectError, streams::BatchLineError};
+use crate::components::{
+    committer::CommitError, connector::ConnectError, streams::EventStreamError,
+};
 
 #[cfg(feature = "metrix")]
 mod metrix_impl;
@@ -76,7 +78,7 @@ pub trait Instruments {
     fn stream_dead(&self, after: Duration);
 
     /// The stream was aborted due to a streaming related error
-    fn stream_error(&self, err: &BatchLineError);
+    fn stream_error(&self, err: &EventStreamError);
 
     /// Triggered when a new batch with events was received
     fn batches_in_flight_inc(&self);
@@ -374,7 +376,7 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn stream_error(&self, err: &BatchLineError) {
+    fn stream_error(&self, err: &EventStreamError) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => instr.stream_error(err),

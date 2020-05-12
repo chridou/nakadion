@@ -4,7 +4,7 @@ use futures::{Stream, StreamExt};
 use tokio::{self, sync::mpsc::UnboundedSender};
 
 use crate::api::SubscriptionCommitApi;
-use crate::components::streams::{BatchLineError, BatchLineErrorKind};
+use crate::components::streams::{EventStreamError, EventStreamErrorKind};
 use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::{
@@ -32,7 +32,7 @@ pub(crate) async fn consume_stream_to_end<C, S>(
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
 {
     let instrumentation = stream_state.instrumentation();
 
@@ -83,14 +83,14 @@ where
             Some(Err(batch_line_error)) => {
                 instrumentation.stream_error(&batch_line_error);
                 match batch_line_error.kind() {
-                    BatchLineErrorKind::Parser => {
+                    EventStreamErrorKind::Parser => {
                         stream_state.error(format_args!(
                             "Aborting consumer - Invalid frame: {}",
                             batch_line_error
                         ));
                         break Err(ConsumerErrorKind::InvalidBatch.into());
                     }
-                    BatchLineErrorKind::Io => {
+                    EventStreamErrorKind::Io => {
                         stream_state.warn(format_args!(
                             "Aborting stream due to IO error: {}",
                             batch_line_error
@@ -204,7 +204,7 @@ async fn shutdown<C, S>(
 ) -> Result<SleepingDispatcher<C>, ConsumerError>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
 {
     // THIS MUST BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
     drop(dispatcher_sink);

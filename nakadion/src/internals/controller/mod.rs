@@ -11,7 +11,9 @@ use tokio::{
 
 use crate::api::{BytesStream, SubscriptionCommitApi};
 use crate::components::{
-    streams::{BatchLineError, BatchLineErrorKind, EventStream, EventStreamBatch, FramedStream},
+    streams::{
+        EventStream, EventStreamBatch, EventStreamError, EventStreamErrorKind, FramedStream,
+    },
     StreamingEssentials,
 };
 use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind, TickIntervalMillis};
@@ -196,13 +198,13 @@ async fn wait_for_first_frame<C, S>(
 ) -> Result<
     WaitForFirstFrameResult<
         C,
-        impl Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send,
+        impl Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send,
     >,
     ConsumerError,
 >
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
-    S: Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send + 'static,
+    S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
 {
     let now = Instant::now();
     let nothing_received_since = now; // Just pretend we received something now to have a start
@@ -264,10 +266,10 @@ where
                         }
                     }
                     Err(batch_line_error) => match batch_line_error.kind() {
-                        BatchLineErrorKind::Parser => {
+                        EventStreamErrorKind::Parser => {
                             return Err(ConsumerErrorKind::InvalidBatch.into())
                         }
-                        BatchLineErrorKind::Io => {
+                        EventStreamErrorKind::Io => {
                             let sleeping_dispatcher = sleep_ticker.join().await?;
                             return Ok(WaitForFirstFrameResult::Aborted {
                                 sleeping_dispatcher,
@@ -306,7 +308,7 @@ fn make_ticked_batch_line_stream(
     bytes_stream: BytesStream,
     tick_interval: TickIntervalMillis,
     instrumentation: Instrumentation,
-) -> impl Stream<Item = Result<EventStreamMessage, BatchLineError>> + Send {
+) -> impl Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send {
     let frame_stream = FramedStream::new(bytes_stream, instrumentation.clone());
 
     let batch_stream = EventStream::new(frame_stream, instrumentation.clone())

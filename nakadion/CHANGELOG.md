@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - renamed `BatchLine` to `EventStreamBatch` to match Nakadi names
 - renamed `BatchLineStream` to `EventStream` to match Nakadi names
+- renamed `ParseLineError` to `ParseEventsBatchError`
+- renamed `BatchLineError` to `EventStreamError`
+- renamed boxed stream types in `components::connector`
 
 ## [0.23.3] - 2020-05-11
 
