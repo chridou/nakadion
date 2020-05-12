@@ -327,7 +327,6 @@ mod instr {
         let mut cockpit = Cockpit::without_name();
 
         create_alerts(&mut cockpit, config);
-        create_connector_metrics(&mut cockpit, config);
         create_stream_metrics(&mut cockpit, config);
         create_lag_metrics(&mut cockpit, config);
         create_batch_metrics(&mut cockpit, config);
@@ -342,7 +341,7 @@ mod instr {
 
     fn create_alerts(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         use Metric::*;
-        let panel = Panel::named(AcceptAllLabels, "alerts")
+        let panel = Panel::named(AcceptAllLabels, "notifications")
             .handler(create_staircase_timer("stream_io_error", config).for_label(StreamErrorIo))
             .handler(
                 create_staircase_timer("stream_parse_error", config).for_label(StreamErrorParse),
@@ -352,19 +351,18 @@ mod instr {
             .handler(
                 create_staircase_timer("commit_failed", config).for_label(CommitterCommitFailed),
             )
-            .handler(create_staircase_timer("stream_dead", config).for_label(StreamDeadAfter));
-
-        cockpit.add_panel(panel);
-    }
-
-    fn create_connector_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
-        let panel = Panel::named(AcceptAllLabels, "connector");
+            .handler(create_staircase_timer("stream_dead", config).for_label(StreamDeadAfter))
+            .handler(
+                create_staircase_timer("connect_attempt_failed", config)
+                    .for_label(StreamConnectAttemptFailedTime),
+            );
 
         cockpit.add_panel(panel);
     }
 
     fn create_stream_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "stream")
+            .panel(create_connector_metrics(_config))
             .panel(Panel::named(AcceptAllLabels, "ticks").meter(
                 Meter::new_with_defaults("emitted_per_second").for_label(Metric::StreamTickEmitted),
             ))
@@ -417,6 +415,57 @@ mod instr {
             );
 
         cockpit.add_panel(panel);
+    }
+
+    fn create_connector_metrics(_config: &MetrixConfig) -> Panel<Metric> {
+        let panel = Panel::named(AcceptAllLabels, "connector")
+            .panel(
+                Panel::named(AcceptAllLabels, "attempts")
+                    .meter(
+                        Meter::new_with_defaults("success_per_second")
+                            .for_label(Metric::StreamConnectAttemptSuccessTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("success_time_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .accept(Metric::StreamConnectAttemptSuccessTime),
+                    )
+                    .meter(
+                        Meter::new_with_defaults("failed_per_second")
+                            .for_label(Metric::StreamConnectAttemptFailedTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("failed_time_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .accept(Metric::StreamConnectAttemptFailedTime),
+                    ),
+            )
+            .panel(
+                Panel::named(AcceptAllLabels, "connected")
+                    .meter(
+                        Meter::new_with_defaults("success_per_second")
+                            .for_label(Metric::StreamConnectedTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("success_time_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .accept(Metric::StreamConnectedTime),
+                    ),
+            )
+            .panel(
+                Panel::named(AcceptAllLabels, "not_connected")
+                    .meter(
+                        Meter::new_with_defaults("success_per_second")
+                            .for_label(Metric::StreamNotConnectedTime),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("success_time_ms")
+                            .display_time_unit(TimeUnit::Milliseconds)
+                            .accept(Metric::StreamNotConnectedTime),
+                    ),
+            );
+
+        panel
     }
 
     fn create_lag_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
