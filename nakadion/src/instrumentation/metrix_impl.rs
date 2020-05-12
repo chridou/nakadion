@@ -135,24 +135,29 @@ impl Instruments for Metrix {
         self.tx.observed_one_now(Metric::StreamTickEmitted);
     }
 
-    fn info_frame_received(&self, frame_received_at: Instant) {
+    fn info_frame_received(&self, _frame_started_at: Instant, frame_completed_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::StreamInfoFrameReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+            (frame_completed_at.elapsed(), TimeUnit::Microseconds),
         );
     }
-    fn keep_alive_frame_received(&self, frame_received_at: Instant) {
+    fn keep_alive_frame_received(&self, _frame_started_at: Instant, frame_completed_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::StreamKeepAliveFrameReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+            (frame_completed_at.elapsed(), TimeUnit::Microseconds),
         );
     }
-    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize) {
+    fn batch_frame_received(
+        &self,
+        _frame_started_at: Instant,
+        frame_completed_at: Instant,
+        events_bytes: usize,
+    ) {
         self.tx
             .observed_one_value_now(Metric::StreamBatchFrameReceivedBytes, events_bytes);
         self.tx.observed_one_value_now(
             Metric::StreamBatchFrameReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+            (frame_completed_at.elapsed(), TimeUnit::Microseconds),
         );
     }
 
@@ -171,7 +176,7 @@ impl Instruments for Metrix {
 
     fn stream_dead(&self, after: Duration) {
         self.tx
-            .observed_one_value_now(Metric::NoEventsForWarning, (after, TimeUnit::Milliseconds));
+            .observed_one_value_now(Metric::StreamDeadAfter, (after, TimeUnit::Milliseconds));
     }
 
     fn stream_error(&self, err: &EventStreamError) {
@@ -210,10 +215,10 @@ impl Instruments for Metrix {
         );
     }
 
-    fn batch_processing_started(&self, frame_received_at: Instant) {
+    fn batch_processing_started(&self, _frame_started_at: Instant, frame_completed_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::BatchProcessingStartedLag,
-            (frame_received_at.elapsed(), TimeUnit::Microseconds),
+            (frame_completed_at.elapsed(), TimeUnit::Microseconds),
         );
     }
 
@@ -236,10 +241,10 @@ impl Instruments for Metrix {
             );
     }
 
-    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, _frame_started_at: Instant, frame_completed_at: Instant) {
         self.tx.observed_one_value_now(
             Metric::CommitterCursorsReceivedLag,
-            (frame_received_at.elapsed(), TimeUnit::Milliseconds),
+            (frame_completed_at.elapsed(), TimeUnit::Milliseconds),
         );
     }
 

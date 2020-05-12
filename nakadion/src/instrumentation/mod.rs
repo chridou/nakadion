@@ -55,12 +55,12 @@ pub trait Instruments {
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn info_frame_received(&self, frame_received_at: Instant);
+    fn info_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
     /// The controller received a frame which contained no events
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn keep_alive_frame_received(&self, frame_received_at: Instant);
+    fn keep_alive_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
     /// A partition which was formerly not known to be active was sent
     /// data on
 
@@ -68,7 +68,12 @@ pub trait Instruments {
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize);
+    fn batch_frame_received(
+        &self,
+        frame_started_at: Instant,
+        frame_completed_at: Instant,
+        events_bytes: usize,
+    );
 
     /// No frames have been received for the given time and the warning has already  threshold elapsed
     fn no_frames_warning(&self, no_frames_for: Duration);
@@ -94,7 +99,7 @@ pub trait Instruments {
     /// A partition did not receive data for some time is is therefore considered inactive.
     fn event_type_partition_deactivated(&self, active_for: Duration);
 
-    fn batch_processing_started(&self, frame_received_at: Instant);
+    fn batch_processing_started(&self, frame_started_at: Instant, frame_completed_at: Instant);
 
     /// Events were processed.
     fn batch_processed(&self, n_bytes: usize, time: Duration);
@@ -108,7 +113,7 @@ pub trait Instruments {
     /// Cursors to be committed have reached the commit stage.
     ///
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
-    fn cursor_to_commit_received(&self, frame_received_at: Instant);
+    fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
@@ -311,40 +316,45 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn info_frame_received(&self, frame_received_at: Instant) {
+    fn info_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.info_frame_received(frame_received_at)
+                instr.info_frame_received(frame_started_at, frame_completed_at)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.info_frame_received(frame_received_at)
+                instr.info_frame_received(frame_started_at, frame_completed_at)
             }
         }
     }
-    fn keep_alive_frame_received(&self, frame_received_at: Instant) {
+    fn keep_alive_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.keep_alive_frame_received(frame_received_at)
+                instr.keep_alive_frame_received(frame_started_at, frame_completed_at)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.keep_alive_frame_received(frame_received_at)
+                instr.keep_alive_frame_received(frame_started_at, frame_completed_at)
             }
         }
     }
 
-    fn batch_frame_received(&self, frame_received_at: Instant, events_bytes: usize) {
+    fn batch_frame_received(
+        &self,
+        frame_started_at: Instant,
+        frame_completed_at: Instant,
+        events_bytes: usize,
+    ) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.batch_frame_received(frame_received_at, events_bytes)
+                instr.batch_frame_received(frame_started_at, frame_completed_at, events_bytes)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.batch_frame_received(frame_received_at, events_bytes)
+                instr.batch_frame_received(frame_started_at, frame_completed_at, events_bytes)
             }
         }
     }
@@ -432,15 +442,15 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn batch_processing_started(&self, frame_received_at: Instant) {
+    fn batch_processing_started(&self, frame_started_at: Instant, frame_completed_at: Instant) {
         match self.instr {
             InstrumentationSelection::Off => {}
             InstrumentationSelection::Custom(ref instr) => {
-                instr.batch_processing_started(frame_received_at)
+                instr.batch_processing_started(frame_started_at, frame_completed_at)
             }
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => {
-                instr.batch_processing_started(frame_received_at)
+                instr.batch_processing_started(frame_started_at, frame_completed_at)
             }
         }
     }
@@ -476,16 +486,16 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn cursor_to_commit_received(&self, frame_received_at: Instant) {
+    fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {
                 InstrumentationSelection::Off => {}
                 InstrumentationSelection::Custom(ref instr) => {
-                    instr.cursor_to_commit_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_started_at, frame_completed_at)
                 }
                 #[cfg(feature = "metrix")]
                 InstrumentationSelection::Metrix(ref instr) => {
-                    instr.cursor_to_commit_received(frame_received_at)
+                    instr.cursor_to_commit_received(frame_started_at, frame_completed_at)
                 }
             }
         }

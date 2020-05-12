@@ -95,7 +95,9 @@ pub struct EventStreamBatch {
     bytes: Bytes,
     items: LineItems,
     frame_id: usize,
-    frame_received_at: Instant,
+    /// Timestamp when the first byte was received
+    frame_started_at: Instant,
+    /// Timestamp when the frame was completed
     frame_completed_at: Instant,
 }
 
@@ -114,7 +116,7 @@ impl EventStreamBatch {
             bytes,
             items,
             frame_id: 0,
-            frame_received_at: Instant::now(),
+            frame_started_at: Instant::now(),
             frame_completed_at: Instant::now(),
         })
     }
@@ -131,7 +133,7 @@ impl EventStreamBatch {
             bytes: Bytes::copy_from_slice(slice.as_ref()),
             items,
             frame_id: 0,
-            frame_received_at: Instant::now(),
+            frame_started_at: Instant::now(),
             frame_completed_at: Instant::now(),
         })
     }
@@ -148,7 +150,7 @@ impl EventStreamBatch {
             bytes: frame.bytes,
             items,
             frame_id: frame.frame_id,
-            frame_received_at: frame.received_at,
+            frame_started_at: frame.started_at,
             frame_completed_at: frame.completed_at,
         })
     }
@@ -162,8 +164,8 @@ impl EventStreamBatch {
         self.frame_id
     }
 
-    pub fn frame_received_at(&self) -> Instant {
-        self.frame_received_at
+    pub fn frame_started_at(&self) -> Instant {
+        self.frame_started_at
     }
 
     pub fn frame_completed_at(&self) -> Instant {

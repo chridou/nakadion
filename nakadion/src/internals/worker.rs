@@ -190,14 +190,16 @@ mod processor {
                 return Ok(true);
             };
 
-            let frame_received_at = batch.frame_received_at();
+            let frame_started_at = batch.frame_started_at();
+            let frame_completed_at = batch.frame_completed_at();
             let frame_id = batch.frame_id();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
                 stream_id: self.stream_state.stream_id(),
                 cursor: &cursor,
-                received_at: frame_received_at,
+                frame_started_at,
+                frame_completed_at,
                 frame_id,
             };
 
@@ -205,7 +207,7 @@ mod processor {
             let batch_processing_started_at = Instant::now();
             self.stream_state
                 .instrumentation()
-                .batch_processing_started(frame_received_at);
+                .batch_processing_started(frame_started_at, frame_completed_at);
             match self.handler_slot.process_batch(events, meta).await? {
                 BatchPostAction::Commit(BatchStats {
                     n_events,
@@ -222,7 +224,12 @@ mod processor {
                             .batch_deserialized(n_events_bytes, t_deserialize);
                     }
 
-                    if let Err(err) = self.committer.commit(cursor, frame_received_at, n_events) {
+                    if let Err(err) = self.committer.commit(
+                        cursor,
+                        frame_started_at,
+                        frame_completed_at,
+                        n_events,
+                    ) {
                         self.stream_state
                             .error(format_args!("Failed to enqueue commit data: {:?}", err));
                         self.stream_state.request_stream_cancellation();

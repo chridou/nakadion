@@ -28,7 +28,12 @@ pub use config::*;
 #[derive(Debug)]
 pub struct CommitData {
     pub cursor: SubscriptionCursor,
-    pub cursor_received_at: Instant,
+    /// Timestamp when the cursor/frame was received used to
+    /// calculate the effective time for when to commit
+    pub frame_started_at: Instant,
+    /// Timestamp used for measurement purposes
+    /// to track internal timings.
+    pub frame_completed_at: Instant,
     pub n_events: Option<usize>,
 }
 
@@ -58,12 +63,14 @@ impl CommitHandle {
     pub fn commit(
         &self,
         cursor: SubscriptionCursor,
-        cursor_received_at: Instant,
+        frame_started_at: Instant,
+        frame_completed_at: Instant,
         n_events: Option<usize>,
     ) -> Result<(), CommitData> {
         self.commit_data(CommitData {
             cursor,
-            cursor_received_at,
+            frame_started_at,
+            frame_completed_at,
             n_events,
         })
     }

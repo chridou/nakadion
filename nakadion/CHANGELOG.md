@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [X]
+## [0.24.0] - 2020-05-13
+
+### ADDED
+
+- batches carry a completion timestamp to track timings without getting bytes from the network
 
 ### CHANGED
 
@@ -13,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - renamed `ParseLineError` to `ParseEventsBatchError`
 - renamed `BatchLineError` to `EventStreamError`
 - renamed boxed stream types in `components::connector`
+- renamed all the timestamps in batches and events
 
 ## [0.23.3] - 2020-05-11
 

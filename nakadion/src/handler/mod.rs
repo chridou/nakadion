@@ -29,7 +29,10 @@ pub use typed::*;
 pub struct BatchMeta<'a> {
     pub stream_id: StreamId,
     pub cursor: &'a SubscriptionCursor,
-    pub received_at: Instant,
+    /// Timestamp when the first byte was received
+    pub frame_started_at: Instant,
+    /// Timestamp when the frame was completed
+    pub frame_completed_at: Instant,
     pub frame_id: usize,
 }
 

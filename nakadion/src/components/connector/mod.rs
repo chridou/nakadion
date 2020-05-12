@@ -192,7 +192,8 @@ where
                 let cursor = batch_line.cursor_deserialized::<SubscriptionCursor>()?;
                 let meta = StreamedBatchMeta {
                     cursor,
-                    received_at: batch_line.frame_received_at(),
+                    frame_started_at: batch_line.frame_started_at(),
+                    frame_completed_at: batch_line.frame_completed_at(),
                     frame_id: batch_line.frame_id(),
                 };
 
@@ -513,7 +514,8 @@ impl fmt::Display for ConnectErrorKind {
 #[derive(Debug, Clone)]
 pub struct StreamedBatchMeta {
     pub cursor: SubscriptionCursor,
-    pub received_at: Instant,
+    pub frame_started_at: Instant,
+    pub frame_completed_at: Instant,
     pub frame_id: usize,
 }
 

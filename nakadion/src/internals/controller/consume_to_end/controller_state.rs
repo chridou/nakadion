@@ -47,7 +47,8 @@ impl ControllerState {
         event_type_partition: &EventTypePartition,
         frame: &EventStreamBatch,
     ) {
-        let frame_received_at = frame.frame_received_at();
+        let frame_started_at = frame.frame_started_at();
+        let frame_completed_at = frame.frame_completed_at();
         let now = Instant::now();
         self.last_frame_received_at = now;
 
@@ -56,7 +57,7 @@ impl ControllerState {
         if let Some(info_str) = frame.info_str() {
             self.stream_state
                 .instrumentation
-                .info_frame_received(frame_received_at);
+                .info_frame_received(frame_started_at, frame_completed_at);
             self.stream_state.info(format_args!(
                 "Received info line for {}: {}",
                 event_type_partition, info_str
@@ -66,12 +67,14 @@ impl ControllerState {
         if frame.is_keep_alive_line() {
             self.stream_state
                 .instrumentation
-                .keep_alive_frame_received(frame_received_at);
+                .keep_alive_frame_received(frame_started_at, frame_completed_at);
         } else {
             let bytes = frame.bytes().len();
-            self.stream_state
-                .instrumentation
-                .batch_frame_received(frame_received_at, bytes);
+            self.stream_state.instrumentation.batch_frame_received(
+                frame_started_at,
+                frame_completed_at,
+                bytes,
+            );
             self.last_events_received_at = now;
         }
     }

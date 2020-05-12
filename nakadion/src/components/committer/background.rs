@@ -56,7 +56,8 @@ where
         let now = Instant::now();
         let cursor_received = match cursors_to_commit.try_recv() {
             Ok(next) => {
-                instrumentation.cursor_to_commit_received(next.cursor_received_at);
+                instrumentation
+                    .cursor_to_commit_received(next.frame_started_at, next.frame_completed_at);
                 pending.add(next, now);
                 true
             }
@@ -176,14 +177,14 @@ impl PendingCursors {
                 self.current_deadline,
                 Some(Duration::from_secs(0)),
                 self.stream_commit_timeout,
-                data.cursor_received_at,
+                data.frame_started_at,
                 now,
             ),
             CommitStrategy::LatestPossible => calc_effective_deadline(
                 self.current_deadline,
                 None,
                 self.stream_commit_timeout,
-                data.cursor_received_at,
+                data.frame_started_at,
                 now,
             ),
             CommitStrategy::After {
@@ -193,14 +194,14 @@ impl PendingCursors {
                 self.current_deadline,
                 Some(Duration::from_secs(u64::from(seconds))),
                 self.stream_commit_timeout,
-                data.cursor_received_at,
+                data.frame_started_at,
                 now,
             ),
             CommitStrategy::After { seconds: None, .. } => calc_effective_deadline(
                 self.current_deadline,
                 None,
                 self.stream_commit_timeout,
-                data.cursor_received_at,
+                data.frame_started_at,
                 now,
             ),
         };
@@ -271,13 +272,13 @@ fn calc_effective_deadline(
     current_deadline: Option<Instant>,
     commit_after: Option<Duration>,
     stream_commit_timeout: Duration,
-    cursor_received_at: Instant,
+    frame_started_at: Instant,
     now: Instant,
 ) -> Instant {
     let deadline_for_cursor = if let Some(commit_after) = commit_after {
-        cursor_received_at + std::cmp::min(commit_after, stream_commit_timeout)
+        frame_started_at + std::cmp::min(commit_after, stream_commit_timeout)
     } else {
-        cursor_received_at + stream_commit_timeout
+        frame_started_at + stream_commit_timeout
     };
     let deadline_for_cursor = if now >= deadline_for_cursor {
         now

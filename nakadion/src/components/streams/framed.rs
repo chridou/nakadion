@@ -15,7 +15,9 @@ use crate::instrumentation::{Instrumentation, Instruments};
 #[derive(Clone)]
 pub struct NakadiFrame {
     pub bytes: Bytes,
-    pub received_at: Instant,
+    /// Timestamp when the first byte was received
+    pub started_at: Instant,
+    /// Timestamp when the frame was completed
     pub completed_at: Instant,
     pub frame_id: usize,
 }
@@ -24,13 +26,13 @@ impl NakadiFrame {
     #[allow(dead_code)]
     pub fn new(
         bytes: Vec<u8>,
-        received_at: Instant,
+        started_at: Instant,
         completed_at: Instant,
         frame_id: usize,
     ) -> Self {
         Self {
             bytes: bytes.into(),
-            received_at,
+            started_at,
             completed_at,
             frame_id,
         }
@@ -179,7 +181,7 @@ where
                                     // Append the new frame to the collected frame
                                     state.frames.push_back(NakadiFrame {
                                         bytes: finished_frame.into(),
-                                        received_at: state.first_byte_received_at,
+                                        started_at: state.first_byte_received_at,
                                         completed_at: Instant::now(),
                                         frame_id: state.frame_id,
                                     });
