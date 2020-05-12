@@ -1,4 +1,4 @@
-# Nakadion
+# NakadiOn!
 
 ![CI](https://github.com/chridou/nakadion/workflows/CI/badge.svg)
 
