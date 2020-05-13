@@ -191,6 +191,26 @@ impl<D> PartitionAssignable for DataChangeEventPub<D> {
     }
 }
 
+impl<D> PartitionKeyExtractable for BusinessEventPub<D>
+where
+    D: PartitionKeyExtractable,
+{
+    type Key = D::Key;
+    fn partition_key(&self) -> Self::Key {
+        self.data.partition_key()
+    }
+}
+
+impl<D> PartitionKeyExtractable for DataChangeEventPub<D>
+where
+    D: PartitionKeyExtractable,
+{
+    type Key = D::Key;
+    fn partition_key(&self) -> Self::Key {
+        self.data.partition_key()
+    }
+}
+
 fn create_sorted_partitioner<B: BuildHasher + Clone>(
     mut partitions: Vec<PartitionId>,
     build_hasher: B,
