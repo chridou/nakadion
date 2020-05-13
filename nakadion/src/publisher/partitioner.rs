@@ -67,7 +67,7 @@ impl Partitioner<DefaultBuildHasher> {
     /// Fails if the event type has no partitions.
     pub async fn from_event_type<C>(
         event_type: &EventTypeName,
-        api_client: C,
+        api_client: &C,
     ) -> Result<Self, NakadiApiError>
     where
         C: MonitoringApi,
@@ -120,7 +120,7 @@ where
     /// Fails if the event type has no partitions.
     pub async fn from_event_type_with_hasher<C>(
         event_type: &EventTypeName,
-        api_client: C,
+        api_client: &C,
         build_hasher: B,
     ) -> Result<Self, NakadiApiError>
     where
@@ -153,7 +153,7 @@ where
     }
 
     /// Determines and assigns partitions
-    pub fn assign<E: PartitionKeyExtractable + PartitionAssignable>(self, event: &mut E) {
+    pub fn assign<E: PartitionKeyExtractable + PartitionAssignable>(&self, event: &mut E) {
         let key = event.partition_key();
         let partition = self.partition_for_key(&key);
         event.assign_partition(partition);
@@ -233,8 +233,7 @@ fn partition_for_hash_works() {
 fn the_default_hasher_stays_stable() {
     // WARNING! If this test fails behaviour of components
     // using the DefaultBuildHasher will change in a seriously
-    // broken way! Do not just adjust the expected hashes
-    // unless you really know that nobody is using the hasher.
+    // broken way!
     let sample = "TestForHasher";
     let mut hasher = DefaultBuildHasher.build_hasher();
     sample.hash(&mut hasher);
