@@ -75,16 +75,22 @@ where
             continue;
         }
 
-        if !pending.commit_required(now) {
-            if !cursor_received {
-                // Wait a bit because the channel was empty
-                delay_for(delay_on_no_cursor).await;
+        let trigger = match pending.commit_required(now) {
+            Some(trigger) => trigger,
+            None => {
+                if !cursor_received {
+                    // Wait a bit because the channel was empty
+                    delay_for(delay_on_no_cursor).await;
+                }
+                continue;
             }
-            continue;
-        }
+        };
 
         let cursors: Vec<_> = pending.cursors().collect();
         committer.set_flow_id(FlowId::random());
+        committer
+            .instrumentation
+            .cursors_commit_triggered(cursors.len(), trigger);
         match committer.commit(&cursors).await {
             Ok(_) => {
                 pending.reset();
@@ -216,34 +222,34 @@ impl PendingCursors {
         }
     }
 
-    pub fn commit_required(&self, now: Instant) -> bool {
+    pub fn commit_required(&self, now: Instant) -> Option<CommitTrigger> {
         if self.pending.is_empty() {
-            return false;
+            return None;
         }
 
         if let Some(deadline) = self.current_deadline {
             if deadline <= now {
-                return true;
+                return Some(CommitTrigger::Deadline);
             }
         }
 
         match self.commit_strategy {
-            CommitStrategy::Immediately => true,
-            CommitStrategy::LatestPossible => false,
+            CommitStrategy::Immediately => Some(CommitTrigger::Deadline),
+            CommitStrategy::LatestPossible => None,
             CommitStrategy::After {
                 cursors, events, ..
             } => {
                 if let Some(cursors) = cursors {
                     if self.collected_cursors >= cursors as usize {
-                        return true;
+                        return Some(CommitTrigger::Cursors);
                     }
                 }
                 if let Some(events) = events {
                     if self.collected_events >= events as usize {
-                        return true;
+                        return Some(CommitTrigger::Events);
                     }
                 }
-                false
+                None
             }
         }
     }

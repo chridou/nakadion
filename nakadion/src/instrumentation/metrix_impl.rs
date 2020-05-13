@@ -9,7 +9,7 @@ use metrix::{
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    committer::CommitError,
+    committer::{CommitError, CommitTrigger},
     connector::ConnectError,
     streams::{EventStreamError, EventStreamErrorKind},
 };
@@ -161,6 +161,13 @@ impl Instruments for Metrix {
         );
     }
 
+    fn batch_frame_gap(&self, gap: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::BatchProcessingStartedLag,
+            (gap, TimeUnit::Microseconds),
+        );
+    }
+
     fn no_frames_warning(&self, no_frames_for: Duration) {
         self.tx.observed_one_value_now(
             Metric::NoFramesForWarning,
@@ -248,6 +255,23 @@ impl Instruments for Metrix {
         );
     }
 
+    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger) {
+        match trigger {
+            CommitTrigger::Deadline => {
+                self.tx
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineCount, n_cursors);
+            }
+            CommitTrigger::Events => {
+                self.tx
+                    .observed_one_value_now(Metric::CommitterTriggerEventsCount, n_cursors);
+            }
+            CommitTrigger::Cursors => {
+                self.tx
+                    .observed_one_value_now(Metric::CommitterTriggerCursorsCount, n_cursors);
+            }
+        }
+    }
+
     fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsCommittedCount, n_cursors)
@@ -291,6 +315,7 @@ pub enum Metric {
     StreamKeepAliveFrameReceivedLag,
     StreamBatchFrameReceivedBytes,
     StreamBatchFrameReceivedLag,
+    StreamBatchFrameGap,
     StreamDeadAfter,
     NoFramesForWarning,
     NoEventsForWarning,
@@ -313,6 +338,9 @@ pub enum Metric {
     CommitterCursorsNotCommittedCount,
     CommitterAttemptFailedTime,
     CommitterAttemptFailedCount,
+    CommitterTriggerDeadlineCount,
+    CommitterTriggerEventsCount,
+    CommitterTriggerCursorsCount,
 }
 
 mod instr {
@@ -416,6 +444,11 @@ mod instr {
                     .meter(
                         Meter::new_with_defaults("batch_frames_per_second")
                             .for_label(Metric::StreamBatchFrameReceivedLag),
+                    )
+                    .histogram(
+                        Histogram::new_with_defaults("batch_frame_gap_us")
+                            .display_time_unit(TimeUnit::Microseconds)
+                            .accept(Metric::StreamBatchFrameGap),
                     ),
             );
 
@@ -549,6 +582,28 @@ mod instr {
 
     fn create_committer_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "committer")
+            .panel(
+                Panel::named(
+                    (
+                        Metric::CommitterTriggerCursorsCount,
+                        Metric::CommitterTriggerDeadlineCount,
+                        Metric::CommitterTriggerEventsCount,
+                    ),
+                    "triggers",
+                )
+                .handler(
+                    ValueMeter::new_with_defaults("cursors_by_deadline_per_second")
+                        .for_label(Metric::CommitterTriggerDeadlineCount),
+                )
+                .handler(
+                    ValueMeter::new_with_defaults("cursors_by_events_per_second")
+                        .for_label(Metric::CommitterTriggerEventsCount),
+                )
+                .handler(
+                    ValueMeter::new_with_defaults("cursors_by_cursors_per_second")
+                        .for_label(Metric::CommitterTriggerCursorsCount),
+                ),
+            )
             .panel(
                 Panel::named(AcceptAllLabels, "cursors")
                     .meter(

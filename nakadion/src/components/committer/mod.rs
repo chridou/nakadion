@@ -46,6 +46,17 @@ impl CommitData {
     }
 }
 
+/// The reason why data was committed if working in background mode
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CommitTrigger {
+    /// The deadline to commit was reached
+    Deadline,
+    /// Enough events were received
+    Events,
+    /// Enough cursors were received
+    Cursors,
+}
+
 /// Handle to send commit messages to the background task.
 ///
 /// The background task will stop, once the last handle is dropped.

@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 use crate::nakadi_types::Error;
 
 use crate::components::{
-    committer::CommitError, connector::ConnectError, streams::EventStreamError,
+    committer::{CommitError, CommitTrigger},
+    connector::ConnectError,
+    streams::EventStreamError,
 };
 
 #[cfg(feature = "metrix")]
@@ -75,6 +77,9 @@ pub trait Instruments {
         events_bytes: usize,
     );
 
+    /// The time elapsed between the reception of 2 batches with events
+    fn batch_frame_gap(&self, gap: Duration);
+
     /// No frames have been received for the given time and the warning has already  threshold elapsed
     fn no_frames_warning(&self, no_frames_for: Duration);
     /// No events have been received for the given time and the warning threshold has already elapsed
@@ -114,6 +119,8 @@ pub trait Instruments {
     ///
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
     fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
+    /// Cursors commit was triggered.
+    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger);
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
@@ -359,6 +366,15 @@ impl Instruments for Instrumentation {
         }
     }
 
+    fn batch_frame_gap(&self, gap: Duration) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.batch_frame_gap(gap),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.batch_frame_gap(gap),
+        }
+    }
+
     fn no_frames_warning(&self, no_frames_for: Duration) {
         match self.instr {
             InstrumentationSelection::Off => {}
@@ -497,6 +513,19 @@ impl Instruments for Instrumentation {
                 InstrumentationSelection::Metrix(ref instr) => {
                     instr.cursor_to_commit_received(frame_started_at, frame_completed_at)
                 }
+            }
+        }
+    }
+
+    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.cursors_commit_triggered(n_cursors, trigger)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.cursors_commit_triggered(n_cursors, trigger)
             }
         }
     }

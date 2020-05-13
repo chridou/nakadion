@@ -23,6 +23,7 @@ pub struct ControllerState {
     pub batches_sent_to_dispatcher: usize,
     partition_tracker: PartitionTracker,
     stream_state: StreamState,
+    events_received: bool,
 }
 
 impl ControllerState {
@@ -39,6 +40,7 @@ impl ControllerState {
             batches_sent_to_dispatcher: 0,
             partition_tracker: PartitionTracker::new(stream_state.clone()),
             stream_state,
+            events_received: false,
         }
     }
 
@@ -75,6 +77,16 @@ impl ControllerState {
                 frame_completed_at,
                 bytes,
             );
+
+            if self.events_received {
+                let events_batch_gap = now - self.last_events_received_at;
+                self.stream_state
+                    .instrumentation
+                    .batch_frame_gap(events_batch_gap);
+            } else {
+                self.events_received = true;
+            }
+
             self.last_events_received_at = now;
         }
     }
