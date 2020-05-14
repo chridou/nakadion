@@ -101,29 +101,29 @@ impl Default for PublishAttemptTimeoutMillis {
 
 /// The timeout for a complete publishing of events to Nakadi including retries
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum PublishTimeout {
+pub enum PublishTimeoutMillis {
     Infinite,
     Millis(u64),
 }
 
-impl PublishTimeout {
-    env_funs!("PUBLISH_TIMEOUT");
+impl PublishTimeoutMillis {
+    env_funs!("PUBLISH_TIMEOUT_MILLIS");
 
     pub fn into_duration_opt(self) -> Option<Duration> {
         match self {
-            PublishTimeout::Infinite => None,
-            PublishTimeout::Millis(millis) => Some(Duration::from_millis(millis)),
+            PublishTimeoutMillis::Infinite => None,
+            PublishTimeoutMillis::Millis(millis) => Some(Duration::from_millis(millis)),
         }
     }
 }
 
-impl Default for PublishTimeout {
+impl Default for PublishTimeoutMillis {
     fn default() -> Self {
         Self::Infinite
     }
 }
 
-impl<T> From<T> for PublishTimeout
+impl<T> From<T> for PublishTimeoutMillis
 where
     T: Into<u64>,
 {
@@ -132,18 +132,18 @@ where
     }
 }
 
-impl fmt::Display for PublishTimeout {
+impl fmt::Display for PublishTimeoutMillis {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PublishTimeout::Infinite => write!(f, "infinite")?,
-            PublishTimeout::Millis(millis) => write!(f, "{} ms", millis)?,
+            PublishTimeoutMillis::Infinite => write!(f, "infinite")?,
+            PublishTimeoutMillis::Millis(millis) => write!(f, "{} ms", millis)?,
         }
 
         Ok(())
     }
 }
 
-impl FromStr for PublishTimeout {
+impl FromStr for PublishTimeoutMillis {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -154,12 +154,12 @@ impl FromStr for PublishTimeout {
         }
 
         match s {
-            "infinite" => Ok(PublishTimeout::Infinite),
+            "infinite" => Ok(PublishTimeoutMillis::Infinite),
             x => {
                 let millis: u64 = x.parse().map_err(|err| {
                     Error::new(format!("{} is not a publish timeout: {}", s, err))
                 })?;
-                Ok(PublishTimeout::Millis(millis))
+                Ok(PublishTimeoutMillis::Millis(millis))
             }
         }
     }
@@ -215,7 +215,7 @@ impl Default for PublishRetryOnAuthError {
 pub struct PublisherConfig {
     /// Timeout for a complete publishing including potential retries
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<PublishTimeout>,
+    pub timeout_millis: Option<PublishTimeoutMillis>,
     /// Timeout for a single publish request with Nakadi
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt_timeout_millis: Option<PublishAttemptTimeoutMillis>,
@@ -239,8 +239,8 @@ pub struct PublisherConfig {
 impl PublisherConfig {
     env_ctors!();
     fn fill_from_env_prefixed_internal<T: AsRef<str>>(&mut self, prefix: T) -> Result<(), Error> {
-        if self.timeout.is_none() {
-            self.timeout = PublishTimeout::try_from_env_prefixed(prefix.as_ref())?;
+        if self.timeout_millis.is_none() {
+            self.timeout_millis = PublishTimeoutMillis::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         if self.attempt_timeout_millis.is_none() {
@@ -272,8 +272,8 @@ impl PublisherConfig {
     }
 
     /// Timeout for a complete publishing including potential retries
-    pub fn timeout<T: Into<PublishTimeout>>(mut self, v: T) -> Self {
-        self.timeout = Some(v.into());
+    pub fn timeout_millis<T: Into<PublishTimeoutMillis>>(mut self, v: T) -> Self {
+        self.timeout_millis = Some(v.into());
         self
     }
     /// Timeout for a single publish request with Nakadi
@@ -406,7 +406,11 @@ where
         flow_id: FlowId,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
+        backoff.max_elapsed_time = self
+            .config
+            .timeout_millis
+            .unwrap_or_default()
+            .into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
@@ -563,7 +567,11 @@ where
         flow_id: T,
     ) -> PublishFuture<'a> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = self.config.timeout.unwrap_or_default().into_duration_opt();
+        backoff.max_elapsed_time = self
+            .config
+            .timeout_millis
+            .unwrap_or_default()
+            .into_duration_opt();
         backoff.max_interval = self
             .config
             .max_retry_interval_millis
