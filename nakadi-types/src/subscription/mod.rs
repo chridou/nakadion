@@ -4,7 +4,7 @@ use std::fmt;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
 use crate::misc::{AuthorizationAttribute, AuthorizationAttributes, OwningApplication};
@@ -309,7 +309,7 @@ pub struct Subscription {
 /// original name.
 ///
 /// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_SubscriptionCursorWithoutToken)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct EventTypeCursor {
     #[serde(flatten)]
     pub cursor: Cursor,
@@ -330,6 +330,46 @@ impl EventTypePartitionLike for EventTypeCursor {
 impl From<SubscriptionCursor> for EventTypeCursor {
     fn from(c: SubscriptionCursor) -> Self {
         c.into_event_type_cursor()
+    }
+}
+
+impl<'de> Deserialize<'de> for EventTypeCursor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct A {
+            #[serde(flatten)]
+            cursor: Cursor,
+            event_type: EventTypeName,
+        }
+
+        #[derive(Deserialize)]
+        struct B {
+            cursor: Cursor,
+            event_type: EventTypeName,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Variant {
+            A(A),
+            B(B),
+        }
+
+        let variant = Variant::deserialize(deserializer)?;
+
+        match variant {
+            Variant::A(x) => Ok(EventTypeCursor {
+                cursor: x.cursor,
+                event_type: x.event_type,
+            }),
+            Variant::B(x) => Ok(EventTypeCursor {
+                cursor: x.cursor,
+                event_type: x.event_type,
+            }),
+        }
     }
 }
 

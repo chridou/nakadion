@@ -162,10 +162,8 @@ impl Instruments for Metrix {
     }
 
     fn batch_frame_gap(&self, gap: Duration) {
-        self.tx.observed_one_value_now(
-            Metric::BatchProcessingStartedLag,
-            (gap, TimeUnit::Microseconds),
-        );
+        self.tx
+            .observed_one_value_now(Metric::StreamBatchFrameGap, (gap, TimeUnit::Microseconds));
     }
 
     fn no_frames_warning(&self, no_frames_for: Duration) {
