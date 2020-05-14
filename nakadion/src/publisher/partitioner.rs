@@ -258,11 +258,106 @@ fn the_default_hasher_stays_stable() {
     let mut hasher = DefaultBuildHasher.build_hasher();
     sample.hash(&mut hasher);
     let sample_hash = hasher.finish();
-    assert_eq!(sample_hash, 4_641_087_037_712_464_189);
+    assert_eq!(sample_hash, 4_641_087_037_712_464_189, "TestForHasher");
 
     let sample = 1_238_098;
     let mut hasher = DefaultBuildHasher.build_hasher();
     sample.hash(&mut hasher);
     let sample_hash = hasher.finish();
     assert_eq!(sample_hash, 8_063_443_670_793_191_424);
+}
+
+#[test]
+fn partition_hashing_works_stable() {
+    #[derive(Clone, Copy)]
+    struct CustomHashes(&'static str);
+
+    impl std::hash::Hash for CustomHashes {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.0.as_bytes().hash(state)
+        }
+    }
+
+    let sample_keys = [
+        (CustomHashes("SkuXol1A"), PartitionId::new("0")),
+        (CustomHashes("ABA-uXol-Q1AS"), PartitionId::new("1")),
+        (CustomHashes("AAuXol1AS"), PartitionId::new("2")),
+        (CustomHashes("abd"), PartitionId::new("3")),
+        (CustomHashes("Skuwol1A"), PartitionId::new("4")),
+        (CustomHashes("AAuXolZQ1AS"), PartitionId::new("5")),
+        (CustomHashes("SkuXol1AS"), PartitionId::new("6")),
+        (CustomHashes("sjt"), PartitionId::new("7")),
+        (CustomHashes("a--/Xl!a1?Smtr"), PartitionId::new("8")),
+        (CustomHashes("ABA-u?Xol-Q1AS"), PartitionId::new("9")),
+        (CustomHashes("AA-u?Xiol-Q1ASlam"), PartitionId::new("10")),
+        (CustomHashes("abc"), PartitionId::new("11")),
+    ];
+
+    let partitions: Vec<_> = sample_keys.iter().map(|s| s.1.clone()).collect();
+
+    let partitioner = Partitioner::new_sorted(partitions);
+
+    for (sample_key, expected_partition) in sample_keys.iter() {
+        let assigned_partition = partitioner.partition_for_key(sample_key);
+
+        assert_eq!(assigned_partition, expected_partition);
+    }
+}
+
+#[test]
+fn partition_assignment_works_stable() {
+    #[derive(Clone, Copy)]
+    struct CustomHashes(&'static str);
+
+    impl std::hash::Hash for CustomHashes {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.0.as_bytes().hash(state)
+        }
+    }
+
+    let sample_keys = [
+        (CustomHashes("SkuXol1A"), PartitionId::new("0")),
+        (CustomHashes("ABA-uXol-Q1AS"), PartitionId::new("1")),
+        (CustomHashes("AAuXol1AS"), PartitionId::new("2")),
+        (CustomHashes("abd"), PartitionId::new("3")),
+        (CustomHashes("Skuwol1A"), PartitionId::new("4")),
+        (CustomHashes("AAuXolZQ1AS"), PartitionId::new("5")),
+        (CustomHashes("SkuXol1AS"), PartitionId::new("6")),
+        (CustomHashes("sjt"), PartitionId::new("7")),
+        (CustomHashes("a--/Xl!a1?Smtr"), PartitionId::new("8")),
+        (CustomHashes("ABA-u?Xol-Q1AS"), PartitionId::new("9")),
+        (CustomHashes("AA-u?Xiol-Q1ASlam"), PartitionId::new("10")),
+        (CustomHashes("abc"), PartitionId::new("11")),
+    ];
+
+    struct EventSample {
+        key: CustomHashes,
+        partition: Option<PartitionId>,
+    }
+
+    impl PartitionAssignable for EventSample {
+        fn assign_partition(&mut self, partition: &PartitionId) {
+            self.partition = Some(partition.clone());
+        }
+    }
+
+    impl PartitionKeyExtractable for EventSample {
+        type Key = CustomHashes;
+        fn partition_key(&self) -> Self::Key {
+            self.key
+        }
+    }
+    let partitions: Vec<_> = sample_keys.iter().map(|s| s.1.clone()).collect();
+
+    let partitioner = Partitioner::new_sorted(partitions);
+
+    for (sample_key, expected_partition) in sample_keys.iter() {
+        let mut event_sample = EventSample {
+            key: *sample_key,
+            partition: None,
+        };
+        partitioner.assign(&mut event_sample);
+
+        assert_eq!(event_sample.partition.as_ref(), Some(expected_partition));
+    }
 }
