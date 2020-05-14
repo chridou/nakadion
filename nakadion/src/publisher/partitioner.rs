@@ -101,7 +101,7 @@ where
     ///
     /// The partitions will be sorted by first trying to convert
     /// the partitions to numbers and sorting by these. Otherwise
-    /// they will be sorted ba their contained string.
+    /// they will be sorted by their string representation.
     ///
     /// ## Panics
     ///
@@ -115,7 +115,7 @@ where
     ///
     /// The partitions will be sorted by first trying to convert
     /// the partitions to numbers and sorting by these. Otherwise
-    /// they will be sorted ba their contained string.
+    /// they will be sorted by their string representation.
     ///
     /// Fails if the event type has no partitions.
     pub async fn from_event_type_with_hasher<C>(
@@ -143,7 +143,7 @@ where
     }
 
     /// Returns the partition that matches the given key
-    fn partition_for_key<H>(&self, partition_key: &H) -> &PartitionId
+    pub fn partition_for_key<H>(&self, partition_key: &H) -> &PartitionId
     where
         H: Hash,
     {
