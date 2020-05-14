@@ -120,7 +120,7 @@ pub trait Instruments {
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
     fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
     /// Cursors commit was triggered.
-    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger);
+    fn cursors_commit_triggered(&self, trigger: CommitTrigger);
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
@@ -517,16 +517,12 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger) {
+    fn cursors_commit_triggered(&self, trigger: CommitTrigger) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => {
-                instr.cursors_commit_triggered(n_cursors, trigger)
-            }
+            InstrumentationSelection::Custom(ref instr) => instr.cursors_commit_triggered(trigger),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => {
-                instr.cursors_commit_triggered(n_cursors, trigger)
-            }
+            InstrumentationSelection::Metrix(ref instr) => instr.cursors_commit_triggered(trigger),
         }
     }
 

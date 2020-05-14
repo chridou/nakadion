@@ -50,11 +50,47 @@ impl CommitData {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CommitTrigger {
     /// The deadline to commit was reached
-    Deadline,
+    Deadline {
+        n_cursors: usize,
+        n_events: Option<usize>,
+    },
     /// Enough events were received
-    Events,
+    Events {
+        n_cursors: usize,
+        n_events: Option<usize>,
+    },
     /// Enough cursors were received
-    Cursors,
+    Cursors {
+        n_cursors: usize,
+        n_events: Option<usize>,
+    },
+}
+
+impl CommitTrigger {
+    pub fn stats(&self) -> (usize, Option<usize>) {
+        match *self {
+            CommitTrigger::Deadline {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+            CommitTrigger::Events {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+            CommitTrigger::Cursors {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+        }
+    }
+
+    pub fn n_cursors(&self) -> usize {
+        self.stats().0
+    }
+
+    pub fn n_events(&self) -> Option<usize> {
+        self.stats().1
+    }
 }
 
 /// Handle to send commit messages to the background task.

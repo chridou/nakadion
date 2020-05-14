@@ -255,19 +255,48 @@ impl Instruments for Metrix {
         );
     }
 
-    fn cursors_commit_triggered(&self, n_cursors: usize, trigger: CommitTrigger) {
+    fn cursors_commit_triggered(&self, trigger: CommitTrigger) {
         match trigger {
-            CommitTrigger::Deadline => {
-                self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerDeadlineCount, n_cursors);
+            CommitTrigger::Deadline {
+                n_cursors,
+                n_events,
+            } => {
+                self.tx.observed_one_value_now(
+                    Metric::CommitterTriggerDeadlineCursorsCount,
+                    n_cursors,
+                );
+                if let Some(n_events) = n_events {
+                    self.tx.observed_one_value_now(
+                        Metric::CommitterTriggerDeadlineEventsCount,
+                        n_events,
+                    );
+                }
             }
-            CommitTrigger::Events => {
+            CommitTrigger::Events {
+                n_cursors,
+                n_events,
+            } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerEventsCount, n_cursors);
+                    .observed_one_value_now(Metric::CommitterTriggerEventsCursorsCount, n_cursors);
+                if let Some(n_events) = n_events {
+                    self.tx.observed_one_value_now(
+                        Metric::CommitterTriggerEventsEventsCount,
+                        n_events,
+                    );
+                }
             }
-            CommitTrigger::Cursors => {
+            CommitTrigger::Cursors {
+                n_cursors,
+                n_events,
+            } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerCursorsCount, n_cursors);
+                    .observed_one_value_now(Metric::CommitterTriggerCursorsCursorsCount, n_cursors);
+                if let Some(n_events) = n_events {
+                    self.tx.observed_one_value_now(
+                        Metric::CommitterTriggerCursorsEventsCount,
+                        n_events,
+                    );
+                }
             }
         }
     }
@@ -338,9 +367,12 @@ pub enum Metric {
     CommitterCursorsNotCommittedCount,
     CommitterAttemptFailedTime,
     CommitterAttemptFailedCount,
-    CommitterTriggerDeadlineCount,
-    CommitterTriggerEventsCount,
-    CommitterTriggerCursorsCount,
+    CommitterTriggerDeadlineCursorsCount,
+    CommitterTriggerEventsCursorsCount,
+    CommitterTriggerCursorsCursorsCount,
+    CommitterTriggerDeadlineEventsCount,
+    CommitterTriggerEventsEventsCount,
+    CommitterTriggerCursorsEventsCount,
 }
 
 mod instr {
@@ -583,26 +615,94 @@ mod instr {
     fn create_committer_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "committer")
             .panel(
-                Panel::named(
-                    (
-                        Metric::CommitterTriggerCursorsCount,
-                        Metric::CommitterTriggerDeadlineCount,
-                        Metric::CommitterTriggerEventsCount,
+                Panel::named(AcceptAllLabels, "triggers")
+                    .panel(
+                        Panel::named(
+                            (
+                                Metric::CommitterTriggerDeadlineCursorsCount,
+                                Metric::CommitterTriggerDeadlineEventsCount,
+                            ),
+                            "deadline",
+                        )
+                        .meter(
+                            Meter::new_with_defaults("occurrences_per_second")
+                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("cursors_per_second")
+                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("cursors_distribution")
+                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("events_per_second")
+                                .for_label(Metric::CommitterTriggerDeadlineEventsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("events_distribution")
+                                .for_label(Metric::CommitterTriggerDeadlineEventsCount),
+                        ),
+                    )
+                    .panel(
+                        Panel::named(
+                            (
+                                Metric::CommitterTriggerCursorsCursorsCount,
+                                Metric::CommitterTriggerCursorsEventsCount,
+                            ),
+                            "cursors",
+                        )
+                        .meter(
+                            Meter::new_with_defaults("occurrences_per_second")
+                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("cursors_per_second")
+                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("cursors_distribution")
+                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("events_per_second")
+                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("events_distribution")
+                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                        ),
+                    )
+                    .panel(
+                        Panel::named(
+                            (
+                                Metric::CommitterTriggerEventsCursorsCount,
+                                Metric::CommitterTriggerEventsEventsCount,
+                            ),
+                            "events",
+                        )
+                        .meter(
+                            Meter::new_with_defaults("occurrences_per_second")
+                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("cursors_per_second")
+                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("cursors_distribution")
+                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                        )
+                        .handler(
+                            ValueMeter::new_with_defaults("events_per_second")
+                                .for_label(Metric::CommitterTriggerEventsEventsCount),
+                        )
+                        .histogram(
+                            Histogram::new_with_defaults("events_distribution")
+                                .for_label(Metric::CommitterTriggerEventsEventsCount),
+                        ),
                     ),
-                    "triggers",
-                )
-                .handler(
-                    ValueMeter::new_with_defaults("cursors_by_deadline_per_second")
-                        .for_label(Metric::CommitterTriggerDeadlineCount),
-                )
-                .handler(
-                    ValueMeter::new_with_defaults("cursors_by_events_per_second")
-                        .for_label(Metric::CommitterTriggerEventsCount),
-                )
-                .handler(
-                    ValueMeter::new_with_defaults("cursors_by_cursors_per_second")
-                        .for_label(Metric::CommitterTriggerCursorsCount),
-                ),
             )
             .panel(
                 Panel::named(AcceptAllLabels, "cursors")

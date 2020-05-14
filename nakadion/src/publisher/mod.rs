@@ -88,14 +88,14 @@ impl FromStr for PartialFailureStrategy {
 
 new_type! {
     #[doc="The time a publish attempt for an events batch may take.\n\n\
-    Default is 30 seconds\n"]
+    Default is 31 seconds\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct PublishAttemptTimeoutMillis(u64, env="PUBLISH_ATTEMPT_TIMEOUT_MILLIS");
 }
 
 impl Default for PublishAttemptTimeoutMillis {
     fn default() -> Self {
-        Self(30_000)
+        Self(31_000)
     }
 }
 

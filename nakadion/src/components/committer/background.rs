@@ -88,9 +88,7 @@ where
 
         let cursors: Vec<_> = pending.cursors().collect();
         committer.set_flow_id(FlowId::random());
-        committer
-            .instrumentation
-            .cursors_commit_triggered(cursors.len(), trigger);
+        committer.instrumentation.cursors_commit_triggered(trigger);
         match committer.commit(&cursors).await {
             Ok(_) => {
                 pending.reset();
@@ -229,24 +227,52 @@ impl PendingCursors {
 
         if let Some(deadline) = self.current_deadline {
             if deadline <= now {
-                return Some(CommitTrigger::Deadline);
+                return Some(CommitTrigger::Deadline {
+                    n_cursors: self.collected_cursors,
+                    n_events: if self.collected_events == 0 {
+                        None
+                    } else {
+                        Some(self.collected_events)
+                    },
+                });
             }
         }
 
         match self.commit_strategy {
-            CommitStrategy::Immediately => Some(CommitTrigger::Deadline),
+            CommitStrategy::Immediately => Some(CommitTrigger::Deadline {
+                n_cursors: self.collected_cursors,
+                n_events: if self.collected_events == 0 {
+                    None
+                } else {
+                    Some(self.collected_events)
+                },
+            }),
             CommitStrategy::LatestPossible => None,
             CommitStrategy::After {
                 cursors, events, ..
             } => {
                 if let Some(cursors) = cursors {
                     if self.collected_cursors >= cursors as usize {
-                        return Some(CommitTrigger::Cursors);
+                        return Some(CommitTrigger::Cursors {
+                            n_cursors: self.collected_cursors,
+                            n_events: if self.collected_events == 0 {
+                                None
+                            } else {
+                                Some(self.collected_events)
+                            },
+                        });
                     }
                 }
                 if let Some(events) = events {
                     if self.collected_events >= events as usize {
-                        return Some(CommitTrigger::Events);
+                        return Some(CommitTrigger::Events {
+                            n_cursors: self.collected_cursors,
+                            n_events: if self.collected_events == 0 {
+                                None
+                            } else {
+                                Some(self.collected_events)
+                            },
+                        });
                     }
                 }
                 None
