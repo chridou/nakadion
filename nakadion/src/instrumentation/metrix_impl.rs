@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 
-use metrix::instruments::Gauge;
 use metrix::{
     processor::ProcessorMount, AggregatesProcessors, Decrement, DecrementBy, Increment,
     TelemetryTransmitter, TimeUnit, TransmitsTelemetryData,
@@ -69,6 +68,17 @@ impl Default for AlertDurationSecs {
     }
 }
 
+new_type! {
+    #[doc="The time after which a histogram is reset.\n\nDefault is 60s.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub secs struct HistogramInactivityResetSecs(u32, env="METRIX_HISTOGRAM_INACTIVITY_RESET_SECS");
+}
+impl Default for HistogramInactivityResetSecs {
+    fn default() -> Self {
+        60.into()
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct MetrixConfig {
@@ -76,6 +86,8 @@ pub struct MetrixConfig {
     pub gauge_tracking_secs: Option<MetrixGaugeTrackingSecs>,
     /// Enables tracking for gauges for the given amount of seconds
     pub alert_duration_secs: Option<AlertDurationSecs>,
+    /// Enables tracking for gauges for the given amount of seconds
+    pub histogram_inactivity_reset_secs: Option<HistogramInactivityResetSecs>,
 }
 
 impl MetrixConfig {
@@ -90,6 +102,10 @@ impl MetrixConfig {
         }
         if self.alert_duration_secs.is_none() {
             self.alert_duration_secs = AlertDurationSecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
+        if self.histogram_inactivity_reset_secs.is_none() {
+            self.histogram_inactivity_reset_secs =
+                HistogramInactivityResetSecs::try_from_env_prefixed(prefix.as_ref())?;
         }
         Ok(())
     }
@@ -379,7 +395,6 @@ mod instr {
     use metrix::TelemetryTransmitter;
     use metrix::TimeUnit;
 
-    use super::{create_gauge, create_staircase_timer};
     use super::{Metric, MetrixConfig};
 
     pub fn create(
@@ -423,9 +438,9 @@ mod instr {
         cockpit.add_panel(panel);
     }
 
-    fn create_stream_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+    fn create_stream_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "stream")
-            .panel(create_connector_metrics(_config))
+            .panel(create_connector_metrics(config))
             .panel(Panel::named(AcceptAllLabels, "ticks").meter(
                 Meter::new_with_defaults("emitted_per_second").for_label(Metric::StreamTickEmitted),
             ))
@@ -440,7 +455,7 @@ mod instr {
                             .for_label(Metric::StreamChunkReceivedBytes),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("size_distribution")
+                        create_histogram("size_distribution", config)
                             .accept(Metric::StreamChunkReceivedBytes),
                     ),
             )
@@ -455,11 +470,11 @@ mod instr {
                             .for_label(Metric::StreamFrameCompletedBytes),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("size_distribution")
+                        create_histogram("size_distribution", config)
                             .accept(Metric::StreamFrameCompletedBytes),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("completion_time_us")
+                        create_histogram("completion_time_us", config)
                             .display_time_unit(TimeUnit::Microseconds)
                             .accept(Metric::StreamFrameCompletedTime),
                     )
@@ -476,7 +491,7 @@ mod instr {
                             .for_label(Metric::StreamBatchFrameReceivedLag),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("batch_frame_gap_us")
+                        create_histogram("batch_frame_gap_us", config)
                             .display_time_unit(TimeUnit::Microseconds)
                             .accept(Metric::StreamBatchFrameGap),
                     ),
@@ -485,7 +500,7 @@ mod instr {
         cockpit.add_panel(panel);
     }
 
-    fn create_connector_metrics(_config: &MetrixConfig) -> Panel<Metric> {
+    fn create_connector_metrics(config: &MetrixConfig) -> Panel<Metric> {
         let panel = Panel::named(AcceptAllLabels, "connector")
             .panel(
                 Panel::named(AcceptAllLabels, "attempts")
@@ -503,7 +518,7 @@ mod instr {
                             .for_label(Metric::StreamConnectAttemptFailedTime),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("failed_time_ms")
+                        create_histogram("failed_time_ms", config)
                             .display_time_unit(TimeUnit::Milliseconds)
                             .accept(Metric::StreamConnectAttemptFailedTime),
                     ),
@@ -527,7 +542,7 @@ mod instr {
                             .for_label(Metric::StreamNotConnectedTime),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("success_time_ms")
+                        create_histogram("success_time_ms", config)
                             .display_time_unit(TimeUnit::Milliseconds)
                             .accept(Metric::StreamNotConnectedTime),
                     ),
@@ -536,10 +551,10 @@ mod instr {
         panel
     }
 
-    fn create_lag_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+    fn create_lag_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "frame_lag")
             .histogram(
-                Histogram::new_with_defaults("stream_us")
+                create_histogram("stream_us", config)
                     .display_time_unit(TimeUnit::Microseconds)
                     .accept((
                         Metric::StreamBatchFrameReceivedLag,
@@ -548,12 +563,12 @@ mod instr {
                     )),
             )
             .histogram(
-                Histogram::new_with_defaults("batch_handlers_us")
+                create_histogram("batch_handlers_us", config)
                     .display_time_unit(TimeUnit::Microseconds)
                     .accept(Metric::BatchProcessingStartedLag),
             )
             .histogram(
-                Histogram::new_with_defaults("committer_us")
+                create_histogram("committer_us", config)
                     .display_time_unit(TimeUnit::Microseconds)
                     .accept(Metric::CommitterCursorsReceivedLag),
             );
@@ -572,7 +587,7 @@ mod instr {
                 Meter::new_with_defaults("per_second").for_label(Metric::BatchProcessingStartedLag),
             )
             .histogram(
-                Histogram::new_with_defaults("processing_time_us")
+                create_histogram("processing_time_us", config)
                     .display_time_unit(TimeUnit::Microseconds)
                     .for_label(Metric::BatchProcessedTime),
             )
@@ -581,24 +596,23 @@ mod instr {
                     .for_label(Metric::BatchProcessedBytes),
             )
             .histogram(
-                Histogram::new_with_defaults("bytes_per_batch")
-                    .for_label(Metric::BatchProcessedBytes),
+                create_histogram("bytes_per_batch", config).for_label(Metric::BatchProcessedBytes),
             );
 
         cockpit.add_panel(panel);
     }
 
-    fn create_events_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+    fn create_events_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "events")
             .handler(
                 ValueMeter::new_with_defaults("per_second")
                     .for_label(Metric::BatchProcessedNEvents),
             )
             .histogram(
-                Histogram::new_with_defaults("per_batch").for_label(Metric::BatchProcessedNEvents),
+                create_histogram("per_batch", config).for_label(Metric::BatchProcessedNEvents),
             )
             .histogram(
-                Histogram::new_with_defaults("deserialization_time_us")
+                create_histogram("deserialization_time_us", config)
                     .display_time_unit(TimeUnit::Microseconds)
                     .for_label(Metric::BatchDeserializationTime),
             )
@@ -610,7 +624,7 @@ mod instr {
         cockpit.add_panel(panel);
     }
 
-    fn create_committer_metrics(cockpit: &mut Cockpit<Metric>, _config: &MetrixConfig) {
+    fn create_committer_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "committer")
             .panel(
                 Panel::named(AcceptAllLabels, "triggers")
@@ -631,7 +645,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("cursors_distribution")
+                            create_histogram("cursors_distribution", config)
                                 .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
                         )
                         .handler(
@@ -639,7 +653,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerDeadlineEventsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("events_distribution")
+                            create_histogram("events_distribution", config)
                                 .for_label(Metric::CommitterTriggerDeadlineEventsCount),
                         ),
                     )
@@ -660,7 +674,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerCursorsCursorsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("cursors_distribution")
+                            create_histogram("cursors_distribution", config)
                                 .for_label(Metric::CommitterTriggerCursorsCursorsCount),
                         )
                         .handler(
@@ -668,7 +682,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerCursorsEventsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("events_distribution")
+                            create_histogram("events_distribution", config)
                                 .for_label(Metric::CommitterTriggerCursorsEventsCount),
                         ),
                     )
@@ -689,7 +703,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerEventsCursorsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("cursors_distribution")
+                            create_histogram("cursors_distribution", config)
                                 .for_label(Metric::CommitterTriggerEventsCursorsCount),
                         )
                         .handler(
@@ -697,7 +711,7 @@ mod instr {
                                 .for_label(Metric::CommitterTriggerEventsEventsCount),
                         )
                         .histogram(
-                            Histogram::new_with_defaults("events_distribution")
+                            create_histogram("events_distribution", config)
                                 .for_label(Metric::CommitterTriggerEventsEventsCount),
                         ),
                     ),
@@ -728,7 +742,7 @@ mod instr {
                             .for_label(Metric::CommitterCursorsCommittedTime),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("latency_ms")
+                        create_histogram("latency_ms", config)
                             .display_time_unit(TimeUnit::Milliseconds)
                             .for_label(Metric::CommitterCursorsCommittedTime),
                     ),
@@ -740,7 +754,7 @@ mod instr {
                             .for_label(Metric::CommitterCursorsNotCommittedTime),
                     )
                     .histogram(
-                        Histogram::new_with_defaults("latency_ms")
+                        create_histogram("latency_ms", config)
                             .display_time_unit(TimeUnit::Milliseconds)
                             .for_label(Metric::CommitterCursorsNotCommittedTime),
                     ),
@@ -758,7 +772,7 @@ mod instr {
                         .for_label(Metric::CommitterAttemptFailedCount),
                 )
                 .histogram(
-                    Histogram::new_with_defaults("latency_ms")
+                    create_histogram("latency_ms", config)
                         .display_time_unit(TimeUnit::Milliseconds)
                         .for_label(Metric::CommitterAttemptFailedTime),
                 ),
@@ -777,19 +791,27 @@ mod instr {
 
         cockpit.add_panel(panel);
     }
-}
 
-fn create_gauge(name: &str, config: &MetrixConfig) -> Gauge {
-    let tracking_seconds = config.gauge_tracking_secs.unwrap_or_default();
-    Gauge::new(name)
-        .tracking(tracking_seconds.into_inner() as usize)
-        .group_values(true)
-}
+    fn create_gauge(name: &str, config: &MetrixConfig) -> Gauge {
+        let tracking_seconds = config.gauge_tracking_secs.unwrap_or_default();
+        Gauge::new(name)
+            .tracking(tracking_seconds.into_inner() as usize)
+            .group_values(true)
+    }
 
-fn create_staircase_timer(
-    name: &str,
-    config: &MetrixConfig,
-) -> metrix::instruments::StaircaseTimer {
-    let switch_off_after = config.alert_duration_secs.unwrap_or_default();
-    metrix::instruments::StaircaseTimer::new(name).switch_off_after(switch_off_after.into())
+    fn create_staircase_timer(name: &str, config: &MetrixConfig) -> StaircaseTimer {
+        let switch_off_after = config.alert_duration_secs.unwrap_or_default();
+        StaircaseTimer::new(name).switch_off_after(switch_off_after.into())
+    }
+
+    fn create_histogram(name: &str, config: &MetrixConfig) -> Histogram {
+        let inactivity_dur = config
+            .histogram_inactivity_reset_secs
+            .unwrap_or_default()
+            .into_duration();
+        Histogram::new(name)
+            .inactivity_limit(inactivity_dur)
+            .reset_after_inactivity(true)
+            .show_activity_state(false)
+    }
 }
