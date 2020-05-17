@@ -4,7 +4,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::nakadi_types::subscription::StreamCommitTimeoutSecs;
-use crate::nakadi_types::Error;
+use crate::{consumer::StreamParameters, nakadi_types::Error};
 
 new_type! {
     #[doc="The time a publish attempt for an events batch may take.\n\n\
@@ -207,6 +207,18 @@ impl CommitStrategy {
                 Ok(())
             }
             _ => Ok(()),
+        }
+    }
+
+    pub fn derive_from_stream_parameters(stream_parameters: &StreamParameters) -> Self {
+        let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
+        let after_events = ((max_uncommitted_events as f32 * 0.75) as u32).max(10);
+        let batch_limit: u32 = stream_parameters.batch_limit.unwrap_or_default().into();
+        let after_batches = (after_events / batch_limit).max(1);
+        CommitStrategy::After {
+            seconds: Some(1),
+            cursors: Some(after_batches),
+            events: Some(after_events),
         }
     }
 }

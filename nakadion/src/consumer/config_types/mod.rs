@@ -406,9 +406,10 @@ impl Builder {
         self.connect_config.apply_defaults();
 
         if self.commit_config.commit_strategy.is_none() {
-            self.commit_config.commit_strategy = Some(guess_commit_strategy(
-                &self.connect_config.stream_parameters,
-            ))
+            self.commit_config.commit_strategy =
+                Some(CommitStrategy::derive_from_stream_parameters(
+                    &self.connect_config.stream_parameters,
+                ))
         }
 
         set_stream_commit_timeout(&mut self.commit_config, &self.connect_config);
@@ -481,8 +482,9 @@ impl Builder {
         if let Some(commit_strategy) = commit_config.commit_strategy {
             commit_strategy.validate()?;
         } else {
-            commit_config.commit_strategy =
-                Some(guess_commit_strategy(&connect_config.stream_parameters));
+            commit_config.commit_strategy = Some(CommitStrategy::derive_from_stream_parameters(
+                &connect_config.stream_parameters,
+            ));
         }
         set_stream_commit_timeout(&mut commit_config, &connect_config);
         commit_config.apply_defaults();
@@ -513,22 +515,5 @@ fn set_stream_commit_timeout(commit_config: &mut CommitConfig, connect_config: &
             .commit_timeout_secs
             .unwrap_or_default();
         commit_config.stream_commit_timeout_secs = Some(timeout);
-    }
-}
-
-fn guess_commit_strategy(stream_parameters: &StreamParameters) -> CommitStrategy {
-    let timeout = stream_parameters.effective_commit_timeout_secs();
-    let commit_after = timeout / 6;
-    let commit_after = std::cmp::max(1, commit_after);
-    let max_uncommitted_events = stream_parameters.effective_max_uncommitted_events();
-    let effective_events_limit = max_uncommitted_events / 2;
-    let effective_events_limit = std::cmp::max(1, effective_events_limit);
-    let batch_limit = stream_parameters.effective_batch_limit();
-    let effective_batches_limit = std::cmp::max((max_uncommitted_events / batch_limit) / 2, 1);
-    let effective_batches_limit = std::cmp::max(1, effective_batches_limit);
-    CommitStrategy::After {
-        seconds: Some(commit_after),
-        cursors: Some(effective_batches_limit),
-        events: Some(effective_events_limit),
     }
 }

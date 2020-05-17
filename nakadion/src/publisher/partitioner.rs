@@ -237,8 +237,20 @@ fn partition_for_hash<P>(partitions: &[P], hash: u64) -> &P {
     &partitions[idx as usize]
 }
 
+#[test]
+fn partition_for_for_hash_assigns_correctly() {
+    let partitions = &[1u32, 2, 3];
+
+    assert_eq!(*partition_for_hash(partitions, 0), 1);
+    assert_eq!(*partition_for_hash(partitions, 1), 2);
+    assert_eq!(*partition_for_hash(partitions, 2), 3);
+    assert_eq!(*partition_for_hash(partitions, 3), 1);
+    assert_eq!(*partition_for_hash(partitions, 4), 2);
+    assert_eq!(*partition_for_hash(partitions, 5), 3);
+}
+
 #[cfg(test)]
-mod test {
+mod tests_with_default_hasher {
     use super::*;
 
     #[derive(Clone, Copy)]
@@ -251,19 +263,7 @@ mod test {
     }
 
     #[test]
-    fn partition_for_hash_works() {
-        let partitions = &[1u32, 2, 3];
-
-        assert_eq!(*partition_for_hash(partitions, 0), 1);
-        assert_eq!(*partition_for_hash(partitions, 1), 2);
-        assert_eq!(*partition_for_hash(partitions, 2), 3);
-        assert_eq!(*partition_for_hash(partitions, 3), 1);
-        assert_eq!(*partition_for_hash(partitions, 4), 2);
-        assert_eq!(*partition_for_hash(partitions, 5), 3);
-    }
-
-    #[test]
-    fn the_default_hasher_stays_stable() {
+    fn hasher_is_stable() {
         // WARNING! If this test fails behaviour of components
         // using the DefaultBuildHasher will change in a seriously
         // broken way!
@@ -292,7 +292,7 @@ mod test {
     }
 
     #[test]
-    fn partition_hashing_works_stable() {
+    fn get_partitions_by_hash() {
         let sample_keys = [
             (CustomHashes("HE742A011-Q110010000"), PartitionId::new("0")),
             (CustomHashes("PU143E0A9-Q110152000"), PartitionId::new("1")),
@@ -320,7 +320,7 @@ mod test {
     }
 
     #[test]
-    fn partition_assignment_works_stable() {
+    fn assign_partitions_by_hash() {
         let sample_keys = [
             (CustomHashes("HE742A011-Q110010000"), PartitionId::new("0")),
             (CustomHashes("PU143E0A9-Q110152000"), PartitionId::new("1")),

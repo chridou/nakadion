@@ -39,9 +39,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nakadi_base_url =
         NakadiBaseUrl::try_from_env()?.unwrap_or_else(|| "http://localhost:8080".parse().unwrap());
 
-    let api_client = ApiClient::builder()
+    let mut api_client = ApiClient::builder()
         .nakadi_base_url(nakadi_base_url)
         .finish(NoAuthAccessTokenProvider)?;
+
+    api_client.set_on_retry(|err, retry_in| {
+        println!("WARNING! Request failed (retry in {:?}): {}", retry_in, err)
+    });
 
     remove_subscriptions(api_client.clone()).await?;
 
