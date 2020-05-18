@@ -10,70 +10,108 @@ use serde::{Deserialize, Serialize};
 use crate::event::EventId;
 use crate::FlowId;
 
-/// An aggregation of status items corresponding to each individual Event’s publishing attempt.
+/// An evaluated response from Nakadi when events were published.
 ///
-/// See also [Nakadi Manual](https://nakadi.io/manual.html#definition_BatchItemResponse)
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct BatchResponse {
-    /// Since this struct is usually part of a failure scenario it
-    /// can contain a `FlowId`
-    #[serde(skip_serializing_if = "Option::is_none")]
+/// A `FlowId` is contained since a worth logging state might be contained in this struct
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
+#[derive(Debug, Clone)]
+pub struct FailedSubmission {
     pub flow_id: Option<FlowId>,
-    pub batch_items: Vec<BatchItemResponse>,
+    /// The actual outcome of the submission attempt
+    pub failure: SubmissionFailure,
 }
 
-impl BatchResponse {
+impl fmt::Display for FailedSubmission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.failure)?;
+
+        Ok(())
+    }
+}
+
+impl FailedSubmission {
+    pub fn is_unprocessable(&self) -> bool {
+        if let SubmissionFailure::Unprocessable(_) = self.failure {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// The outcome of a submission/publishing attempt to Nakadi.
+///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/event-types/name/events_post)
+#[derive(Debug, Clone)]
+pub enum SubmissionFailure {
+    /// At least one event failed to be validated, enriched or partitioned. None were submitted.
+    ///
+    /// Nakadi responded with 422-UNPROCESSABLE.
+    Unprocessable(Vec<BatchItemResponse>),
+    /// At least one event has failed to be submitted. The batch might be partially submitted.
+    ///
+    /// Nakadi responded with 207-MULTI STATUS.
+    NotAllSubmitted(Vec<BatchItemResponse>),
+}
+
+impl SubmissionFailure {
     /// Returns true if there are no `BatchItemResponse`s.
     ///
     /// This means also that no errors occurred.
     pub fn is_empty(&self) -> bool {
-        self.batch_items.is_empty()
+        match self {
+            SubmissionFailure::Unprocessable(ref items) => items.is_empty(),
+            SubmissionFailure::NotAllSubmitted(ref items) => items.is_empty(),
+        }
     }
 
     /// Returns the amount of `BatchItemResponse`s.
     ///
     /// Usually at least one contains an error.
     pub fn len(&self) -> usize {
-        self.batch_items.len()
+        match self {
+            SubmissionFailure::Unprocessable(ref items) => items.len(),
+            SubmissionFailure::NotAllSubmitted(ref items) => items.len(),
+        }
+    }
+
+    /// Iterate over all `BatchItemResponse`s
+    pub fn iter(&self) -> impl Iterator<Item = &BatchItemResponse> {
+        match self {
+            SubmissionFailure::Unprocessable(ref items) => items.iter(),
+            SubmissionFailure::NotAllSubmitted(ref items) => items.iter(),
+        }
     }
 
     /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Failed`
     pub fn failed_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
-        self.batch_items
-            .iter()
+        self.iter()
             .filter(|item| item.publishing_status == PublishingStatus::Failed)
     }
 
     /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Aborted`
     pub fn aborted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
-        self.batch_items
-            .iter()
+        self.iter()
             .filter(|item| item.publishing_status == PublishingStatus::Aborted)
     }
 
     /// Iterate over all `BatchItemResponse`s where the publishing status is `PublishingStatus::Submitted`
     pub fn submitted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
-        self.batch_items
-            .iter()
+        self.iter()
             .filter(|item| item.publishing_status == PublishingStatus::Submitted)
     }
 
     /// Iterate over all `BatchItemResponse`s where the publishing status is not `PublishingStatus::Submitted`
     pub fn non_submitted_response_items(&self) -> impl Iterator<Item = &BatchItemResponse> {
-        self.batch_items
-            .iter()
+        self.iter()
             .filter(|item| item.publishing_status != PublishingStatus::Submitted)
-    }
-
-    /// Iterate over all `BatchItemResponse`s
-    pub fn iter(&self) -> impl Iterator<Item = &BatchItemResponse> {
-        self.batch_items.iter()
     }
 
     pub fn stats(&self) -> BatchStats {
         let mut stats = BatchStats::default();
 
-        for item in &self.batch_items {
+        for item in self.iter() {
             stats.n_items += 1;
             match item.publishing_status {
                 PublishingStatus::Submitted => stats.n_submitted += 1,
@@ -92,23 +130,26 @@ impl BatchResponse {
     }
 }
 
-impl IntoIterator for BatchResponse {
+impl IntoIterator for SubmissionFailure {
     type Item = BatchItemResponse;
     type IntoIter = std::vec::IntoIter<BatchItemResponse>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.batch_items.into_iter()
+        match self {
+            SubmissionFailure::NotAllSubmitted(items) => items.into_iter(),
+            SubmissionFailure::Unprocessable(items) => items.into_iter(),
+        }
     }
 }
 
-impl fmt::Display for BatchResponse {
+impl fmt::Display for SubmissionFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let num_submitted = self.submitted_response_items().count();
         let num_failed = self.failed_response_items().count();
         let num_aborted = self.aborted_response_items().count();
         write!(
             f,
-            "BatchResponse(items:{}, submitted:{}, failed: {}, aborted: {})",
+            "items:{}, submitted:{}, failed: {}, aborted: {}",
             self.len(),
             num_submitted,
             num_failed,

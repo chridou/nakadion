@@ -119,71 +119,52 @@ pub trait SchemaRegistryApi {
 
 /// Possible error variants returned from publishing events
 #[derive(Debug)]
-pub enum PublishFailure {
-    /// The submitted events were unprocessable so none were published
-    Unprocessable(BatchResponse),
-    /// Only some events failed.
-    PartialFailure(BatchResponse),
+pub enum PublishError {
+    SubmissionFailed(FailedSubmission),
     /// There was an error that was not `Unprocessable`
     Other(NakadiApiError),
 }
 
-impl PublishFailure {
-    /// Turns this failure into either a `BatchResponse` or a `NakadiApiError` whereas the
-    /// `NakadiApiError` is considered
-    /// an error since the `NakadiApiError` can also hint on Nakadi problems or bad requests.
-    pub fn into_result(self) -> Result<BatchResponse, NakadiApiError> {
-        match self {
-            PublishFailure::Unprocessable(batch_response) => Ok(batch_response),
-            PublishFailure::PartialFailure(batch_response) => Ok(batch_response),
-            PublishFailure::Other(api_error) => Err(api_error),
-        }
-    }
-}
-
-impl StdError for PublishFailure {
+impl StdError for PublishError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            PublishFailure::Other(err) => err.source(),
+            PublishError::Other(err) => err.source(),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for PublishFailure {
+impl fmt::Display for PublishError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PublishFailure::Other(err) => write!(f, "publishing failed: {}", err)?,
-            PublishFailure::PartialFailure(batch) => {
-                write!(f, "publishing failed partially: {}", batch)?
-            }
-            PublishFailure::Unprocessable(batch) => write!(f, "publishing failed: {}", batch)?,
+            PublishError::Other(err) => write!(f, "publishing failed: {}", err)?,
+            PublishError::SubmissionFailed(failure) => write!(f, "submission failed: {}", failure)?,
         }
 
         Ok(())
     }
 }
 
-impl From<NakadiApiError> for PublishFailure {
+impl From<NakadiApiError> for PublishError {
     fn from(api_error: NakadiApiError) -> Self {
         Self::Other(api_error)
     }
 }
 
-impl From<RemoteCallError> for PublishFailure {
+impl From<RemoteCallError> for PublishError {
     fn from(remote_call_error: RemoteCallError) -> Self {
         let api_error = NakadiApiError::from(remote_call_error);
         Self::Other(api_error)
     }
 }
 
-impl From<PublishFailure> for Error {
-    fn from(err: PublishFailure) -> Self {
+impl From<PublishError> for Error {
+    fn from(err: PublishError) -> Self {
         Error::from_error(err)
     }
 }
 
-pub type PublishFuture<'a> = BoxFuture<'a, Result<(), PublishFailure>>;
+pub type PublishFuture<'a> = BoxFuture<'a, Result<(), PublishError>>;
 
 /// Publishes a batch of Events.
 ///

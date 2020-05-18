@@ -171,20 +171,20 @@ impl PublishApi for ApiClient {
                 StatusCode::MULTI_STATUS | StatusCode::UNPROCESSABLE_ENTITY => {
                     let batch_items = deserialize_stream(response.into_body()).await?;
                     if status == StatusCode::MULTI_STATUS {
-                        Err(PublishFailure::PartialFailure(BatchResponse {
+                        Err(PublishError::SubmissionFailed(FailedSubmission {
                             flow_id,
-                            batch_items,
+                            failure: SubmissionFailure::NotAllSubmitted(batch_items),
                         }))
                     } else {
-                        Err(PublishFailure::Unprocessable(BatchResponse {
+                        Err(PublishError::SubmissionFailed(FailedSubmission {
                             flow_id,
-                            batch_items,
+                            failure: SubmissionFailure::Unprocessable(batch_items),
                         }))
                     }
                 }
                 _ => {
                     evaluate_error_for_problem(response)
-                        .map(|err| Err(PublishFailure::Other(err)))
+                        .map(|err| Err(PublishError::Other(err)))
                         .await
                 }
             }

@@ -10,12 +10,12 @@ use futures::future::FutureExt;
 use serde::{Deserialize, Serialize};
 use tokio::time::{delay_for, timeout};
 
-pub use crate::api::{NakadiApiError, PublishApi, PublishFailure, PublishFuture};
+pub use crate::api::{NakadiApiError, PublishApi, PublishError, PublishFuture};
 pub use crate::nakadi_types::{
     Error, FlowId,
     {
         event_type::EventTypeName,
-        publishing::{BatchResponse, BatchStats},
+        publishing::{BatchStats, SubmissionFailure},
     },
 };
 
@@ -30,10 +30,11 @@ pub use instrumentation::*;
 
 /// Strategy for handling partial submit failures
 ///
-/// The default is `PartialFailureStrategy::Abort`
+/// The default is `SubmissionFailureStrategy::Abort`
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PartialFailureStrategy {
+#[non_exhaustive]
+pub enum SubmissionFailureStrategy {
     /// Always abort. Never retry on partial failures.
     Abort,
     /// Always retry all events
@@ -42,29 +43,29 @@ pub enum PartialFailureStrategy {
     RetryNotSubmitted,
 }
 
-impl PartialFailureStrategy {
-    env_funs!("PUBLISH_PARTIAL_FAILURE_STRATEGY");
+impl SubmissionFailureStrategy {
+    env_funs!("PUBLISH_SUBMISSION_FAILURE_STRATEGY");
 }
 
-impl Default for PartialFailureStrategy {
+impl Default for SubmissionFailureStrategy {
     fn default() -> Self {
         Self::Abort
     }
 }
 
-impl fmt::Display for PartialFailureStrategy {
+impl fmt::Display for SubmissionFailureStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PartialFailureStrategy::Abort => write!(f, "abort")?,
-            PartialFailureStrategy::RetryAll => write!(f, "retry_all")?,
-            PartialFailureStrategy::RetryNotSubmitted => write!(f, "retry_not_submitted")?,
+            SubmissionFailureStrategy::Abort => write!(f, "abort")?,
+            SubmissionFailureStrategy::RetryAll => write!(f, "retry_all")?,
+            SubmissionFailureStrategy::RetryNotSubmitted => write!(f, "retry_not_submitted")?,
         }
 
         Ok(())
     }
 }
 
-impl FromStr for PartialFailureStrategy {
+impl FromStr for SubmissionFailureStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -75,9 +76,9 @@ impl FromStr for PartialFailureStrategy {
         }
 
         match s {
-            "abort" => Ok(PartialFailureStrategy::Abort),
-            "retry_all" => Ok(PartialFailureStrategy::RetryAll),
-            "retry_not_submitted" => Ok(PartialFailureStrategy::RetryNotSubmitted),
+            "abort" => Ok(SubmissionFailureStrategy::Abort),
+            "retry_all" => Ok(SubmissionFailureStrategy::RetryAll),
+            "retry_not_submitted" => Ok(SubmissionFailureStrategy::RetryNotSubmitted),
             _ => Err(Error::new(format!(
                 "not a valid partial failure strategy: {}",
                 s
@@ -233,7 +234,7 @@ pub struct PublisherConfig {
     pub retry_on_auth_error: Option<PublishRetryOnAuthError>,
     /// Strategy for handling partial failures
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub partial_failure_strategy: Option<PartialFailureStrategy>,
+    pub partial_failure_strategy: Option<SubmissionFailureStrategy>,
 }
 
 impl PublisherConfig {
@@ -265,7 +266,7 @@ impl PublisherConfig {
 
         if self.partial_failure_strategy.is_none() {
             self.partial_failure_strategy =
-                PartialFailureStrategy::try_from_env_prefixed(prefix.as_ref())?;
+                SubmissionFailureStrategy::try_from_env_prefixed(prefix.as_ref())?;
         }
 
         Ok(())
@@ -311,7 +312,7 @@ impl PublisherConfig {
         self
     }
     /// Strategy for handling partial failures
-    pub fn partial_failure_strategy<T: Into<PartialFailureStrategy>>(mut self, v: T) -> Self {
+    pub fn partial_failure_strategy<T: Into<SubmissionFailureStrategy>>(mut self, v: T) -> Self {
         self.partial_failure_strategy = Some(v.into());
         self
     }
@@ -442,7 +443,7 @@ where
             let api_client = Arc::clone(&self.api_client);
             let api_client: &C = &api_client;
             loop {
-                let publish_failure = match single_attempt(
+                let publish_error = match single_attempt(
                     api_client,
                     event_type,
                     bytes_to_publish.clone(),
@@ -460,8 +461,8 @@ where
                     Err(publish_failure) => publish_failure,
                 };
 
-                match publish_failure {
-                    PublishFailure::Other(api_error) => {
+                match publish_error {
+                    PublishError::Other(api_error) => {
                         self.instrumentation
                             .batch_stats(BatchStats::all_not_submitted(events.len()));
 
@@ -470,7 +471,7 @@ where
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
                                 self.logger.warn(format_args!(
-                                    "publish attempt failed (retry in {:?}: {}",
+                                    "publish attempt failed (retry in {:?}): {}",
                                     delay, api_error
                                 ));
                                 delay_for(delay).await;
@@ -484,18 +485,23 @@ where
                             break Err(api_error.into());
                         }
                     }
-                    PublishFailure::Unprocessable(batch_response) => {
-                        self.instrumentation.batch_stats(batch_response.stats());
-                        self.instrumentation.publish_failed(started.elapsed());
-                        break Err(PublishFailure::Unprocessable(batch_response));
-                    }
-                    PublishFailure::PartialFailure(batch_response) => {
-                        self.instrumentation.batch_stats(batch_response.stats());
+                    PublishError::SubmissionFailed(failed_submission) => {
+                        self.instrumentation
+                            .batch_stats(failed_submission.failure.stats());
+                        if failed_submission.is_unprocessable() {
+                            self.instrumentation.publish_failed(started.elapsed());
+                            break Err(PublishError::SubmissionFailed(failed_submission));
+                        }
+
+                        let failure = &failed_submission.failure;
                         if let Some(delay) = backoff.next_backoff() {
-                            match get_events_for_retry(&batch_response, &events, strategy) {
+                            match get_events_for_retry(&failure, &events, strategy) {
                                 Ok(Some(to_retry)) => {
                                     if to_retry.is_empty() {
-                                        break Err(PublishFailure::PartialFailure(batch_response));
+                                        self.instrumentation.publish_failed(started.elapsed());
+                                        break Err(PublishError::SubmissionFailed(
+                                            failed_submission,
+                                        ));
                                     }
 
                                     events = to_retry;
@@ -505,17 +511,24 @@ where
                                     continue;
                                 }
                                 Ok(None) => {
+                                    self.logger.warn(format_args!(
+                                        "there were no events left for a retry"
+                                    ));
                                     self.instrumentation.publish_failed(started.elapsed());
-                                    break Err(PublishFailure::PartialFailure(batch_response));
+                                    break Err(PublishError::SubmissionFailed(failed_submission));
                                 }
-                                Err(_err) => {
+                                Err(err) => {
+                                    self.logger.error(format_args!(
+                                        "failed to determine events for retry: {}",
+                                        err
+                                    ));
                                     self.instrumentation.publish_failed(started.elapsed());
-                                    break Err(PublishFailure::PartialFailure(batch_response));
+                                    break Err(PublishError::SubmissionFailed(failed_submission));
                                 }
                             }
                         } else {
                             self.instrumentation.publish_failed(started.elapsed());
-                            break Err(PublishFailure::PartialFailure(batch_response));
+                            break Err(PublishError::SubmissionFailed(failed_submission));
                         }
                     }
                 }
@@ -540,7 +553,7 @@ where
             let mut serialized_events = Vec::new();
             for e in events {
                 let serialized = serde_json::to_vec(e).map_err(|err| {
-                    PublishFailure::Other(
+                    PublishError::Other(
                         NakadiApiError::other()
                             .with_context("Could not serialize event to publish")
                             .caused_by(err),
@@ -613,13 +626,13 @@ where
                 };
 
                 match publish_failure {
-                    PublishFailure::Other(api_error) => {
+                    PublishError::Other(api_error) => {
                         let retry_allowed =
                             is_retry_on_api_error_allowed(&api_error, retry_on_auth_errors);
                         if retry_allowed {
                             if let Some(delay) = backoff.next_backoff() {
                                 self.logger.warn(format_args!(
-                                    "connect publish failed (retry in {:?}: {}",
+                                    "publish attempt failed (retry in {:?}): {}",
                                     delay, api_error
                                 ));
                                 delay_for(delay).await;
@@ -645,14 +658,14 @@ async fn single_attempt<C>(
     events: Bytes,
     flow_id: FlowId,
     attempt_timeout: Duration,
-) -> Result<(), PublishFailure>
+) -> Result<(), PublishError>
 where
     C: PublishApi + Send + 'static,
 {
     let attempt = api_client.publish_events_batch(event_type, events.clone(), flow_id);
     timeout(attempt_timeout, attempt)
         .await
-        .map_err(|elapsed| PublishFailure::Other(elapsed.into()))?
+        .map_err(|elapsed| PublishError::Other(elapsed.into()))?
 }
 
 fn is_retry_on_api_error_allowed(api_error: &NakadiApiError, retry_on_auth_errors: bool) -> bool {
@@ -664,28 +677,28 @@ fn is_retry_on_api_error_allowed(api_error: &NakadiApiError, retry_on_auth_error
 }
 
 fn get_events_for_retry(
-    batch_response: &BatchResponse,
+    failure: &SubmissionFailure,
     events: &[Bytes],
-    strategy: PartialFailureStrategy,
+    strategy: SubmissionFailureStrategy,
 ) -> Result<Option<Vec<Bytes>>, Error> {
     match strategy {
-        PartialFailureStrategy::Abort => Ok(None),
-        PartialFailureStrategy::RetryNotSubmitted => {
-            if events.len() != batch_response.len() {
+        SubmissionFailureStrategy::Abort => Ok(None),
+        SubmissionFailureStrategy::RetryNotSubmitted => {
+            if events.len() != failure.len() {
                 return Err(Error::new(
                     "The number of events did not match the number of batch response items",
                 ));
             }
 
             let mut to_retry = Vec::new();
-            for (batch_rsp, event_bytes) in batch_response.batch_items.iter().zip(events.iter()) {
+            for (batch_rsp, event_bytes) in failure.iter().zip(events.iter()) {
                 if batch_rsp.publishing_status != PublishingStatus::Submitted {
                     to_retry.push(event_bytes.clone());
                 }
             }
             Ok(Some(to_retry))
         }
-        PartialFailureStrategy::RetryAll => Ok(Some(events.to_vec())),
+        SubmissionFailureStrategy::RetryAll => Ok(Some(events.to_vec())),
     }
 }
 
