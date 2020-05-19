@@ -95,16 +95,14 @@ mod instr {
                     Panel::named(Metric::PublishedWithTime, "batches_ok")
                         .meter(Meter::new_with_defaults("per_second"))
                         .histogram(
-                            Histogram::new_with_defaults("time_ms")
-                                .display_time_unit(TimeUnit::Milliseconds),
+                            create_histogram("time_ms").display_time_unit(TimeUnit::Milliseconds),
                         ),
                 )
                 .panel(
                     Panel::named(Metric::PublishFailedWithTime, "batches_not_ok")
                         .meter(Meter::new_with_defaults("per_second"))
                         .histogram(
-                            Histogram::new_with_defaults("time_ms")
-                                .display_time_unit(TimeUnit::Milliseconds),
+                            create_histogram("time_ms").display_time_unit(TimeUnit::Milliseconds),
                         ),
                 )
                 .panel(
@@ -114,8 +112,7 @@ mod instr {
                     )
                     .meter(Meter::new_with_defaults("per_second"))
                     .histogram(
-                        Histogram::new_with_defaults("time_ms")
-                            .display_time_unit(TimeUnit::Milliseconds),
+                        create_histogram("time_ms").display_time_unit(TimeUnit::Milliseconds),
                     ),
                 )
                 .panel(
@@ -132,31 +129,39 @@ mod instr {
                     .panel(
                         Panel::named(Metric::BatchStatsNItems, "total")
                             .instrument(ValueMeter::new_with_defaults("per_second"))
-                            .histogram(Histogram::new_with_defaults("distribution")),
+                            .histogram(create_histogram("distribution")),
                     )
                     .panel(
                         Panel::named(Metric::BatchStatsNSubmitted, "submitted")
                             .instrument(ValueMeter::new_with_defaults("per_second"))
-                            .histogram(Histogram::new_with_defaults("distribution")),
+                            .histogram(create_histogram("distribution")),
                     )
                     .panel(
                         Panel::named(Metric::BatchStatsNFailed, "failed")
                             .instrument(ValueMeter::new_with_defaults("per_second"))
-                            .histogram(Histogram::new_with_defaults("distribution")),
+                            .histogram(create_histogram("distribution")),
                     )
                     .panel(
                         Panel::named(Metric::BatchStatsNAborted, "aborted")
                             .instrument(ValueMeter::new_with_defaults("per_second"))
-                            .histogram(Histogram::new_with_defaults("distribution")),
+                            .histogram(create_histogram("distribution")),
                     )
                     .panel(
                         Panel::named(Metric::BatchStatsNNotSubmitted, "not_submitted")
                             .instrument(ValueMeter::new_with_defaults("per_second"))
-                            .histogram(Histogram::new_with_defaults("distribution")),
+                            .histogram(create_histogram("distribution")),
                     ),
                 ),
         );
 
         (tx, rx)
+    }
+
+    fn create_histogram(name: &str) -> Histogram {
+        let inactivity_dur = std::time::Duration::from_secs(60);
+        Histogram::new(name)
+            .inactivity_limit(inactivity_dur)
+            .reset_after_inactivity(true)
+            .show_activity_state(false)
     }
 }

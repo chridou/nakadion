@@ -24,7 +24,11 @@ pub struct FailedSubmission {
 
 impl fmt::Display for FailedSubmission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.failure)?;
+        if let Some(fid) = self.flow_id.as_ref() {
+            write!(f, "{}, flow id: {}", self.failure, fid)?;
+        } else {
+            write!(f, "{}", self.failure)?;
+        }
 
         Ok(())
     }
