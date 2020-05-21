@@ -32,9 +32,9 @@ pub use crate::nakadi_types::{
     Error,
 };
 
-pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
+pub use crate::instrumentation::{Instrumentation, Instruments, MetricsDetailLevel};
 #[cfg(feature = "metrix")]
-pub use crate::instrumentation::{Instruments, Metrix, MetrixConfig};
+pub use crate::instrumentation::{Metrix, MetrixConfig};
 
 #[cfg(feature = "log")]
 pub use crate::logging::log_adapter::LogLoggingAdapter;
