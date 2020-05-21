@@ -112,6 +112,24 @@ impl MetrixConfig {
 }
 
 impl Instruments for Metrix {
+    fn consumer_started(&self) {
+        self.tx.observed_one_now(Metric::ConsumerStarted);
+    }
+
+    fn consumer_stopped(&self, ran_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::ConsumerStoppedWithTime,
+            (ran_for, TimeUnit::Milliseconds),
+        );
+    }
+
+    fn streaming_ended(&self, streamed_for: Duration) {
+        self.tx.observed_one_value_now(
+            Metric::StreamingEndedWithTime,
+            (streamed_for, TimeUnit::Milliseconds),
+        );
+    }
+
     fn stream_connect_attempt_success(&self, time: Duration) {
         self.tx.observed_one_value_now(
             Metric::StreamConnectAttemptSuccessTime,
@@ -346,6 +364,9 @@ impl Instruments for Metrix {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Metric {
+    ConsumerStarted,
+    ConsumerStoppedWithTime,
+    StreamingEndedWithTime,
     StreamConnectedTime,
     StreamNotConnectedTime,
     StreamConnectAttemptSuccessTime,
@@ -404,7 +425,7 @@ mod instr {
 
         let mut cockpit = Cockpit::without_name();
 
-        create_alerts(&mut cockpit, config);
+        create_notifications(&mut cockpit, config);
         create_stream_metrics(&mut cockpit, config);
         create_lag_metrics(&mut cockpit, config);
         create_batch_metrics(&mut cockpit, config);
@@ -417,9 +438,21 @@ mod instr {
         (tx, rx)
     }
 
-    fn create_alerts(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
+    fn create_notifications(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         use Metric::*;
         let panel = Panel::named(AcceptAllLabels, "notifications")
+            .handler(
+                create_staircase_timer("consumer_started", config)
+                    .for_label(Metric::ConsumerStarted),
+            )
+            .handler(
+                create_staircase_timer("consumer_stopped", config)
+                    .for_label(Metric::ConsumerStoppedWithTime),
+            )
+            .handler(
+                create_staircase_timer("streaming_ended", config)
+                    .for_label(Metric::StreamingEndedWithTime),
+            )
             .handler(create_staircase_timer("stream_io_error", config).for_label(StreamErrorIo))
             .handler(
                 create_staircase_timer("stream_parse_error", config).for_label(StreamErrorParse),

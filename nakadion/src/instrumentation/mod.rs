@@ -29,6 +29,10 @@ pub use metrix::{
 /// An implementor of this interface can be used with
 /// `Instrumentation::new`
 pub trait Instruments {
+    fn consumer_started(&self);
+    fn consumer_stopped(&self, ran_for: Duration);
+    fn streaming_ended(&self, streamed_for: Duration);
+
     /// Triggered when a single connect attempt for a stream was successful
     ///
     /// `time` is the time for the request
@@ -243,6 +247,39 @@ impl fmt::Debug for Instrumentation {
 }
 
 impl Instruments for Instrumentation {
+    fn consumer_started(&self) {
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => instr.consumer_started(),
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => instr.consumer_started(),
+            }
+        }
+    }
+
+    fn consumer_stopped(&self, ran_for: Duration) {
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => instr.consumer_stopped(ran_for),
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => instr.consumer_stopped(ran_for),
+            }
+        }
+    }
+
+    fn streaming_ended(&self, streamed_for: Duration) {
+        if self.detail >= MetricsDetailLevel::Medium {
+            match self.instr {
+                InstrumentationSelection::Off => {}
+                InstrumentationSelection::Custom(ref instr) => instr.streaming_ended(streamed_for),
+                #[cfg(feature = "metrix")]
+                InstrumentationSelection::Metrix(ref instr) => instr.streaming_ended(streamed_for),
+            }
+        }
+    }
+
     fn stream_connect_attempt_success(&self, time: Duration) {
         if self.detail >= MetricsDetailLevel::Medium {
             match self.instr {

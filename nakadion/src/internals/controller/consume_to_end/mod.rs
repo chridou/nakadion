@@ -102,6 +102,10 @@ where
         }
     };
 
+    stream_state
+        .instrumentation()
+        .streaming_ended(controller_state.stream_started_at.elapsed());
+
     let shut_down_result = shutdown(
         event_stream,
         active_dispatcher,

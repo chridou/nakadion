@@ -9,7 +9,10 @@ use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::{
+    task::{Context, Poll},
+    time::Instant,
+};
 
 use futures::future::{BoxFuture, FutureExt};
 
@@ -30,7 +33,7 @@ pub use crate::nakadi_types::{
 
 pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 #[cfg(feature = "metrix")]
-pub use crate::instrumentation::{Metrix, MetrixConfig};
+pub use crate::instrumentation::{Instruments, Metrix, MetrixConfig};
 
 #[cfg(feature = "log")]
 pub use crate::logging::log_adapter::LogLoggingAdapter;
@@ -115,11 +118,13 @@ impl Consumer {
     /// the `Consumer` is still running and to stop it.
     pub fn start(self) -> (ConsumerHandle, Consuming) {
         let subscription_id = self.inner.config().subscription_id;
+        let started_at = Instant::now();
 
         let logger =
             ContextualLogger::new(self.inner.logging_adapter()).subscription_id(subscription_id);
 
         let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
+        consumer_state.instrumentation().consumer_started();
 
         consumer_state.info(format_args!(
             "Connecting to subscription with id {}",
@@ -144,6 +149,9 @@ impl Consumer {
         });
 
         let f = async move {
+            consumer_state
+                .instrumentation()
+                .consumer_stopped(started_at.elapsed());
             match join.await {
                 Ok(outcome) => {
                     consumer_state.info(format_args!(

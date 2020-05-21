@@ -8,26 +8,26 @@ use crate::{consumer::StreamParameters, nakadi_types::Error};
 
 new_type! {
     #[doc="The time a publish attempt for an events batch may take.\n\n\
-    Default is 1000 ms\n"]
+    Default is 2500 ms\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct CommitAttemptTimeoutMillis(u64, env="COMMIT_ATTEMPT_TIMEOUT_MILLIS");
 }
 
 impl Default for CommitAttemptTimeoutMillis {
     fn default() -> Self {
-        Self(1_000)
+        Self(2_500)
     }
 }
 
 new_type! {
-    #[doc="The a publishing the events batch including retries may take.\n\n\
-    Default is 5000 ms.\n"]
+    #[doc="The publishing an events batch including retries may take.\n\n\
+    Default is 10 seconds.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub millis struct CommitTimeoutMillis(u64, env="COMMIT_TIMEOUT_MILLIS");
 }
 impl Default for CommitTimeoutMillis {
     fn default() -> Self {
-        Self(5_000)
+        Self(10_000)
     }
 }
 
