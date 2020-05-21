@@ -18,6 +18,7 @@ use futures::future::{BoxFuture, FutureExt};
 
 use crate::components::StreamingEssentials;
 use crate::handler::BatchHandlerFactory;
+use crate::instrumentation::Instruments;
 use crate::internals::{
     controller::{types::ControllerParams, Controller},
     ConsumerState,
