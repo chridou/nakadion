@@ -32,7 +32,7 @@ pub use crate::nakadi_types::{
     Error,
 };
 
-pub use crate::instrumentation::{Instrumentation, Instruments, MetricsDetailLevel};
+pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 #[cfg(feature = "metrix")]
 pub use crate::instrumentation::{Metrix, MetrixConfig};
 
