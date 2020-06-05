@@ -16,7 +16,7 @@ use nakadi_types::{Error, FlowId};
 
 use dispatch_http_request::RemoteCallError;
 
-pub use self::client::ApiClient;
+pub use self::client::{ApiClient, Builder};
 pub use self::error::*;
 pub use crate::components::IoError;
 
