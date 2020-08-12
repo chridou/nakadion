@@ -558,6 +558,7 @@ pub struct SubscriptionEventTypeStats {
 }
 
 impl SubscriptionEventTypeStats {
+    /// Returns the number of unconsumed events for this event type
     pub fn unconsumed_events(&self) -> Option<usize> {
         let mut is_sum = false;
         let sum = self
@@ -579,8 +580,38 @@ impl SubscriptionEventTypeStats {
         }
     }
 
+    /// Returns `true` if all events on all partitions on all event types
+    /// have been consumed.
     pub fn all_events_consumed(&self) -> bool {
         self.unconsumed_events() == Some(0)
+    }
+
+    /// Returns the number of unconsumed events for this event type on the
+    /// given stream
+    pub fn unconsumed_stream_events(&self, for_stream: StreamId) -> Option<usize> {
+        let mut is_sum = false;
+        let sum = self
+            .partitions
+            .iter()
+            .filter_map(|p| {
+                p.stream_id.and_then(|s| {
+                    if s == for_stream {
+                        if p.unconsumed_events.is_some() {
+                            is_sum = true;
+                        }
+                        p.unconsumed_events
+                    } else {
+                        None
+                    }
+                })
+            })
+            .sum();
+
+        if is_sum {
+            Some(sum)
+        } else {
+            None
+        }
     }
 }
 

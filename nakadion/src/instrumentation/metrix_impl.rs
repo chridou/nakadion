@@ -229,6 +229,11 @@ impl Instruments for Metrix {
         }
     }
 
+    fn stream_unconsumed_events(&self, n_unconsumed: usize) {
+        self.tx
+            .observed_one_value_now(Metric::StreamUnconsumedEvents, n_unconsumed);
+    }
+
     fn batches_in_flight_inc(&self) {
         self.tx
             .observed_one_value_now(Metric::BatchesInFlightChanged, Increment);
@@ -381,6 +386,7 @@ pub enum Metric {
     StreamBatchFrameReceivedLag,
     StreamBatchFrameGap,
     StreamDeadAfter,
+    StreamUnconsumedEvents,
     NoFramesForWarning,
     NoEventsForWarning,
     StreamErrorIo,
@@ -528,6 +534,11 @@ mod instr {
                             .display_time_unit(TimeUnit::Microseconds)
                             .accept(Metric::StreamBatchFrameGap),
                     ),
+            )
+            .panel(
+                Panel::named(AcceptAllLabels, "unconsumed_events").gauge(
+                    create_gauge("stream", config).for_label(Metric::StreamUnconsumedEvents),
+                ),
             );
 
         cockpit.add_panel(panel);

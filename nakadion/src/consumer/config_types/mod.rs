@@ -19,9 +19,12 @@ pub use metrix::{processor::ProcessorMount, AggregatesProcessors};
 mod new_types;
 pub use new_types::*;
 pub mod complex_types;
-use crate::components::{
-    committer::{CommitConfig, CommitStrategy},
-    connector::ConnectConfig,
+use crate::{
+    components::{
+        committer::{CommitConfig, CommitStrategy},
+        connector::ConnectConfig,
+    },
+    internals::controller::types::LifecycleListeners,
 };
 pub use complex_types::*;
 
@@ -445,6 +448,7 @@ impl Builder {
             api_client,
             handler_factory: Arc::new(handler_factory),
             logging_adapter: Arc::new(logs),
+            lifecycle_listeners: LifecycleListeners::default(),
         };
 
         Ok(Consumer {
