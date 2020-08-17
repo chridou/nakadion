@@ -67,7 +67,7 @@ impl RemoteCallError {
     }
 
     pub fn message(&self) -> Option<&str> {
-        self.message.as_ref().map(|m| &**m)
+        self.message.as_deref()
     }
 }
 

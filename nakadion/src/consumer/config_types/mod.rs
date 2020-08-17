@@ -20,6 +20,7 @@ mod new_types;
 pub use new_types::*;
 pub mod complex_types;
 use crate::{
+    api::SubscriptionApi,
     components::{
         committer::{CommitConfig, CommitStrategy},
         connector::ConnectConfig,
@@ -454,6 +455,36 @@ impl Builder {
         Ok(Consumer {
             inner: Arc::new(inner),
         })
+    }
+
+    /// Create a `Consumer` which tracks stats about the stream and
+    /// exposes them to the instrumetation set with the builder.
+    ///
+    /// Disabled if no instrumetation is set.
+    pub fn build_with_tracker<C, HF, L>(
+        &self,
+        api_client: C,
+        handler_factory: HF,
+        logs: L,
+    ) -> Result<Consumer, Error>
+    where
+        C: StreamingEssentials + SubscriptionApi + Send + Sync + 'static + Clone,
+        HF: BatchHandlerFactory,
+        L: LoggingAdapter + Clone,
+    {
+        let consumer = self.build_with(api_client.clone(), handler_factory, logs.clone())?;
+
+        if let Some(instrumentation) = self.instrumentation.clone() {
+            consumer.add_lifecycle_listener(
+                crate::tools::subscription_stats::SubscriptionStatsReporter::new(
+                    api_client,
+                    instrumentation,
+                    logs,
+                ),
+            );
+        }
+
+        Ok(consumer)
     }
 
     fn config(&self) -> Result<Config, Error> {

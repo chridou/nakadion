@@ -11,10 +11,11 @@ use tokio::{
     time::{delay_for, timeout},
 };
 
+use nakadi_types::subscription::{EventTypePartition, EventTypePartitionLike};
+
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::logging::{DevNullLoggingAdapter, Logger};
-use crate::nakadi_types::subscription::EventTypePartition;
 use crate::nakadi_types::{
     subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
     Error, FlowId,
@@ -40,8 +41,8 @@ pub struct CommitData {
 impl CommitData {
     fn etp(&self) -> EventTypePartition {
         EventTypePartition::new(
-            self.cursor.event_type.clone(),
-            self.cursor.cursor.partition.clone(),
+            self.cursor.event_type().as_ref(),
+            self.cursor.partition().as_ref(),
         )
     }
 }
@@ -102,34 +103,14 @@ pub struct CommitHandle {
 }
 
 impl CommitHandle {
-    /// Commit the given cursor with additional information.
-    ///
-    /// Fails if the data could not be send which means
-    /// that the backend is gone. The appropriate action is then
-    /// to stop streaming.
-    pub fn commit(
-        &self,
-        cursor: SubscriptionCursor,
-        frame_started_at: Instant,
-        frame_completed_at: Instant,
-        n_events: Option<usize>,
-    ) -> Result<(), CommitData> {
-        self.commit_data(CommitData {
-            cursor,
-            frame_started_at,
-            frame_completed_at,
-            n_events,
-        })
-    }
-
     /// Commit the given cursor with  additional information packed in the struct
     /// `CommitData`.
     ///
     /// Fails if the data could not be send which means
     /// that the backend is gone. The appropriate action is then
     /// to stop streaming.
-    pub fn commit_data(&self, data: CommitData) -> Result<(), CommitData> {
-        if let Err(err) = self.sender.send(data) {
+    pub fn commit(&self, batch_data: CommitData) -> Result<(), CommitData> {
+        if let Err(err) = self.sender.send(batch_data) {
             Err(err.0)
         } else {
             Ok(())

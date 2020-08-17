@@ -542,6 +542,29 @@ impl SubscriptionStats {
         }
     }
 
+    /// Returns the number of unconsumed events for this event type on the
+    /// given stream
+    pub fn unconsumed_stream_events(&self, for_stream: StreamId) -> Option<usize> {
+        let mut is_sum = false;
+        let sum = self
+            .event_type_stats
+            .iter()
+            .filter_map(|set_stats| {
+                if set_stats.unconsumed_stream_events(for_stream).is_some() {
+                    is_sum = true;
+                }
+
+                set_stats.unconsumed_events()
+            })
+            .sum();
+
+        if is_sum {
+            Some(sum)
+        } else {
+            None
+        }
+    }
+
     pub fn all_events_consumed(&self) -> bool {
         self.unconsumed_events() == Some(0)
     }

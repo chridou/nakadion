@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## ADDED
 
 - `LifecycleHandler` for the consumer which can be used to get notified
+- `Consumer` can report unconsumed events via `Instruments`
 
 ## CHANGED
 
