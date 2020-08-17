@@ -103,14 +103,14 @@ pub struct CommitHandle {
 }
 
 impl CommitHandle {
-    /// Commit the given cursor with  additional information packed in the struct
+    /// Commit the given cursor with additional information packed in the struct
     /// `CommitData`.
     ///
     /// Fails if the data could not be send which means
     /// that the backend is gone. The appropriate action is then
     /// to stop streaming.
-    pub fn commit(&self, batch_data: CommitData) -> Result<(), CommitData> {
-        if let Err(err) = self.sender.send(batch_data) {
+    pub fn commit(&self, to_commit: CommitData) -> Result<(), CommitData> {
+        if let Err(err) = self.sender.send(to_commit) {
             Err(err.0)
         } else {
             Ok(())
