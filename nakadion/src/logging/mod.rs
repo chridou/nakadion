@@ -255,10 +255,10 @@ impl LoggingAdapter for DevNullLoggingAdapter {
 #[derive(Default, Debug, Clone)]
 #[non_exhaustive]
 pub struct LoggingContext {
-    subscription_id: Option<SubscriptionId>,
-    stream_id: Option<StreamId>,
-    event_type: Option<EventTypeName>,
-    partition_id: Option<PartitionId>,
+    pub subscription_id: Option<SubscriptionId>,
+    pub stream_id: Option<StreamId>,
+    pub event_type: Option<EventTypeName>,
+    pub partition_id: Option<PartitionId>,
 }
 
 /// Configures which contextual data should be made available with a log message

@@ -9,7 +9,6 @@ use bytes::Bytes;
 use futures::{ready, stream::Stream};
 use pin_utils::{unsafe_pinned, unsafe_unpinned};
 use serde::de::DeserializeOwned;
-use serde_json;
 
 use crate::Error;
 

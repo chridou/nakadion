@@ -97,7 +97,7 @@ impl Logger for ConsumerState {
 
 /// The state of a stream.
 ///
-/// This struct is valid for the whole lifetime of  stream.
+/// This struct is valid for the whole lifetime of a stream.
 #[derive(Clone)]
 pub(crate) struct StreamState {
     stream_id: StreamId,

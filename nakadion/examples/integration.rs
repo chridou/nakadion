@@ -370,7 +370,7 @@ async fn consume_subscription<F: BatchHandlerFactory + GetSum>(
         .dispatch_mode(dispatch_mode)
         .stream_parameters(params)
         .configure_committer(|cfg| cfg.commit_strategy(CommitStrategy::after_seconds(1)))
-        .build_with(api_client.clone(), factory, logging_adapter)?;
+        .build_with_tracker(api_client.clone(), factory, logging_adapter)?;
 
     println!("Consume");
     let (consumer_handle, consuming) = consumer.start();

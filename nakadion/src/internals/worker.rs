@@ -92,7 +92,10 @@ mod processor {
 
     use crate::nakadi_types::subscription::SubscriptionCursor;
 
-    use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
+    use crate::components::{
+        committer::{CommitData, CommitHandle},
+        streams::EventStreamBatch,
+    };
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
@@ -224,12 +227,12 @@ mod processor {
                             .batch_deserialized(n_events_bytes, t_deserialize);
                     }
 
-                    if let Err(err) = self.committer.commit(
+                    if let Err(err) = self.committer.commit(CommitData {
                         cursor,
                         frame_started_at,
                         frame_completed_at,
                         n_events,
-                    ) {
+                    }) {
                         self.stream_state
                             .error(format_args!("Failed to enqueue commit data: {:?}", err));
                         self.stream_state.request_stream_cancellation();

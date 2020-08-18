@@ -41,7 +41,6 @@ use types::*;
 /// * It reconnects to a stream or aborts the consumer
 ///
 /// **Any occurrence of a `ConsumerError` triggers the `Controller` to abort the `Consumer` with an error.**
-#[derive(Clone)]
 pub(crate) struct Controller<C> {
     params: ControllerParams<C>,
 }
@@ -72,18 +71,28 @@ where
         params.consumer_state.config().clone(),
     );
 
+    let _guard: ConsumerStoppedGuard = params
+        .lifecycle_listeners
+        .on_consumer_started(consumer_state.subscription_id());
+
+    let mut params = params;
     // Each iteration is the life cycle of a stream
     loop {
         if consumer_state.global_cancellation_requested() {
             return ConsumerAbort::UserInitiated;
         }
-        sleeping_dispatcher = match stream_life_cycle(params.clone(), sleeping_dispatcher).await {
-            Ok(sleeping_dispatcher) => sleeping_dispatcher,
-            Err(err) => {
-                consumer_state.request_global_cancellation();
-                return err;
-            }
-        }
+
+        let (sleeping_dispatcher_returned, params_returned) =
+            match stream_life_cycle(params, sleeping_dispatcher).await {
+                Ok(returned) => returned,
+                Err(err) => {
+                    consumer_state.request_global_cancellation();
+                    return err;
+                }
+            };
+
+        sleeping_dispatcher = sleeping_dispatcher_returned;
+        params = params_returned;
     }
 }
 
@@ -102,7 +111,7 @@ pub(crate) enum EventStreamMessage {
 async fn stream_life_cycle<C>(
     params: ControllerParams<C>,
     sleeping_dispatcher: SleepingDispatcher<C>,
-) -> Result<SleepingDispatcher<C>, ConsumerAbort>
+) -> Result<(SleepingDispatcher<C>, ControllerParams<C>), ConsumerAbort>
 where
     C: StreamingEssentials + Clone,
 {
@@ -130,6 +139,10 @@ where
     // continue with a stream state for the current stream
     let stream_state = consumer_state.stream_state(stream_id);
 
+    let _guard: StreamEndGuard = params
+        .lifecycle_listeners
+        .on_stream_connected(stream_state.subscription_id(), stream_state.stream_id());
+
     stream_state
         .logger()
         .info(format_args!("Connected to stream {}.", stream_id));
@@ -153,7 +166,7 @@ where
             } => (active_dispatcher, stream, batch_lines_sink),
             WaitForFirstFrameResult::Aborted {
                 sleeping_dispatcher,
-            } => return Ok(sleeping_dispatcher),
+            } => return Ok((sleeping_dispatcher, params)),
         };
 
     // Once we received a frame we start consuming. The dispatcher
@@ -167,7 +180,7 @@ where
     )
     .await?;
 
-    Ok(sleeping_dispatcher)
+    Ok((sleeping_dispatcher, params))
 }
 
 /// Did we get a frame or not?
@@ -178,6 +191,7 @@ enum WaitForFirstFrameResult<C, T> {
         stream: T,
         batch_lines_sink: UnboundedSender<DispatcherMessage>,
     },
+
     /// Simply return the dispatcher to be woken up a next connect attempt
     Aborted {
         sleeping_dispatcher: SleepingDispatcher<C>,

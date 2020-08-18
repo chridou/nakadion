@@ -94,6 +94,12 @@ pub trait Instruments {
     /// The stream was aborted due to a streaming related error
     fn stream_error(&self, err: &EventStreamError);
 
+    /// Tracks the number of unconsumed events.
+    ///
+    /// Only available if the `Consumer` was created with a clients that
+    /// supports the `SubscriptionApi`
+    fn stream_unconsumed_events(&self, n_unconsumed: usize);
+
     /// Triggered when a new batch with events was received
     fn batches_in_flight_inc(&self);
     /// Triggered when a batch with events was processed
@@ -137,6 +143,15 @@ pub trait Instruments {
     ///
     /// The time request took is passed
     fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration);
+}
+
+impl<T> crate::tools::subscription_stats::Instruments for T
+where
+    T: Instruments,
+{
+    fn unconsumed_events(&self, n_unconsumed: usize) {
+        self.stream_unconsumed_events(n_unconsumed);
+    }
 }
 
 /// This defines the level of metrics being collected
@@ -445,6 +460,19 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Custom(ref instr) => instr.stream_error(err),
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => instr.stream_error(err),
+        }
+    }
+
+    fn stream_unconsumed_events(&self, n_unconsumed: usize) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.stream_unconsumed_events(n_unconsumed)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.stream_unconsumed_events(n_unconsumed)
+            }
         }
     }
 

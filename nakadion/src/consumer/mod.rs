@@ -20,14 +20,18 @@ use crate::components::StreamingEssentials;
 use crate::handler::BatchHandlerFactory;
 use crate::instrumentation::Instruments;
 use crate::internals::{
-    controller::{types::ControllerParams, Controller},
+    controller::{
+        types::{ControllerParams, LifecycleListeners},
+        Controller,
+    },
     ConsumerState,
 };
 use crate::logging::{ContextualLogger, Logger};
 pub use crate::nakadi_types::{
     subscription::{
-        StreamBatchFlushTimeoutSecs, StreamBatchLimit, StreamBatchTimespanSecs, StreamLimit,
-        StreamMaxUncommittedEvents, StreamParameters, StreamTimeoutSecs, SubscriptionId,
+        StreamBatchFlushTimeoutSecs, StreamBatchLimit, StreamBatchTimespanSecs, StreamId,
+        StreamLimit, StreamMaxUncommittedEvents, StreamParameters, StreamTimeoutSecs,
+        SubscriptionId,
     },
     Error,
 };
@@ -70,16 +74,11 @@ mod error;
 ///
 /// A consumer can be stopped internally and externally.
 ///
-/// The consumer can be cloned so that that multiple connections to `Nakadi`
-/// can be established. But be aware that in this case the consumers will share their
-/// resources, e.g. the API client, metrics and logger.
-///
 /// The consumer will only return if stopped via a `ConsumerHandle` or if
 /// an error occurs internally. Note that stopping the `Consumer` from within a
 /// handler is also considered an error case as is failing to connect to for a stream.
 /// In the error case of not being able to connect to a stream the behaviour can be
 /// configured via the `ConnectConfig` (e.g. it can be configured to retry indefinitely)
-#[derive(Clone)]
 pub struct Consumer {
     inner: Arc<dyn ConsumerInternal + Send + Sync + 'static>,
 }
@@ -178,6 +177,10 @@ impl Consumer {
 
         (handle, Consuming::new(f))
     }
+
+    pub fn add_lifecycle_listener<T: LifecycleListener>(&self, listener: T) {
+        self.inner.add_lifecycle_listener(Box::new(listener))
+    }
 }
 
 impl fmt::Debug for Consumer {
@@ -188,8 +191,7 @@ impl fmt::Debug for Consumer {
 }
 
 /// Returned once a `Consumer` has stopped. It contains the
-/// original consumer and if the `Consumer` was stopped for
-/// other reasons than the stream ending a `ConsumerAbort`
+/// original consumer and a `ConsumerAbort`
 /// which gives more insight on why the consumer was stopped.
 pub struct ConsumptionOutcome {
     stop_reason: ConsumerAbort,
@@ -261,7 +263,7 @@ impl ConsumptionOutcome {
 /// A Future that completes once the consumer stopped events consumption
 ///
 /// This `Future` is just a proxy and does not drive the consumer. It can be
-/// dropped without stopping the consumer.
+/// dropped without causing the consumer to stop.
 pub struct Consuming {
     inner: Pin<Box<dyn Future<Output = ConsumptionOutcome> + Send>>,
 }
@@ -305,12 +307,21 @@ impl ConsumerHandle {
     }
 }
 
+pub trait LifecycleListener: Send + 'static {
+    fn on_consumer_started(&self, _subscription_id: SubscriptionId) {}
+    fn on_consumer_stopped(&self, _subscription_id: SubscriptionId) {}
+    fn on_stream_connected(&self, _subscription_id: SubscriptionId, _stream_id: StreamId) {}
+    fn on_stream_ended(&self, _subscription_id: SubscriptionId, _stream_id: StreamId) {}
+}
+
 trait ConsumerInternal: fmt::Debug {
     fn start(&self, consumer_state: ConsumerState) -> BoxFuture<'static, ConsumerAbort>;
 
     fn config(&self) -> &Config;
 
     fn logging_adapter(&self) -> Arc<dyn LoggingAdapter>;
+
+    fn add_lifecycle_listener(&self, listener: Box<dyn LifecycleListener>);
 }
 
 struct Inner<C> {
@@ -318,6 +329,7 @@ struct Inner<C> {
     api_client: C,
     handler_factory: Arc<dyn BatchHandlerFactory>,
     logging_adapter: Arc<dyn LoggingAdapter>,
+    lifecycle_listeners: LifecycleListeners,
 }
 
 impl<C> fmt::Debug for Inner<C> {
@@ -336,6 +348,7 @@ where
             api_client: self.api_client.clone(),
             consumer_state,
             handler_factory: Arc::clone(&self.handler_factory),
+            lifecycle_listeners: self.lifecycle_listeners.clone(),
         };
 
         let controller = Controller::new(controller_params);
@@ -348,6 +361,10 @@ where
 
     fn logging_adapter(&self) -> Arc<dyn LoggingAdapter> {
         Arc::clone(&self.logging_adapter)
+    }
+
+    fn add_lifecycle_listener(&self, listener: Box<dyn LifecycleListener>) {
+        self.lifecycle_listeners.add_listener(listener)
     }
 }
 
