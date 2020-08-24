@@ -58,13 +58,13 @@ impl Default for MetrixGaugeTrackingSecs {
 }
 
 new_type! {
-    #[doc="The time an alert will stay on after trigger.\n\nDefault is 60s.\n"]
+    #[doc="The time an alert will stay on after trigger.\n\nDefault is 61s.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub secs struct AlertDurationSecs(u32, env="METRIX_ALERT_DURATION_SECS");
 }
 impl Default for AlertDurationSecs {
     fn default() -> Self {
-        60.into()
+        61.into()
     }
 }
 
