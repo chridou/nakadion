@@ -114,6 +114,8 @@ pub mod subscription_stats {
                                 stats.unconsumed_stream_events(self.stream_id)
                             {
                                 self.instrumentation.unconsumed_events(n_unconsumed)
+                            } else {
+                                self.instrumentation.unconsumed_events(0)
                             }
                         }
                         Err(err) => {

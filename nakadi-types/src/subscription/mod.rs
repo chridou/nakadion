@@ -549,12 +549,13 @@ impl SubscriptionStats {
         let sum = self
             .event_type_stats
             .iter()
-            .filter_map(|set_stats| {
-                if set_stats.unconsumed_stream_events(for_stream).is_some() {
+            .filter_map(|event_type_stats| {
+                if let Some(unconsumend) = event_type_stats.unconsumed_stream_events(for_stream) {
                     is_sum = true;
+                    Some(unconsumend)
+                } else {
+                    None
                 }
-
-                set_stats.unconsumed_events()
             })
             .sum();
 
