@@ -4,36 +4,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2020-08-26
+
+### CHANGED
+
+- Fixed tracking of active partitions
+
 ## [0.27.1] - 2020-08-25
 
-## CHANGED
+### CHANGED
 
 - Alert triggers with `metrix` stay on for a default of 61 seconds (fromerly 60)
 
 ## [0.27.0] - 2020-08-13
 
-## ADDED
+### ADDED
 
 - `LifecycleHandler` for the consumer which can be used to get notified
 - `Consumer` can report unconsumed events via `Instruments`
 
-## CHANGED
+### CHANGED
 
 - `Consumer` can not be cloned anymore.
 
 ## [0.26.2] - 2020-06-05
 
-## CHANGED
+### CHANGED
 
 - `Builder` for `ApiClient` is public now
 
 ## [0.26.1] - 2020-05-21
 
-## ADDED
+### ADDED
 
 - metrics triggering when a stream ends and when a consumer starts or stops
 
-## CHANGED
+### CHANGED
 
 - Default of `CommitAttemptTimeoutMillis` is now 2.5 seconds
 - Default of `CommitTimeoutMillis` is now 10 seconds
