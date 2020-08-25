@@ -70,7 +70,8 @@ impl PartitionTracker {
                 log_activity(
                     &self.stream_state,
                     format_args!(
-                        "Partition {} became inactive after {:?}. Inactivity timeout is {:?}.",
+                        "Partition {} became inactive after {:?} of activity. \
+                        Inactivity timeout is {:?}.",
                         partition, was_active_for, inactivity_timeout
                     ),
                     partition,
@@ -168,7 +169,11 @@ impl Entry {
             PartitionActivationState::ActiveSince(when) => {
                 if self.last_activity_at + inactive_after < now {
                     self.state = PartitionActivationState::InactiveSince(now);
-                    Some(when.elapsed())
+                    Some(
+                        self.last_activity_at
+                            .checked_duration_since(when)
+                            .unwrap_or(Duration::from_secs(0)),
+                    )
                 } else {
                     None
                 }
