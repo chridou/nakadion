@@ -1,6 +1,7 @@
 //! Component to commit cursors
 use std::error::Error as StdError;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Instant;
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
@@ -16,9 +17,12 @@ use nakadi_types::subscription::{EventTypePartition, EventTypePartitionLike};
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::logging::{DevNullLoggingAdapter, Logger};
-use crate::nakadi_types::{
-    subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
-    Error, FlowId,
+use crate::{
+    handler::BatchMeta,
+    nakadi_types::{
+        subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
+        Error, FlowId,
+    },
 };
 
 mod background;
@@ -26,19 +30,16 @@ mod config;
 
 pub use config::*;
 
-#[derive(Debug)]
-pub struct CommitData {
+#[derive(Debug, Clone)]
+pub struct CommitItem {
     pub cursor: SubscriptionCursor,
-    /// Timestamp when the cursor/frame was received used to
-    /// calculate the effective time for when to commit
     pub frame_started_at: Instant,
-    /// Timestamp used for measurement purposes
-    /// to track internal timings.
     pub frame_completed_at: Instant,
+    pub frame_id: usize,
     pub n_events: Option<usize>,
 }
 
-impl CommitData {
+impl CommitItem {
     fn etp(&self) -> EventTypePartition {
         EventTypePartition::new(
             self.cursor.event_type().as_ref(),
@@ -99,7 +100,7 @@ impl CommitTrigger {
 /// The background task will stop, once the last handle is dropped.
 #[derive(Clone)]
 pub struct CommitHandle {
-    sender: UnboundedSender<CommitData>,
+    sender: UnboundedSender<CommitItem>,
 }
 
 impl CommitHandle {
@@ -109,7 +110,7 @@ impl CommitHandle {
     /// Fails if the data could not be send which means
     /// that the backend is gone. The appropriate action is then
     /// to stop streaming.
-    pub fn commit(&self, to_commit: CommitData) -> Result<(), CommitData> {
+    pub fn commit(&self, to_commit: CommitItem) -> Result<(), CommitItem> {
         if let Err(err) = self.sender.send(to_commit) {
             Err(err.0)
         } else {
@@ -129,7 +130,7 @@ pub struct Committer<C> {
     stream_id: StreamId,
     pub(crate) instrumentation: Instrumentation,
     config: CommitConfig,
-    pub(crate) logger: Box<dyn Logger>,
+    pub(crate) logger: Arc<dyn Logger>,
 }
 
 impl<C> Committer<C>
@@ -145,7 +146,7 @@ where
             stream_id,
             instrumentation: Instrumentation::default(),
             config: CommitConfig::default(),
-            logger: Box::new(DevNullLoggingAdapter),
+            logger: Arc::new(DevNullLoggingAdapter),
         }
     }
 
@@ -154,7 +155,7 @@ where
     }
 
     pub fn set_logger<L: Logger>(&mut self, logger: L) {
-        self.logger = Box::new(logger);
+        self.logger = Arc::new(logger);
     }
 
     pub fn logger<L: Logger>(mut self, logger: L) -> Self {

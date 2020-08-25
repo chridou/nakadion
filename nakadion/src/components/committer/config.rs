@@ -338,7 +338,7 @@ impl fmt::Display for CommitStrategy {
     }
 }
 
-/// Configuration for a publisher
+/// Configuration for a `Committer`
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct CommitConfig {
     /// Timeout for a complete commit including potential retries

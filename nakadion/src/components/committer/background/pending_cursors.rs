@@ -1,11 +1,13 @@
-use crate::{
-    components::committer::{CommitData, CommitTrigger},
-    consumer::CommitStrategy,
-};
-use nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs, SubscriptionCursor};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
+};
+
+use nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs};
+
+use crate::{
+    components::committer::{CommitItem, CommitTrigger},
+    consumer::CommitStrategy,
 };
 
 pub struct PendingCursors {
@@ -14,7 +16,7 @@ pub struct PendingCursors {
     collected_events: usize,
     collected_cursors: usize,
     commit_strategy: CommitStrategy,
-    pending: HashMap<EventTypePartition, SubscriptionCursor>,
+    pending: HashMap<EventTypePartition, CommitItem>,
 }
 
 impl PendingCursors {
@@ -33,7 +35,7 @@ impl PendingCursors {
         }
     }
 
-    pub fn add(&mut self, data: CommitData, now: Instant) {
+    pub fn add(&mut self, data: CommitItem, now: Instant) {
         let key = data.etp();
 
         self.collected_cursors += 1;
@@ -79,9 +81,9 @@ impl PendingCursors {
 
         match self.pending.entry(key) {
             Entry::Vacant(e) => {
-                e.insert(data.cursor);
+                e.insert(data);
             }
-            Entry::Occupied(mut e) => *e.get_mut() = data.cursor,
+            Entry::Occupied(mut e) => *e.get_mut() = data,
         }
     }
 
@@ -152,12 +154,14 @@ impl PendingCursors {
         self.pending.clear();
     }
 
-    pub fn cursors<'a>(&'a self) -> impl Iterator<Item = SubscriptionCursor> + 'a {
-        self.pending.values().cloned()
-    }
+    pub fn drain_reset(&mut self) -> Vec<(EventTypePartition, CommitItem)> {
+        let items = self.pending.drain().collect();
 
-    pub fn into_cursors(self) -> impl Iterator<Item = SubscriptionCursor> {
-        self.pending.into_iter().map(|(_, v)| v)
+        self.current_deadline = None;
+        self.collected_events = 0;
+        self.collected_cursors = 0;
+
+        items
     }
 
     pub fn is_empty(&self) -> bool {

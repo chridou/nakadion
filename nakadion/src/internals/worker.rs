@@ -93,7 +93,7 @@ mod processor {
     use crate::nakadi_types::subscription::SubscriptionCursor;
 
     use crate::components::{
-        committer::{CommitData, CommitHandle},
+        committer::{CommitHandle, CommitItem},
         streams::EventStreamBatch,
     };
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
@@ -227,11 +227,12 @@ mod processor {
                             .batch_deserialized(n_events_bytes, t_deserialize);
                     }
 
-                    if let Err(err) = self.committer.commit(CommitData {
+                    if let Err(err) = self.committer.commit(CommitItem {
                         cursor,
                         frame_started_at,
                         frame_completed_at,
                         n_events,
+                        frame_id,
                     }) {
                         self.stream_state
                             .error(format_args!("Failed to enqueue commit data: {:?}", err));
