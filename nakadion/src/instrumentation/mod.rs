@@ -131,6 +131,20 @@ pub trait Instruments {
     fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
     /// Cursors commit was triggered.
     fn cursors_commit_triggered(&self, trigger: CommitTrigger);
+    /// Ages of the cursors when making a commit attempt to Nakadi
+    ///
+    /// This ages are measured before making an attempt to make a call to Nakadi.
+    /// `first_cursor_age` is the critical age of the first cursor which might be commited
+    /// with a later cursor which has the age `last_cursor_age`.
+    ///
+    /// `` should be true, when the first cursor reached a critical age which
+    /// might endanger or even cause the commit to fail.
+    fn cursor_ages_on_commit_attempt(
+        &self,
+        first_cursor_age: Duration,
+        last_cursor_age: Duration,
+        first_cursor_age_warning: bool,
+    );
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
@@ -588,6 +602,28 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Custom(ref instr) => instr.cursors_commit_triggered(trigger),
             #[cfg(feature = "metrix")]
             InstrumentationSelection::Metrix(ref instr) => instr.cursors_commit_triggered(trigger),
+        }
+    }
+
+    fn cursor_ages_on_commit_attempt(
+        &self,
+        first_cursor_age: Duration,
+        last_cursor_age: Duration,
+        first_cursor_age_warning: bool,
+    ) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.cursor_ages_on_commit_attempt(
+                first_cursor_age,
+                last_cursor_age,
+                first_cursor_age_warning,
+            ),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.cursor_ages_on_commit_attempt(
+                first_cursor_age,
+                last_cursor_age,
+                first_cursor_age_warning,
+            ),
         }
     }
 

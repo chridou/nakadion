@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
 };
 
@@ -55,7 +55,7 @@ where
 
 async fn run_dispatch_cursors(
     mut cursors_to_commit: UnboundedReceiver<CommitItem>,
-    io_sender: UnboundedSender<Vec<(EventTypePartition, CommitItem)>>,
+    io_sender: UnboundedSender<Vec<(EventTypePartition, CommitEntry)>>,
     logger: Arc<dyn Logger>,
     instrumentation: Instrumentation,
     config: CommitConfig,
@@ -121,19 +121,34 @@ async fn run_dispatch_cursors(
 
 async fn commit_io_loop_task<C>(
     mut committer: Committer<C>,
-    mut io_receiver: UnboundedReceiver<Vec<(EventTypePartition, CommitItem)>>,
+    mut io_receiver: UnboundedReceiver<Vec<(EventTypePartition, CommitEntry)>>,
 ) -> Result<(), Error>
 where
     C: SubscriptionCommitApi + Send + Sync + 'static,
 {
-    let mut collected_items_to_commit = HashMap::<EventTypePartition, CommitItem>::default();
+    let mut collected_items_to_commit = HashMap::<EventTypePartition, CommitEntry>::default();
     let mut cursors_to_commit = Vec::default();
+
+    let first_cursor_warning_threshold = pending_cursors::safe_commit_timeout(
+        committer
+            .config()
+            .stream_commit_timeout_secs
+            .unwrap_or_default()
+            .into(),
+    );
 
     loop {
         match io_receiver.try_recv() {
             Ok(next_cursors) => {
-                for (etp, commit_data) in next_cursors {
-                    collected_items_to_commit.insert(etp, commit_data);
+                for (etp, commit_entry) in next_cursors {
+                    match collected_items_to_commit.entry(etp) {
+                        Entry::Vacant(e) => {
+                            e.insert(commit_entry);
+                        }
+                        Entry::Occupied(mut e) => {
+                            e.get_mut().item_to_commit = commit_entry.item_to_commit
+                        }
+                    }
                 }
             }
             Err(TryRecvError::Closed) => break,
@@ -146,10 +161,17 @@ where
         }
 
         cursors_to_commit.clear();
-        for cursor in collected_items_to_commit
-            .values()
-            .map(|item| item.cursor.clone())
-        {
+        for cursor in collected_items_to_commit.values().map(|commit_entry| {
+            let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
+            let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
+            let warning = first_cursor_age >= first_cursor_warning_threshold;
+            committer.instrumentation.cursor_ages_on_commit_attempt(
+                first_cursor_age,
+                last_cursor_age,
+                warning,
+            );
+            commit_entry.item_to_commit.cursor.clone()
+        }) {
             cursors_to_commit.push(cursor);
         }
 
@@ -186,7 +208,18 @@ where
         // try to commit the rest
         let cursors: Vec<_> = collected_items_to_commit
             .into_iter()
-            .map(|(_, item)| item.cursor)
+            .map(|(_, commit_entry)| {
+                let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
+                let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
+                let warning = first_cursor_age >= first_cursor_warning_threshold;
+                committer.instrumentation.cursor_ages_on_commit_attempt(
+                    first_cursor_age,
+                    last_cursor_age,
+                    warning,
+                );
+
+                commit_entry.item_to_commit.cursor
+            })
             .collect();
         let n_to_commit = cursors.len();
 
@@ -207,4 +240,10 @@ where
     }
 
     Ok(())
+}
+
+pub struct CommitEntry {
+    pub first_frame_started_at: Instant,
+    pub first_frame_id: usize,
+    pub item_to_commit: CommitItem,
 }
