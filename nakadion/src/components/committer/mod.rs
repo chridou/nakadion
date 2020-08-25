@@ -17,12 +17,9 @@ use nakadi_types::subscription::{EventTypePartition, EventTypePartitionLike};
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
 use crate::logging::{DevNullLoggingAdapter, Logger};
-use crate::{
-    handler::BatchMeta,
-    nakadi_types::{
-        subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
-        Error, FlowId,
-    },
+use crate::nakadi_types::{
+    subscription::{CursorCommitResults, StreamId, SubscriptionCursor, SubscriptionId},
+    Error, FlowId,
 };
 
 mod background;

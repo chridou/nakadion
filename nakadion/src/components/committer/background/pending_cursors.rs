@@ -147,13 +147,6 @@ impl PendingCursors {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.current_deadline = None;
-        self.collected_events = 0;
-        self.collected_cursors = 0;
-        self.pending.clear();
-    }
-
     pub fn drain_reset(&mut self) -> Vec<(EventTypePartition, CommitItem)> {
         let items = self.pending.drain().collect();
 
@@ -162,10 +155,6 @@ impl PendingCursors {
         self.collected_cursors = 0;
 
         items
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.pending.is_empty()
     }
 }
 
@@ -186,6 +175,7 @@ fn calc_effective_deadline(
     } else {
         deadline_for_cursor
     };
+
     if let Some(current_deadline) = current_deadline {
         std::cmp::min(deadline_for_cursor, current_deadline)
     } else {
