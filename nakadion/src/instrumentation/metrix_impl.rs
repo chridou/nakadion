@@ -338,6 +338,28 @@ impl Instruments for Metrix {
         }
     }
 
+    fn cursor_ages_on_commit_attempt(
+        &self,
+        first_cursor_age: Duration,
+        last_cursor_age: Duration,
+        first_cursor_age_warning: bool,
+    ) {
+        self.tx
+            .observed_one_value_now(
+                Metric::CommitterFirstCursorAgeOnCommitAttempt,
+                (first_cursor_age, TimeUnit::Milliseconds),
+            )
+            .observed_one_value_now(
+                Metric::CommitterLastCursorAgeOnCommitAttempt,
+                (last_cursor_age, TimeUnit::Milliseconds),
+            );
+
+        if first_cursor_age_warning {
+            self.tx
+                .observed_one_now(Metric::CommitterFirstCursorAgeOnCommitAttemptAgeWarning);
+        }
+    }
+
     fn cursors_committed(&self, n_cursors: usize, time: Duration) {
         self.tx
             .observed_one_value_now(Metric::CommitterCursorsCommittedCount, n_cursors)
@@ -414,6 +436,9 @@ pub enum Metric {
     CommitterTriggerDeadlineEventsCount,
     CommitterTriggerEventsEventsCount,
     CommitterTriggerCursorsEventsCount,
+    CommitterFirstCursorAgeOnCommitAttempt,
+    CommitterFirstCursorAgeOnCommitAttemptAgeWarning,
+    CommitterLastCursorAgeOnCommitAttempt,
 }
 
 mod instr {
@@ -465,6 +490,10 @@ mod instr {
             )
             .handler(create_staircase_timer("no_events", config).for_label(NoEventsForWarning))
             .handler(create_staircase_timer("no_frames", config).for_label(NoFramesForWarning))
+            .handler(
+                create_staircase_timer("commit_cursor_age_warning", config)
+                    .for_label(CommitterFirstCursorAgeOnCommitAttemptAgeWarning),
+            )
             .handler(
                 create_staircase_timer("commit_failed", config).for_label(CommitterCommitFailed),
             )
@@ -778,6 +807,25 @@ mod instr {
                         ValueMeter::new_with_defaults("attempt_failed_per_second")
                             .for_label(Metric::CommitterCursorsNotCommittedCount),
                     ),
+            )
+            .panel(
+                Panel::named(
+                    (
+                        Metric::CommitterFirstCursorAgeOnCommitAttempt,
+                        Metric::CommitterLastCursorAgeOnCommitAttempt,
+                    ),
+                    "cursor_ages_on_commit_attempt",
+                )
+                .histogram(
+                    create_histogram("first_ms", config)
+                        .display_time_unit(TimeUnit::Milliseconds)
+                        .for_label(Metric::CommitterFirstCursorAgeOnCommitAttempt),
+                )
+                .histogram(
+                    create_histogram("last_ms", config)
+                        .display_time_unit(TimeUnit::Milliseconds)
+                        .for_label(Metric::CommitterLastCursorAgeOnCommitAttempt),
+                ),
             )
             .panel(
                 Panel::named(Metric::CommitterCursorsCommittedTime, "committed")

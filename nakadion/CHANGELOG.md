@@ -4,13 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.27.2] - 2020-08-26
+## [0.27.3] - 2020-08-26
+
+### CHANGED
+
+- Split dispatch and io task in committer
+
+### ADDED
+
+- Metrics: Measure the effective ages of the first and last cursor before making a commit attempt
+- Metrics: Emit a warning if the cursor age of the first cursor get close to the stream commit timeout
+
+## [0.27.2] - 2020-08-25
 
 ### CHANGED
 
 - Fixed tracking of active partitions
 
-## [0.27.1] - 2020-08-25
+## [0.27.1] - 2020-08-24
 
 ### CHANGED
 

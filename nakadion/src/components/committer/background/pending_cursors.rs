@@ -1,12 +1,16 @@
-use crate::{
-    components::committer::{CommitData, CommitTrigger},
-    consumer::CommitStrategy,
-};
-use nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs, SubscriptionCursor};
 use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
 };
+
+use nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs};
+
+use crate::{
+    components::committer::{CommitItem, CommitTrigger},
+    consumer::CommitStrategy,
+};
+
+use super::CommitEntry;
 
 pub struct PendingCursors {
     stream_commit_timeout: Duration,
@@ -14,7 +18,7 @@ pub struct PendingCursors {
     collected_events: usize,
     collected_cursors: usize,
     commit_strategy: CommitStrategy,
-    pending: HashMap<EventTypePartition, SubscriptionCursor>,
+    pending: HashMap<EventTypePartition, CommitEntry>,
 }
 
 impl PendingCursors {
@@ -33,11 +37,11 @@ impl PendingCursors {
         }
     }
 
-    pub fn add(&mut self, data: CommitData, now: Instant) {
-        let key = data.etp();
+    pub fn add(&mut self, item: CommitItem, now: Instant) {
+        let key = item.etp();
 
         self.collected_cursors += 1;
-        if let Some(n_events) = data.n_events {
+        if let Some(n_events) = item.n_events {
             self.collected_events += n_events
         }
 
@@ -46,14 +50,14 @@ impl PendingCursors {
                 self.current_deadline,
                 Some(Duration::from_secs(0)),
                 self.stream_commit_timeout,
-                data.frame_started_at,
+                item.frame_started_at,
                 now,
             ),
             CommitStrategy::LatestPossible => calc_effective_deadline(
                 self.current_deadline,
                 None,
                 self.stream_commit_timeout,
-                data.frame_started_at,
+                item.frame_started_at,
                 now,
             ),
             CommitStrategy::After {
@@ -63,14 +67,14 @@ impl PendingCursors {
                 self.current_deadline,
                 Some(Duration::from_secs(u64::from(seconds))),
                 self.stream_commit_timeout,
-                data.frame_started_at,
+                item.frame_started_at,
                 now,
             ),
             CommitStrategy::After { seconds: None, .. } => calc_effective_deadline(
                 self.current_deadline,
                 None,
                 self.stream_commit_timeout,
-                data.frame_started_at,
+                item.frame_started_at,
                 now,
             ),
         };
@@ -79,9 +83,13 @@ impl PendingCursors {
 
         match self.pending.entry(key) {
             Entry::Vacant(e) => {
-                e.insert(data.cursor);
+                e.insert(CommitEntry {
+                    first_frame_started_at: item.frame_started_at,
+                    first_frame_id: item.frame_id,
+                    item_to_commit: item,
+                });
             }
-            Entry::Occupied(mut e) => *e.get_mut() = data.cursor,
+            Entry::Occupied(mut e) => e.get_mut().item_to_commit = item,
         }
     }
 
@@ -145,23 +153,14 @@ impl PendingCursors {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn drain_reset(&mut self) -> Vec<(EventTypePartition, CommitEntry)> {
+        let items = self.pending.drain().collect();
+
         self.current_deadline = None;
         self.collected_events = 0;
         self.collected_cursors = 0;
-        self.pending.clear();
-    }
 
-    pub fn cursors<'a>(&'a self) -> impl Iterator<Item = SubscriptionCursor> + 'a {
-        self.pending.values().cloned()
-    }
-
-    pub fn into_cursors(self) -> impl Iterator<Item = SubscriptionCursor> {
-        self.pending.into_iter().map(|(_, v)| v)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.pending.is_empty()
+        items
     }
 }
 
@@ -177,11 +176,13 @@ fn calc_effective_deadline(
     } else {
         frame_started_at + stream_commit_timeout
     };
+
     let deadline_for_cursor = if now >= deadline_for_cursor {
         now
     } else {
         deadline_for_cursor
     };
+
     if let Some(current_deadline) = current_deadline {
         std::cmp::min(deadline_for_cursor, current_deadline)
     } else {
@@ -189,10 +190,10 @@ fn calc_effective_deadline(
     }
 }
 
-fn safe_commit_timeout(secs: u32) -> Duration {
+pub fn safe_commit_timeout(secs: u32) -> Duration {
     if secs > 1 {
         Duration::from_secs(u64::from(secs - 1))
     } else {
-        Duration::from_millis(100)
+        Duration::from_millis(500)
     }
 }
