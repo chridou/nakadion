@@ -512,14 +512,15 @@ where
                                 }
                                 Ok(None) => {
                                     self.logger.warn(format_args!(
-                                        "there were no events left for a retry"
+                                        "There were no events eligable for a retry because \
+                                        the strategy was set to `SubmissionFailureStrategy::Abort`"
                                     ));
                                     self.instrumentation.publish_failed(started.elapsed());
                                     break Err(PublishError::SubmissionFailed(failed_submission));
                                 }
                                 Err(err) => {
                                     self.logger.error(format_args!(
-                                        "failed to determine events for retry: {}",
+                                        "Failed to determine events for retry: {}",
                                         err
                                     ));
                                     self.instrumentation.publish_failed(started.elapsed());
@@ -676,6 +677,7 @@ fn is_retry_on_api_error_allowed(api_error: &NakadiApiError, retry_on_auth_error
     }
 }
 
+/// Returns `None` if retries were disabled
 fn get_events_for_retry(
     failure: &SubmissionFailure,
     events: &[Bytes],
