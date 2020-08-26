@@ -113,6 +113,20 @@ async fn run_dispatch_cursors(
         }
     }
 
+    let remaining_to_commit = pending.drain_reset();
+    if !remaining_to_commit.is_empty() {
+        logger.warn(format_args!(
+            "There are still {} cursors to commit on shutdown.",
+            remaining_to_commit.len()
+        ));
+
+        if io_sender.send(remaining_to_commit).is_err() {
+            logger.error(format_args!(
+                "Failed to send remaining cursors to the io task"
+            ));
+        }
+    }
+
     drop(cursors_to_commit);
     drop(io_sender);
 
