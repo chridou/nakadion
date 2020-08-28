@@ -210,7 +210,7 @@ where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
 {
-    // THIS MUST BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
+    // THIS MUST BE DONE BEFORE WAITING FOR THE DISPATCHER TO JOIN!!!!
     drop(dispatcher_sink);
 
     drop(event_stream);

@@ -81,14 +81,17 @@ impl EventTypePartition {
         }
     }
 
+    /// Split this instance into the `EventTypeName` and `PartitionId`.
     pub fn split(self) -> (EventTypeName, PartitionId) {
         (self.event_type, self.partition)
     }
 
+    /// Get a reference to the `EventTypeName`
     pub fn event_type(&self) -> &EventTypeName {
         &self.event_type
     }
 
+    /// Get a reference to the `PartitionId`
     pub fn partition(&self) -> &PartitionId {
         &self.partition
     }
@@ -117,10 +120,7 @@ impl EventTypePartitionLike for EventTypePartition {
 
 impl From<SubscriptionCursor> for EventTypePartition {
     fn from(v: SubscriptionCursor) -> Self {
-        Self {
-            event_type: v.event_type,
-            partition: v.cursor.partition,
-        }
+        v.into_event_type_partition()
     }
 }
 
@@ -149,6 +149,7 @@ impl EventTypeNames {
         self
     }
 
+    /// Return the inner `Vec` and consume self.
     pub fn into_inner(self) -> Vec<EventTypeName> {
         self.0
     }
