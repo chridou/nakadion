@@ -175,17 +175,26 @@ where
         }
 
         cursors_to_commit.clear();
-        for cursor in collected_items_to_commit.values().map(|commit_entry| {
+        for commit_entry in collected_items_to_commit.values() {
+            let commit_item = &commit_entry.item_to_commit;
+            let cursor = commit_item.cursor.clone();
             let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
             let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
             let warning = first_cursor_age >= first_cursor_warning_threshold;
+            if warning {
+                committer.logger.warn(format_args!(
+                    "About to commit a dangerously old {:?} cursor for {}. \
+                    The threshold is {:?}",
+                    first_cursor_age,
+                    cursor.to_event_type_partition(),
+                    first_cursor_warning_threshold,
+                ));
+            }
             committer.instrumentation.cursor_ages_on_commit_attempt(
                 first_cursor_age,
                 last_cursor_age,
                 warning,
             );
-            commit_entry.item_to_commit.cursor.clone()
-        }) {
             cursors_to_commit.push(cursor);
         }
 
@@ -226,6 +235,15 @@ where
                 let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
                 let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
                 let warning = first_cursor_age >= first_cursor_warning_threshold;
+                if warning {
+                    committer.logger.warn(format_args!(
+                        "About to commit a dangerously old {:?} cursor for {}. \
+                        The threshold is {:?}",
+                        first_cursor_age,
+                        commit_entry.item_to_commit.cursor.to_event_type_partition(),
+                        first_cursor_warning_threshold,
+                    ));
+                }
                 committer.instrumentation.cursor_ages_on_commit_attempt(
                     first_cursor_age,
                     last_cursor_age,

@@ -415,6 +415,20 @@ impl SubscriptionCursor {
             event_type: self.event_type,
         }
     }
+
+    pub fn into_event_type_partition(self) -> EventTypePartition {
+        EventTypePartition {
+            event_type: self.event_type,
+            partition: self.cursor.partition,
+        }
+    }
+
+    pub fn to_event_type_partition(&self) -> EventTypePartition {
+        EventTypePartition {
+            event_type: self.event_type.clone(),
+            partition: self.cursor.partition.clone(),
+        }
+    }
 }
 
 impl EventTypePartitionLike for SubscriptionCursor {
@@ -510,7 +524,7 @@ pub enum CommitResult {
     /// Cursor was successfully committed
     Committed,
     /// There already was more recent (or the same) cursor committed,
-    ///so the current one was not committed as it is outdated
+    /// so the current one was not committed as it is outdated
     Outdated,
 }
 

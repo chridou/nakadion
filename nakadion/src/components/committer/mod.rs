@@ -147,6 +147,9 @@ where
         }
     }
 
+    /// Run the committer in as a background task.
+    ///
+    /// Items can be scheduled for commit via the `CommitHandle`
     pub fn run(self) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>) {
         background::start(self)
     }
