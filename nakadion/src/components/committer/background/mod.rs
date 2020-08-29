@@ -183,7 +183,7 @@ where
             let warning = first_cursor_age >= first_cursor_warning_threshold;
             if warning {
                 committer.logger.warn(format_args!(
-                    "About to commit a dangerously old cursor {:?} for {}. \
+                    "About to commit a dangerously old cursor ({:?}) for {}. \
                     First frame is #{}, last frame is #{}. \
                     The threshold is {:?}",
                     first_cursor_age,
@@ -210,12 +210,14 @@ where
             Err(err) => {
                 if err.is_recoverable() {
                     committer.logger.warn(format_args!(
-                        "Failed to commit cursors (recoverable): {}",
+                        "Failed to commit {} cursors (recoverable): {}",
+                        cursors_to_commit.len(),
                         err
                     ));
                 } else {
                     committer.logger.error(format_args!(
-                        "Failed to commit cursors (unrecoverable): {}",
+                        "Failed to commit {} cursors (unrecoverable): {}",
+                        cursors_to_commit.len(),
                         err
                     ));
                     return Err(Error::from_error(err));
@@ -240,7 +242,7 @@ where
                 let warning = first_cursor_age >= first_cursor_warning_threshold;
                 if warning {
                     committer.logger.warn(format_args!(
-                        "About to commit a dangerously old cursor {:?} for {}. \
+                        "About to commit a dangerously old cursor ({:?}) for {}. \
                         First frame is #{}, last frame is #{}. \
                         The threshold is {:?}",
                         first_cursor_age,
