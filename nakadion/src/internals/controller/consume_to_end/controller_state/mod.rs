@@ -63,8 +63,10 @@ impl ControllerState {
                 .instrumentation
                 .info_frame_received(frame_started_at, frame_completed_at);
             self.stream_state.info(format_args!(
-                "Received info line for {}: {}",
-                event_type_partition, info_str
+                "Received info line for {} on frame #{}: {}",
+                frame.frame_id(),
+                event_type_partition,
+                info_str
             ));
         }
 

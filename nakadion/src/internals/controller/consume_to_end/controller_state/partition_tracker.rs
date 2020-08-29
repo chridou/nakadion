@@ -172,7 +172,7 @@ impl Entry {
                     Some(
                         self.last_activity_at
                             .checked_duration_since(when)
-                            .unwrap_or(Duration::from_secs(0)),
+                            .unwrap_or_else(|| Duration::from_secs(0)),
                     )
                 } else {
                     None

@@ -183,10 +183,13 @@ where
             let warning = first_cursor_age >= first_cursor_warning_threshold;
             if warning {
                 committer.logger.warn(format_args!(
-                    "About to commit a dangerously old {:?} cursor for {}. \
+                    "About to commit a dangerously old cursor {:?} for {}. \
+                    First frame is #{}, last frame is #{}. \
                     The threshold is {:?}",
                     first_cursor_age,
                     cursor.to_event_type_partition(),
+                    commit_entry.first_frame_id,
+                    commit_item.frame_id,
                     first_cursor_warning_threshold,
                 ));
             }
@@ -237,10 +240,13 @@ where
                 let warning = first_cursor_age >= first_cursor_warning_threshold;
                 if warning {
                     committer.logger.warn(format_args!(
-                        "About to commit a dangerously old {:?} cursor for {}. \
+                        "About to commit a dangerously old cursor {:?} for {}. \
+                        First frame is #{}, last frame is #{}. \
                         The threshold is {:?}",
                         first_cursor_age,
                         commit_entry.item_to_commit.cursor.to_event_type_partition(),
+                        commit_entry.first_frame_id,
+                        commit_entry.item_to_commit.frame_id,
                         first_cursor_warning_threshold,
                     ));
                 }
