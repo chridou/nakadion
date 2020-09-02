@@ -685,4 +685,59 @@ mod test {
         let frames = result.unwrap_err();
         assert_eq!(frames.len(), 0);
     }
+
+    #[tokio::test(basic_scheduler)]
+    async fn frames_are_emitted_immediately() {
+        let (send_bytes, receive_bytes) = tokio::sync::mpsc::unbounded_channel::<&'static [u8]>();
+        let (send_frame, mut receive_frame) = tokio::sync::mpsc::unbounded_channel();
+
+        let stream_f = FramedStream::new(
+            receive_bytes.map(|v| Ok(v.into())),
+            Instrumentation::default(),
+        )
+        .for_each(move |f| {
+            if let Ok(f) = f {
+                let _ = send_frame.send(f);
+            }
+            futures::future::ready(())
+        });
+
+        tokio::spawn(stream_f);
+
+        let _ = send_bytes.send(b"");
+        assert!(receive_frame.try_recv().is_err());
+        let _ = send_bytes.send(b"a");
+        assert!(receive_frame.try_recv().is_err());
+        let _ = send_bytes.send(b"\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"a");
+
+        let _ = send_bytes.send(b"abc\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+
+        let _ = send_bytes.send(b"abc\nefg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+        let _ = send_bytes.send(b"\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+
+        let _ = send_bytes.send(b"abc\nefg\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+
+        let _ = send_bytes.send(b"abc\nefg\nhij");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        let _ = send_bytes.send(b"\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+
+        let _ = send_bytes.send(b"abc\nefg\nhij\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+
+        let _ = send_bytes.send(b"abc\nef");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
+        let _ = send_bytes.send(b"g\nhij\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+    }
 }
