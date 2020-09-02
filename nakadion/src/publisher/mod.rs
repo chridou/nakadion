@@ -497,6 +497,12 @@ where
                         if let Some(delay) = backoff.next_backoff() {
                             match get_events_for_retry(&failure, &events, strategy) {
                                 Ok(Some(to_retry)) => {
+                                    self.logger.warn(format_args!(
+                                        "Failed submission (retry in {:?}): {}",
+                                        delay,
+                                        failure
+                                    ));
+
                                     if to_retry.is_empty() {
                                         self.instrumentation.publish_failed(started.elapsed());
                                         break Err(PublishError::SubmissionFailed(
