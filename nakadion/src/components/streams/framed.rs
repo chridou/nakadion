@@ -687,7 +687,7 @@ mod test {
     }
 
     #[tokio::test(basic_scheduler)]
-    async fn frames_are_emitted_immediately() {
+    async fn frames_are_emitted_immediately_after_new_line() {
         let (send_bytes, receive_bytes) = tokio::sync::mpsc::unbounded_channel::<&'static [u8]>();
         let (send_frame, mut receive_frame) = tokio::sync::mpsc::unbounded_channel();
 
