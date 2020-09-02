@@ -714,30 +714,30 @@ mod test {
         let _ = send_bytes.send(b"abc\n");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
 
-        let _ = send_bytes.send(b"abc\nefg");
+        let _ = send_bytes.send(b"abc\ndef");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
         let _ = send_bytes.send(b"\n");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"def");
 
-        let _ = send_bytes.send(b"abc\nefg\n");
+        let _ = send_bytes.send(b"abc\ndef\n");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"def");
 
-        let _ = send_bytes.send(b"abc\nefg\nhij");
+        let _ = send_bytes.send(b"abc\ndef\nghi");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"def");
         let _ = send_bytes.send(b"\n");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"ghi");
 
-        let _ = send_bytes.send(b"abc\nefg\nhij\n");
+        let _ = send_bytes.send(b"abc\ndef\nghi\n");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"def");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"ghi");
 
-        let _ = send_bytes.send(b"abc\nef");
+        let _ = send_bytes.send(b"abc\nde");
         assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"abc");
-        let _ = send_bytes.send(b"g\nhij\n");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"efg");
-        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"hij");
+        let _ = send_bytes.send(b"f\nghi\n");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"def");
+        assert_eq!(receive_frame.recv().await.unwrap().bytes.as_ref(), b"ghi");
     }
 }
