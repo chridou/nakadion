@@ -227,6 +227,10 @@ impl EventStreamBatch {
         self.items.has_events()
     }
 
+    pub fn num_events(&self) -> usize {
+        self.items.num_events()
+    }
+
     pub fn has_info(&self) -> bool {
         self.items.has_info()
     }

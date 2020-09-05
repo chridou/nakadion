@@ -8,6 +8,7 @@ const ARRAY_OPEN: u8 = b'[';
 const ARRAY_CLOSE: u8 = b']';
 const DOUBLE_QUOTE: u8 = b'"';
 const ESCAPE: u8 = b'\\';
+const COMMA: u8 = b',';
 
 const CURSOR_LABEL: &[u8] = b"cursor";
 const EVENTS_LABEL: &[u8] = b"events";
@@ -22,6 +23,7 @@ const CURSOR_TOKEN_LABEL: &[u8] = b"cursor_token";
 pub struct LineItems {
     cursor: Cursor,
     events: Option<(usize, usize)>,
+    num_events: usize,
     info: Option<(usize, usize)>,
 }
 
@@ -79,6 +81,10 @@ impl LineItems {
         self.events.is_some()
     }
 
+    pub fn num_events(&self) -> usize {
+        self.num_events
+    }
+
     #[allow(dead_code)]
     pub fn has_info(&self) -> bool {
         self.info.is_some()
@@ -90,6 +96,7 @@ impl Default for LineItems {
         LineItems {
             cursor: Default::default(),
             events: None,
+            num_events: 0,
             info: None,
         }
     }
@@ -280,8 +287,9 @@ fn parse_next_item(
                 b
             }
             EVENTS_LABEL => {
-                let (a, b) = find_next_array(json_bytes, end)?;
+                let (a, b, num_events) = find_next_array(json_bytes, end)?;
                 line_items.events = Some((a, b + 1));
+                line_items.num_events = num_events;
                 b
             }
             INFO_LABEL => {
@@ -399,7 +407,11 @@ fn find_next_obj(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Pars
     Ok((idx_begin, idx_end))
 }
 
-fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), ParseBatchError> {
+/// returns (begin idx, end_idx, num elements)
+fn find_next_array(
+    json_bytes: &[u8],
+    start: usize,
+) -> Result<(usize, usize, usize), ParseBatchError> {
     if start == json_bytes.len() {
         return Err("Reached end".into());
     }
@@ -418,25 +430,47 @@ fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Pa
 
     let mut idx_end = idx_begin + 1;
     let mut level = 0;
+    let mut num_commas_found = 0;
+    let mut something_found = 0;
     while idx_end < json_bytes.len() {
         let c = json_bytes[idx_end];
         if c == DOUBLE_QUOTE {
+            if level == 0 {
+                something_found = 1;
+            }
             let (_, end) = next_string(json_bytes, idx_end)?.unwrap();
             idx_end = end + 1;
-            continue;
         } else if c == ARRAY_OPEN {
+            if level == 0 {
+                something_found = 1;
+            }
             level += 1;
             idx_end += 1;
-            continue;
         } else if c == ARRAY_CLOSE {
             if level == 0 {
                 break;
             } else {
                 level -= 1;
                 idx_end += 1;
-                continue;
+            }
+        } else if c == OBJ_OPEN {
+            if level == 0 {
+                something_found = 1;
+            }
+            level += 1;
+            idx_end += 1;
+        } else if c == OBJ_CLOSE {
+            level -= 1;
+            idx_end += 1;
+        } else if c == COMMA {
+            idx_end += 1;
+            if level == 0 {
+                num_commas_found += 1;
             }
         } else {
+            if level == 0 && !is_whitespace(c) {
+                something_found = 1;
+            }
             idx_end += 1;
         }
     }
@@ -445,7 +479,12 @@ fn find_next_array(json_bytes: &[u8], start: usize) -> Result<(usize, usize), Pa
         return Err("Not an array. Missing ending `]`.".into());
     }
 
-    Ok((idx_begin, idx_end))
+    Ok((idx_begin, idx_end, num_commas_found + something_found))
+}
+
+#[inline]
+fn is_whitespace(b: u8) -> bool {
+    b == b' ' || b == b'\t' || b == b'\n' || b == b'\r'
 }
 
 fn parse_cursor_fields<T: AsRef<[u8]>>(
@@ -639,21 +678,21 @@ fn test_find_next_obj_fail_2() {
 fn test_find_next_array_1() {
     let sample = b"\"field\":[\"number\", 1, {}], more...";
     let r = find_next_array(sample, 0).unwrap();
-    assert_eq!(r, (8, 24));
+    assert_eq!(r, (8, 24, 3));
 }
 
 #[test]
 fn test_find_next_array_2() {
     let sample = b"\"field\":[\"number\", 1, {}], more...";
     let r = find_next_array(sample, 7).unwrap();
-    assert_eq!(r, (8, 24));
+    assert_eq!(r, (8, 24, 3));
 }
 
 #[test]
 fn test_find_next_array_3() {
     let sample = b"\"field\":[\"number\", 1, {}], more...";
     let r = find_next_array(sample, 8).unwrap();
-    assert_eq!(r, (8, 24));
+    assert_eq!(r, (8, 24, 3));
 }
 
 #[test]
