@@ -12,7 +12,7 @@ use tokio::{self, task::JoinHandle};
 use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
 use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{EnrichedErr, EnrichedResult, StreamState};
+use crate::internals::{ConsumptionResult, StreamState};
 
 use processor::HandlerSlot;
 
@@ -64,21 +64,21 @@ impl SleepingWorker {
 }
 
 pub(crate) struct ActiveWorker {
-    join_handle: JoinHandle<EnrichedResult<HandlerSlot>>,
+    join_handle: JoinHandle<ConsumptionResult<HandlerSlot>>,
 }
 
 impl ActiveWorker {
-    pub async fn join(self) -> EnrichedResult<SleepingWorker> {
+    pub async fn join(self) -> ConsumptionResult<SleepingWorker> {
         let ActiveWorker { join_handle, .. } = self;
 
-        let mut handler_slot_enriched = match join_handle.await {
+        let mut handler_slot = match join_handle.await {
             Ok(r) => r?,
-            Err(join_err) => return Err(EnrichedErr::no_data(join_err)),
+            Err(join_err) => return Err(join_err.into()),
         };
 
-        handler_slot_enriched.payload.reset();
+        handler_slot.reset();
 
-        Ok(handler_slot_enriched.map(|handler_slot| SleepingWorker { handler_slot }))
+        Ok(SleepingWorker { handler_slot })
     }
 }
 
@@ -102,7 +102,7 @@ mod processor {
         HandlerAssignment,
     };
     use crate::instrumentation::Instruments;
-    use crate::internals::{EnrichedOk, EnrichedResult, StreamState};
+    use crate::internals::{ConsumptionResult, StreamState};
     use crate::logging::{ContextualLogger, Logger};
 
     use super::WorkerMessage;
@@ -115,11 +115,10 @@ mod processor {
         mut handler_slot: HandlerSlot,
         stream_state: StreamState,
         committer: CommitHandle,
-    ) -> JoinHandle<EnrichedResult<HandlerSlot>>
+    ) -> JoinHandle<ConsumptionResult<HandlerSlot>>
     where
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
-        let mut batches_processed: usize = 0;
         handler_slot.set_logger(&stream_state.logger());
         let processor_loop = async move {
             let mut processing_compound = ProcessingCompound {
@@ -145,15 +144,13 @@ mod processor {
                 match processing_compound.process_batch_line(batch).await {
                     Ok(true) => {
                         stream_state.instrumentation().batches_in_flight_dec();
-                        batches_processed += 1;
                     }
                     Ok(false) => {
                         stream_state.instrumentation().batches_in_flight_dec();
-                        batches_processed += 1;
                         break;
                     }
                     Err(err) => {
-                        return Err(err.enriched(batches_processed));
+                        return Err(err);
                     }
                 }
             }
@@ -162,10 +159,7 @@ mod processor {
 
             stream_state.debug(format_args!("Worker stopped"));
 
-            Ok(EnrichedOk::new(
-                processing_compound.handler_slot,
-                batches_processed,
-            ))
+            Ok(processing_compound.handler_slot)
         };
 
         tokio::spawn(processor_loop)

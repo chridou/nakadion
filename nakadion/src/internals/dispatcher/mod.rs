@@ -8,7 +8,7 @@ use crate::api::SubscriptionCommitApi;
 use crate::components::streams::EventStreamBatch;
 use crate::consumer::{Config, DispatchMode};
 use crate::handler::BatchHandlerFactory;
-use crate::internals::{EnrichedResult, StreamState};
+use crate::internals::{ConsumptionResult, StreamState};
 use crate::logging::Logger;
 use crate::nakadi_types::subscription::EventTypePartition;
 
@@ -110,26 +110,21 @@ impl<'a, C> ActiveDispatcher<'a, C>
 where
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> EnrichedResult<SleepingDispatcher<C>> {
+    pub async fn join(self) -> ConsumptionResult<SleepingDispatcher<C>> {
         match self {
             ActiveDispatcher::AllSeq(dispatcher) => {
-                dispatcher
-                    .join()
-                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::AllSeq))
-                    .await
+                dispatcher.join().map_ok(SleepingDispatcher::AllSeq).await
             }
             ActiveDispatcher::EventTypePar(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(|enr_dispatcher| enr_dispatcher.map(SleepingDispatcher::EventTypePar))
+                    .map_ok(SleepingDispatcher::EventTypePar)
                     .await
             }
             ActiveDispatcher::EventTypePartitionPar(dispatcher) => {
                 dispatcher
                     .join()
-                    .map_ok(|enr_dispatcher| {
-                        enr_dispatcher.map(SleepingDispatcher::EventTypePartitionPar)
-                    })
+                    .map_ok(SleepingDispatcher::EventTypePartitionPar)
                     .await
             }
         }

@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use metrix::{
-    processor::ProcessorMount, AggregatesProcessors, Decrement, DecrementBy, Increment,
-    TelemetryTransmitter, TimeUnit, TransmitsTelemetryData,
+    processor::ProcessorMount, AggregatesProcessors, Decrement, Increment, TelemetryTransmitter,
+    TimeUnit, TransmitsTelemetryData,
 };
 
 use serde::{Deserialize, Serialize};
@@ -242,9 +242,9 @@ impl Instruments for Metrix {
         self.tx
             .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement);
     }
-    fn batches_in_flight_dec_by(&self, by: usize) {
+    fn batches_in_flight_reset(&self) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, DecrementBy(by as u32));
+            .observed_one_value_now(Metric::BatchesInFlightChanged, 0);
     }
 
     fn event_type_partition_activated(&self) {
@@ -651,7 +651,7 @@ mod instr {
 
     fn create_batch_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "batches")
-            .gauge(create_gauge("in_flight", config).deltas_only(Metric::BatchesInFlightChanged))
+            .gauge(create_gauge("in_flight", config).for_label(Metric::BatchesInFlightChanged))
             .gauge(create_gauge("in_processing", config).inc_dec_on(
                 Metric::BatchProcessingStartedLag,
                 Metric::BatchProcessedBytes,

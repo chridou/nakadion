@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use crate::consumer::StreamDeadPolicy;
 use crate::logging::Logger;
 use crate::{
-    components::connector::EventStreamBatch, instrumentation::Instruments, internals::StreamState,
+    instrumentation::Instruments, internals::StreamState,
     nakadi_types::subscription::EventTypePartition, Error,
 };
 
@@ -21,8 +21,6 @@ pub struct ControllerState {
     pub stream_started_at: Instant,
     pub last_events_received_at: Instant,
     pub last_frame_received_at: Instant,
-    /// If streaming ends, we use this to correct the in flight metrics
-    pub batches_sent_to_dispatcher: usize,
     partition_tracker: PartitionTracker,
     stream_state: StreamState,
     events_received: bool,
@@ -39,61 +37,29 @@ impl ControllerState {
             stream_started_at: now,
             last_events_received_at: now,
             last_frame_received_at: now,
-            batches_sent_to_dispatcher: 0,
             partition_tracker: PartitionTracker::new(stream_state.clone()),
             stream_state,
             events_received: false,
         }
     }
 
-    pub fn received_frame(
-        &mut self,
-        event_type_partition: &EventTypePartition,
-        frame: &EventStreamBatch,
-    ) {
-        let frame_started_at = frame.frame_started_at();
-        let frame_completed_at = frame.frame_completed_at();
+    pub fn received_frame(&mut self, event_type_partition: &EventTypePartition) {
         let now = Instant::now();
         self.last_frame_received_at = now;
 
         self.partition_tracker.activity(event_type_partition);
 
-        if let Some(info_str) = frame.info_str() {
+        // Only measure if we already have a previous batch
+        if self.events_received {
+            let events_batch_gap = now - self.last_events_received_at;
             self.stream_state
                 .instrumentation
-                .info_frame_received(frame_started_at, frame_completed_at);
-            self.stream_state.info(format_args!(
-                "Received info line for with frame #{} on {}: {}",
-                frame.frame_id(),
-                event_type_partition,
-                info_str
-            ));
-        }
-
-        if frame.is_keep_alive_line() {
-            self.stream_state
-                .instrumentation
-                .keep_alive_frame_received(frame_started_at, frame_completed_at);
+                .batch_frame_gap(events_batch_gap);
         } else {
-            let bytes = frame.bytes().len();
-            self.stream_state.instrumentation.batch_frame_received(
-                frame_started_at,
-                frame_completed_at,
-                bytes,
-            );
-
-            // Only measure if we already have a previous batch
-            if self.events_received {
-                let events_batch_gap = now - self.last_events_received_at;
-                self.stream_state
-                    .instrumentation
-                    .batch_frame_gap(events_batch_gap);
-            } else {
-                self.events_received = true;
-            }
-
-            self.last_events_received_at = now;
+            self.events_received = true;
         }
+
+        self.last_events_received_at = now;
     }
 
     pub fn received_tick(&mut self, _tick_timestamp: Instant) -> Result<(), Error> {

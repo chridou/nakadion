@@ -637,7 +637,6 @@ async fn check_monitoring_api(
     api_client: &ApiClient,
     event_type_name: &EventTypeName,
 ) -> Result<(), Error> {
-    use nakadi_types::partition::{CursorDistanceQuery, CursorOffset};
     println!("Monitoring: get event type partitions");
     let partitions = api_client
         .get_event_type_partitions(&event_type_name, ())

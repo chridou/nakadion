@@ -2,12 +2,12 @@ use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 use crate::components::committer::CommitHandle;
-use crate::internals::{worker::*, EnrichedResult, StreamState};
+use crate::internals::{worker::*, ConsumptionResult, StreamState};
 
 pub mod et_par;
 pub mod etp_par;
 
-type BufferedWorkerJoin<'a> = BoxFuture<'a, EnrichedResult<SleepingWorker>>;
+type BufferedWorkerJoin<'a> = BoxFuture<'a, ConsumptionResult<SleepingWorker>>;
 
 /// A worker with a channel(buffer) in front of it
 struct BufferedWorker {

@@ -28,6 +28,9 @@ pub use metrix::{
 ///
 /// An implementor of this interface can be used with
 /// `Instrumentation::new`
+///
+/// Implementations of this trait should not be shared with multiple consumers
+/// since they are stateful e.g. in flight batches.
 pub trait Instruments {
     fn consumer_started(&self);
     fn consumer_stopped(&self, ran_for: Duration);
@@ -107,7 +110,7 @@ pub trait Instruments {
     /// Usually triggered when there are still batches in flight and the stream aborts.
     ///
     /// This is a correction for the inflight metrics.
-    fn batches_in_flight_dec_by(&self, by: usize);
+    fn batches_in_flight_reset(&self);
 
     fn event_type_partition_activated(&self);
 
@@ -506,12 +509,12 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_dec(),
         }
     }
-    fn batches_in_flight_dec_by(&self, by: usize) {
+    fn batches_in_flight_reset(&self) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_dec_by(by),
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_reset(),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_dec_by(by),
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_reset(),
         }
     }
 

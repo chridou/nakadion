@@ -2,19 +2,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use futures::{
-    future::{BoxFuture, TryFutureExt},
-    pin_mut, FutureExt, Stream, StreamExt,
-};
+use futures::{future::BoxFuture, pin_mut, FutureExt, Stream, StreamExt};
 use std::future::Future;
 
 use crate::api::SubscriptionCommitApi;
 use crate::components::committer::{CommitHandle, Committer};
 use crate::consumer::ConsumerError;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{
-    dispatcher::DispatcherMessage, worker::*, EnrichedErr, EnrichedOk, EnrichedResult, StreamState,
-};
+use crate::internals::{dispatcher::DispatcherMessage, worker::*, ConsumptionResult, StreamState};
 use crate::logging::Logger;
 
 use crate::nakadi_types::subscription::EventTypePartition;
@@ -112,7 +107,7 @@ fn run<S>(
     stream_state: StreamState,
     committer: CommitHandle,
     handler_factory: Arc<dyn BatchHandlerFactory>,
-) -> impl Future<Output = EnrichedResult<BTreeMap<EventTypePartition, SleepingWorker>>>
+) -> impl Future<Output = ConsumptionResult<BTreeMap<EventTypePartition, SleepingWorker>>>
 where
     S: Stream<Item = DispatcherMessage> + Send + 'static,
 {
@@ -176,31 +171,20 @@ where
         ));
 
         let mut consumer_error_ocurred = false;
-        let mut processed_batches_total = 0;
         let mut sleeping_workers: BTreeMap<EventTypePartition, SleepingWorker> =
             BTreeMap::default();
 
         for (event_type_partition, worker) in activated {
             match worker.join().await {
-                Ok(EnrichedOk {
-                    processed_batches,
-                    payload: sleeping_worker,
-                }) => {
-                    processed_batches_total += processed_batches;
+                Ok(sleeping_worker) => {
                     sleeping_workers.insert(event_type_partition, sleeping_worker);
                 }
-                Err(EnrichedErr {
-                    processed_batches,
-                    err,
-                }) => {
+                Err(err) => {
                     consumer_error_ocurred = true;
                     stream_state.error(format_args!(
                         "worker for event type {} joined with an error: {}",
                         event_type_partition, err
                     ));
-                    if let Some(processed_batches) = processed_batches {
-                        processed_batches_total += processed_batches;
-                    }
                 }
             }
         }
@@ -208,32 +192,29 @@ where
         stream_state.debug(format_args!("'etp_par'-Dispatcher: All workers sleeping.",));
 
         if consumer_error_ocurred {
-            Err(EnrichedErr::new(
-                ConsumerError::internal().with_message("At least one worker failed to join."),
-                processed_batches_total,
-            ))
+            Err(ConsumerError::internal().with_message("At least one worker failed to join."))
         } else {
-            Ok(EnrichedOk::new(sleeping_workers, processed_batches_total))
+            Ok(sleeping_workers)
         }
     };
 
     let join_handle = tokio::spawn(task);
 
-    async { join_handle.map_err(EnrichedErr::no_data).await? }
+    async { join_handle.await? }
 }
 
 pub(crate) struct Active<'a, C> {
     stream_state: StreamState,
     api_client: C,
     handler_factory: Arc<dyn BatchHandlerFactory>,
-    join: BoxFuture<'a, EnrichedResult<BTreeMap<EventTypePartition, SleepingWorker>>>,
+    join: BoxFuture<'a, ConsumptionResult<BTreeMap<EventTypePartition, SleepingWorker>>>,
 }
 
 impl<'a, C> Active<'a, C>
 where
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
+    pub async fn join(self) -> ConsumptionResult<Sleeping<C>> {
         let Active {
             api_client,
             join,
@@ -243,14 +224,14 @@ where
 
         stream_state.debug(format_args!("Waiting for worker to fall asleep"));
 
-        let assignments_enriched = join.await?;
+        let assignments = join.await?;
 
         stream_state.debug(format_args!("Dispatcher going to sleep"));
 
-        Ok(assignments_enriched.map(|assignments| Sleeping {
+        Ok(Sleeping {
             assignments,
             api_client,
             handler_factory,
-        }))
+        })
     }
 }

@@ -191,6 +191,10 @@ impl Logger for StreamState {
     }
 }
 
+/// A result which influences the outcome of the consumer
+pub(crate) type ConsumptionResult<T> = Result<T, ConsumerError>;
+
+/*
 /// A result that contains data that is (mostly) present in both the success and the error case
 pub(crate) type EnrichedResult<T> = Result<EnrichedOk<T>, EnrichedErr>;
 
@@ -223,6 +227,7 @@ impl<T> EnrichedOk<T> {
     }
 }
 
+
 /// An Error with additional data
 pub(crate) struct EnrichedErr {
     /// The number of batches that have been processed.
@@ -252,3 +257,4 @@ impl EnrichedErr {
         }
     }
 }
+*/

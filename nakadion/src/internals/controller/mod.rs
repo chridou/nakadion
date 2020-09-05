@@ -5,7 +5,7 @@ use std::time::Instant;
 use futures::{stream, Stream, StreamExt, TryStreamExt};
 use tokio::{
     self,
-    sync::mpsc::{unbounded_channel, UnboundedSender},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     time::interval_at,
 };
 
@@ -17,7 +17,7 @@ use crate::components::{
     StreamingEssentials,
 };
 use crate::consumer::{ConsumerAbort, ConsumerError, ConsumerErrorKind, TickIntervalMillis};
-use crate::instrumentation::{Instrumentation, Instruments};
+use crate::instrumentation::Instruments;
 use crate::internals::{
     dispatcher::{ActiveDispatcher, Dispatcher, DispatcherMessage, SleepingDispatcher},
     StreamState,
@@ -97,8 +97,8 @@ where
 }
 
 pub(crate) enum EventStreamMessage {
-    /// An evaluated frame from Nakadi. It can can contain any kind of line (events, keep alive, info parts)
-    Batch(EventStreamBatch),
+    /// An evaluated frame from Nakadi. It always contains events
+    EventsBatch(EventStreamBatch),
     Tick(Instant),
     /// We need this to notify the controller since the
     /// consumed stream will never end because of the ticks
@@ -139,6 +139,8 @@ where
     // continue with a stream state for the current stream
     let stream_state = consumer_state.stream_state(stream_id);
 
+    stream_state.instrumentation.batches_in_flight_reset();
+
     let _guard: StreamEndGuard = params
         .lifecycle_listeners
         .on_stream_connected(stream_state.subscription_id(), stream_state.stream_id());
@@ -152,7 +154,7 @@ where
     let stream = make_ticked_batch_line_stream(
         bytes_stream,
         stream_state.config().tick_interval,
-        stream_state.instrumentation().clone(),
+        stream_state.clone(),
     );
 
     // Only if we receive a frame we start the rest
@@ -242,7 +244,7 @@ where
                             sleeping_dispatcher,
                         });
                     }
-                    Ok(EventStreamMessage::Batch(first_frame)) => {
+                    Ok(EventStreamMessage::EventsBatch(first_frame)) => {
                         stream_state.info(format_args!(
                             "Received first frame after {:?}.",
                             nothing_received_since.elapsed()
@@ -305,7 +307,8 @@ where
     };
 
     // Recreate the stream by appending the rest to the already received first batch line
-    let stream = stream::once(async { Ok(EventStreamMessage::Batch(first_frame)) }).chain(stream);
+    let stream =
+        stream::once(async { Ok(EventStreamMessage::EventsBatch(first_frame)) }).chain(stream);
 
     Ok(WaitForFirstFrameResult::GotTheFrame {
         active_dispatcher,
@@ -321,12 +324,17 @@ where
 fn make_ticked_batch_line_stream(
     bytes_stream: BytesStream,
     tick_interval: TickIntervalMillis,
-    instrumentation: Instrumentation,
+    stream_state: StreamState,
 ) -> impl Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send {
+    let instrumentation = stream_state.instrumentation().clone();
+
     let frame_stream = FramedStream::new(bytes_stream, instrumentation.clone());
 
-    let batch_stream = EventStream::new(frame_stream, instrumentation.clone())
-        .map_ok(EventStreamMessage::Batch)
+    let event_stream = EventStream::new(frame_stream, instrumentation.clone());
+    let drained_stream = start_batch_drain(event_stream, stream_state);
+
+    let drained_stream = drained_stream
+        .map_ok(EventStreamMessage::EventsBatch)
         .chain(stream::once(async {
             Ok(EventStreamMessage::EventStreamEnded)
         }));
@@ -338,5 +346,78 @@ fn make_ticked_batch_line_stream(
             Ok(EventStreamMessage::Tick(Instant::now()))
         });
 
-    stream::select(batch_stream, ticker)
+    stream::select(drained_stream, ticker)
+}
+
+fn start_batch_drain<
+    S: futures::Stream<Item = Result<EventStreamBatch, EventStreamError>> + Unpin + Send + 'static,
+>(
+    mut event_stream: S,
+    stream_state: StreamState,
+) -> UnboundedReceiver<Result<EventStreamBatch, EventStreamError>> {
+    let (sender, receiver) = unbounded_channel();
+
+    let task = async move {
+        while let Some(next_batch_line) = event_stream.next().await {
+            if stream_state.cancellation_requested() {
+                break;
+            }
+
+            match next_batch_line {
+                Ok(batch_line) => {
+                    let frame_started_at = batch_line.frame_started_at();
+                    let frame_completed_at = batch_line.frame_completed_at();
+
+                    if let Some(info_str) = batch_line.info_str() {
+                        stream_state
+                            .instrumentation
+                            .info_frame_received(frame_started_at, frame_completed_at);
+                        stream_state.info(format_args!(
+                            "Received info line for with frame #{}: {}",
+                            batch_line.frame_id(),
+                            info_str
+                        ));
+                    }
+
+                    if batch_line.is_keep_alive_line() {
+                        stream_state
+                            .instrumentation
+                            .keep_alive_frame_received(frame_started_at, frame_completed_at);
+                        continue;
+                    }
+
+                    let bytes = batch_line.bytes().len();
+                    stream_state.instrumentation.batch_frame_received(
+                        frame_started_at,
+                        frame_completed_at,
+                        bytes,
+                    );
+
+                    let frame_id = batch_line.frame_id();
+                    if sender.send(Ok(batch_line)).is_err() {
+                        stream_state.warn(format_args!(
+                            "Could not send frame #{} to controller. Streaming stopped",
+                            frame_id
+                        ));
+                        break;
+                    } else {
+                        stream_state.instrumentation().batches_in_flight_inc();
+                    }
+                }
+                Err(err) => {
+                    if let Err(Err(err)) = sender.send(Err(err)).map_err(|err| err.0) {
+                        stream_state.warn(format_args!(
+                            "Could not send error to controller. Error to send was: {}",
+                            err
+                        ));
+                    }
+                    break;
+                }
+            }
+        }
+    };
+
+    tokio::spawn(task);
+
+    receiver
 }
