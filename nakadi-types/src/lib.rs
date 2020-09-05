@@ -9,10 +9,14 @@
 //! In this case the field of the wrapping object is renamed to `items` for
 //! serialization purposes.
 //!
-//! This crate is a base library for [nakadion](https://crates.io/crates/nakadion).
-//!
-//!
 //! This crate is used by [Nakadion](https://crates.io/crates/nakadion)
+//!
+//! ## Documentation and Environment Variables
+//!
+//! Within the documentation environment variables can contain spaces and
+//! line breaks. This is because part of the documentation was created using macros.
+//! The names of the variables of cause must not contain these characters. So be
+//! careful when copy & pasting.
 use std::error::Error as StdError;
 use std::fmt;
 use std::str::FromStr;

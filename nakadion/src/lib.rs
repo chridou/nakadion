@@ -146,6 +146,13 @@
 //! Nevertheless it is easily possible to consume tens of thousands events per second depending
 //! on the complexity of your processing logic.
 //!
+//! ## Documentation and Environment Variables
+//!
+//! Within the documentation environment variables can contain spaces and
+//! line breaks. This is because part of the documentation was created using macros.
+//! The names of the variables of cause must not contain these characters. So be
+//! careful when copy & pasting.
+//!
 //! ## Recent Changes
 //!
 //! See CHANGELOG
