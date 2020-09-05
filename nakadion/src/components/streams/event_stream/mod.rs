@@ -100,6 +100,14 @@ pub struct EventStreamBatch {
     frame_completed_at: Instant,
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct EventStreamBatchStats {
+    pub n_bytes: usize,
+    pub n_events: usize,
+    pub n_events_bytes: usize,
+}
+
 impl EventStreamBatch {
     #[allow(dead_code)]
     pub fn new<T: Into<Bytes>>(bytes: T) -> Result<EventStreamBatch, ParseBatchError> {
@@ -227,8 +235,8 @@ impl EventStreamBatch {
         self.items.has_events()
     }
 
-    pub fn num_events(&self) -> usize {
-        self.items.num_events()
+    pub fn n_events(&self) -> usize {
+        self.items.n_events()
     }
 
     pub fn has_info(&self) -> bool {
@@ -237,6 +245,14 @@ impl EventStreamBatch {
 
     pub fn cursor_deserialized<T: DeserializeOwned>(&self) -> Result<T, Error> {
         Ok(serde_json::from_slice(self.cursor_bytes().as_ref())?)
+    }
+
+    pub fn stats(&self) -> EventStreamBatchStats {
+        EventStreamBatchStats {
+            n_bytes: self.bytes.len(),
+            n_events: self.items.n_events(),
+            n_events_bytes: self.events_bytes().map(|b| b.len()).unwrap_or(0),
+        }
     }
 }
 

@@ -217,7 +217,7 @@ where
         }
     };
 
-    stream_state.instrumentation.batches_in_flight_reset();
+    stream_state.reset_in_flight_stats();
 
     result
 }

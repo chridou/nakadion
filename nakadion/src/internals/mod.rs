@@ -7,7 +7,11 @@ use std::sync::{
 
 use crate::consumer::{Config, ConsumerError, Instrumentation};
 use crate::logging::{ContextualLogger, Logger};
-use crate::nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId};
+use crate::{
+    components::streams::EventStreamBatchStats,
+    instrumentation::Instruments,
+    nakadi_types::subscription::{StreamId, StreamParameters, SubscriptionId},
+};
 
 //pub mod committer;
 pub mod controller;
@@ -171,6 +175,18 @@ impl StreamState {
 
     pub fn instrumentation(&self) -> &Instrumentation {
         &self.instrumentation
+    }
+
+    pub fn dispatched_events_batch(&self, stats: EventStreamBatchStats) {
+        self.instrumentation.batches_in_flight_incoming(&stats);
+    }
+
+    pub fn processed_events_batch(&self, stats: EventStreamBatchStats) {
+        self.instrumentation.batches_in_flight_processed(&stats);
+    }
+
+    pub fn reset_in_flight_stats(&self) {
+        self.instrumentation.batches_in_flight_reset();
     }
 }
 

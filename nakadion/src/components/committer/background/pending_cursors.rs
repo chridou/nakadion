@@ -41,9 +41,7 @@ impl PendingCursors {
         let key = item.etp();
 
         self.collected_cursors += 1;
-        if let Some(n_events) = item.n_events {
-            self.collected_events += n_events
-        }
+        self.collected_events += item.n_events;
 
         let deadline = match self.commit_strategy {
             CommitStrategy::Immediately => calc_effective_deadline(

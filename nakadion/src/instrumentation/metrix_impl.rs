@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use metrix::{
-    processor::ProcessorMount, AggregatesProcessors, Decrement, Increment, TelemetryTransmitter,
-    TimeUnit, TransmitsTelemetryData,
+    processor::ProcessorMount, AggregatesProcessors, Decrement, DecrementBy, Increment,
+    IncrementBy, TelemetryTransmitter, TimeUnit, TransmitsTelemetryData,
 };
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     committer::{CommitError, CommitTrigger},
     connector::ConnectError,
-    streams::{EventStreamError, EventStreamErrorKind},
+    streams::{EventStreamBatchStats, EventStreamError, EventStreamErrorKind},
 };
 
 use super::Instruments;
@@ -234,17 +234,36 @@ impl Instruments for Metrix {
             .observed_one_value_now(Metric::StreamUnconsumedEvents, n_unconsumed);
     }
 
-    fn batches_in_flight_inc(&self) {
+    fn batches_in_flight_incoming(&self, stats: &EventStreamBatchStats) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, Increment);
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Increment)
+            .observed_one_value_now(
+                Metric::EventsInFlightChanged,
+                IncrementBy(stats.n_events as u32),
+            )
+            .observed_one_value_now(
+                Metric::BytesInFlightChanged,
+                IncrementBy(stats.n_bytes as u32),
+            );
     }
-    fn batches_in_flight_dec(&self) {
+    fn batches_in_flight_processed(&self, stats: &EventStreamBatchStats) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement);
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement)
+            .observed_one_value_now(
+                Metric::EventsInFlightChanged,
+                DecrementBy(stats.n_events as u32),
+            )
+            .observed_one_value_now(
+                Metric::BytesInFlightChanged,
+                DecrementBy(stats.n_bytes as u32),
+            );
     }
+
     fn batches_in_flight_reset(&self) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, 0);
+            .observed_one_value_now(Metric::BatchesInFlightChanged, 0)
+            .observed_one_value_now(Metric::EventsInFlightChanged, 0)
+            .observed_one_value_now(Metric::BytesInFlightChanged, 0);
     }
 
     fn event_type_partition_activated(&self) {
@@ -414,6 +433,8 @@ pub enum Metric {
     StreamErrorIo,
     StreamErrorParse,
     BatchesInFlightChanged,
+    EventsInFlightChanged,
+    BytesInFlightChanged,
     EventTypePartitionActivated,
     EventTypePartitionDeactivatedAfter,
     BatchProcessingStartedLag,
@@ -529,6 +550,10 @@ mod instr {
             )
             .panel(
                 Panel::named(AcceptAllLabels, "frames")
+                    .gauge(
+                        create_gauge("in_flight_bytes", config)
+                            .for_label(Metric::BytesInFlightChanged),
+                    )
                     .meter(
                         Meter::new_with_defaults("per_second")
                             .for_label(Metric::StreamFrameCompletedBytes),
@@ -677,6 +702,7 @@ mod instr {
 
     fn create_events_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "events")
+            .gauge(create_gauge("in_flight", config).for_label(Metric::EventsInFlightChanged))
             .handler(
                 ValueMeter::new_with_defaults("per_second")
                     .for_label(Metric::BatchProcessedNEvents),

@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drain events from IO stream in seperate task
 - [BREAKING] Instrumentation should not be used by multiple consumers anymore
 - Trait `Instruments` has default implementations which do nothing.
+- Trait `Instruments` accepts more parameters for in flight metrics.
+
+### ADDED
+
+- Metrics for in flight batches and bytes
 
 ## [0.27.9] - 2020-09-02
 

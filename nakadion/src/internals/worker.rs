@@ -141,12 +141,13 @@ mod processor {
                     }
                 };
 
+                let stats = batch.stats();
                 match processing_compound.process_batch_line(batch).await {
                     Ok(true) => {
-                        stream_state.instrumentation().batches_in_flight_dec();
+                        stream_state.processed_events_batch(stats);
                     }
                     Ok(false) => {
-                        stream_state.instrumentation().batches_in_flight_dec();
+                        stream_state.processed_events_batch(stats);
                         break;
                     }
                     Err(err) => {
@@ -190,6 +191,7 @@ mod processor {
             let frame_started_at = batch.frame_started_at();
             let frame_completed_at = batch.frame_completed_at();
             let frame_id = batch.frame_id();
+            let n_events = batch.n_events();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
@@ -198,6 +200,7 @@ mod processor {
                 frame_started_at,
                 frame_completed_at,
                 frame_id,
+                n_events,
             };
 
             let n_events_bytes = events.len();
@@ -206,13 +209,10 @@ mod processor {
                 .instrumentation()
                 .batch_processing_started(frame_started_at, frame_completed_at);
             match self.handler_slot.process_batch(events, meta).await? {
-                BatchPostAction::Commit(BatchStats {
-                    n_events,
-                    t_deserialize,
-                }) => {
+                BatchPostAction::Commit(BatchStats { t_deserialize }) => {
                     self.report_processed_stats(
                         n_events_bytes,
-                        n_events,
+                        Some(n_events),
                         batch_processing_started_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
@@ -234,13 +234,10 @@ mod processor {
                     }
                     Ok(true)
                 }
-                BatchPostAction::DoNotCommit(BatchStats {
-                    n_events,
-                    t_deserialize,
-                }) => {
+                BatchPostAction::DoNotCommit(BatchStats { t_deserialize }) => {
                     self.report_processed_stats(
                         n_events_bytes,
-                        n_events,
+                        Some(n_events),
                         batch_processing_started_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {

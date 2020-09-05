@@ -9,7 +9,7 @@ use crate::nakadi_types::Error;
 use crate::components::{
     committer::{CommitError, CommitTrigger},
     connector::ConnectError,
-    streams::EventStreamError,
+    streams::{EventStreamBatchStats, EventStreamError},
 };
 
 #[cfg(feature = "metrix")]
@@ -105,9 +105,9 @@ pub trait Instruments {
     fn stream_unconsumed_events(&self, _n_unconsumed: usize) {}
 
     /// Triggered when a new batch with events was received
-    fn batches_in_flight_inc(&self) {}
+    fn batches_in_flight_incoming(&self, _stats: &EventStreamBatchStats) {}
     /// Triggered when a batch with events was processed
-    fn batches_in_flight_dec(&self) {}
+    fn batches_in_flight_processed(&self, _stats: &EventStreamBatchStats) {}
     /// Usually triggered when there are still batches in flight and the stream aborts.
     ///
     /// This is a correction for the inflight metrics.
@@ -495,20 +495,20 @@ impl Instruments for Instrumentation {
         }
     }
 
-    fn batches_in_flight_inc(&self) {
+    fn batches_in_flight_incoming(&self, stats: &EventStreamBatchStats) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_inc(),
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_incoming(stats),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_inc(),
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_incoming(stats),
         }
     }
-    fn batches_in_flight_dec(&self) {
+    fn batches_in_flight_processed(&self, stats: &EventStreamBatchStats) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_dec(),
+            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_processed(stats),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_dec(),
+            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_processed(stats),
         }
     }
     fn batches_in_flight_reset(&self) {

@@ -139,7 +139,7 @@ where
     // continue with a stream state for the current stream
     let stream_state = consumer_state.stream_state(stream_id);
 
-    stream_state.instrumentation.batches_in_flight_reset();
+    stream_state.reset_in_flight_stats();
 
     let _guard: StreamEndGuard = params
         .lifecycle_listeners
@@ -394,6 +394,7 @@ fn start_batch_drain<
                     );
 
                     let frame_id = batch_line.frame_id();
+                    let stats = batch_line.stats();
                     if sender.send(Ok(batch_line)).is_err() {
                         stream_state.warn(format_args!(
                             "Could not send frame #{} to controller. Streaming stopped",
@@ -401,7 +402,7 @@ fn start_batch_drain<
                         ));
                         break;
                     } else {
-                        stream_state.instrumentation().batches_in_flight_inc();
+                        stream_state.dispatched_events_batch(stats);
                     }
                 }
                 Err(err) => {

@@ -33,7 +33,7 @@ pub struct CommitItem {
     pub frame_started_at: Instant,
     pub frame_completed_at: Instant,
     pub frame_id: usize,
-    pub n_events: Option<usize>,
+    pub n_events: usize,
 }
 
 impl CommitItem {

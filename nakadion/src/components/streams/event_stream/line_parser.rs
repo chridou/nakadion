@@ -23,7 +23,7 @@ const CURSOR_TOKEN_LABEL: &[u8] = b"cursor_token";
 pub struct LineItems {
     cursor: Cursor,
     events: Option<(usize, usize)>,
-    num_events: usize,
+    n_events: usize,
     info: Option<(usize, usize)>,
 }
 
@@ -81,8 +81,8 @@ impl LineItems {
         self.events.is_some()
     }
 
-    pub fn num_events(&self) -> usize {
-        self.num_events
+    pub fn n_events(&self) -> usize {
+        self.n_events
     }
 
     #[allow(dead_code)]
@@ -96,7 +96,7 @@ impl Default for LineItems {
         LineItems {
             cursor: Default::default(),
             events: None,
-            num_events: 0,
+            n_events: 0,
             info: None,
         }
     }
@@ -289,7 +289,7 @@ fn parse_next_item(
             EVENTS_LABEL => {
                 let (a, b, num_events) = find_next_array(json_bytes, end)?;
                 line_items.events = Some((a, b + 1));
-                line_items.num_events = num_events;
+                line_items.n_events = num_events;
                 b
             }
             INFO_LABEL => {
@@ -710,7 +710,7 @@ fn test_find_next_array_fail_2() {
 }
 
 #[test]
-fn parse_cursor() {
+fn test_parse_cursor() {
     let cursor_sample = r#"{"partition":"6","offset":"543","#.to_owned()
         + r#""event_type":"order.ORDER_RECEIVED","cursor_token":"#
         + r#""b75c3102-98a4-4385-a5fd-b96f1d7872f2"}"#;
@@ -730,4 +730,55 @@ fn parse_cursor() {
         cursor.cursor_token_str(cursor_sample.as_ref()),
         "b75c3102-98a4-4385-a5fd-b96f1d7872f2"
     );
+}
+
+#[test]
+fn test_array_elements() {
+    fn check_array<B: AsRef<[u8]>>(bytes: B, expected_count: usize) {
+        let bytes = bytes.as_ref();
+        let _ = serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
+
+        let (start, end, count) = find_next_array(bytes, 0).unwrap();
+
+        assert_eq!(start, 0, "start");
+        assert_eq!(end, bytes.len() - 1, "end");
+        assert_eq!(count, expected_count, "count");
+    }
+
+    check_array(b"[]", 0);
+    check_array(b"[ ]", 0);
+    check_array(b"[\r\n\t ]", 0);
+
+    check_array(b"[\"\"]", 1);
+    check_array(b"[\"[]\"]", 1);
+    check_array(b"[\"{}\"]", 1);
+    check_array(b"[\"{}\"\r\t]", 1);
+    check_array(b"[null]", 1);
+    check_array(b"[true]", 1);
+    check_array(b"[false]", 1);
+    check_array(b"[0]", 1);
+    check_array(b"[0.0]", 1);
+    check_array(b"[0.1]", 1);
+    check_array(b"[[]]", 1);
+    check_array(b"[{}]", 1);
+    check_array(b"[[{}]]", 1);
+    check_array(b"[[null]]", 1);
+
+    check_array(b"[null, null]", 2);
+    check_array(b"[1.9, null]", 2);
+    check_array(b"[1.9, {}]", 2);
+    check_array(b"[[], {}]", 2);
+    check_array(b"[[{}], {\"a\": null}]", 2);
+    check_array("[\"€\", {\"a\": null}]".as_bytes(), 2);
+    check_array("[\"€\", [[{}]]]".as_bytes(), 2);
+    check_array(b"[1,2]", 2);
+    check_array(b"[1,\t2]", 2);
+
+    check_array(b"[null, null, null]", 3);
+    check_array(b"[1, 2, 3]", 3);
+    check_array(b"[1, 2.0, 3]", 3);
+    check_array(b"[null, true, false]", 3);
+    check_array(b"[null, {}, []]", 3);
+
+    check_array(b"[null\r,\tnull, \"\\t\\r\\t\", 12]", 4);
 }

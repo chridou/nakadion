@@ -26,6 +26,8 @@ pub use typed::*;
 /// within a stream(same `StreamId`)
 /// as long a s a dispatch strategy which keeps the ordering of
 /// events is chosen. There may be gaps between the ids.
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct BatchMeta<'a> {
     pub stream_id: StreamId,
     pub cursor: &'a SubscriptionCursor,
@@ -34,6 +36,7 @@ pub struct BatchMeta<'a> {
     /// Timestamp when the frame was completed
     pub frame_completed_at: Instant,
     pub frame_id: usize,
+    pub n_events: usize,
 }
 
 /// Returned by a `BatchHandler` and tell `Nakadion`
@@ -57,9 +60,8 @@ impl BatchPostAction {
         BatchPostAction::Commit(BatchStats::default())
     }
 
-    pub fn commit(n_events: usize, t_deserialize: Duration) -> Self {
+    pub fn commit(t_deserialize: Duration) -> Self {
         BatchPostAction::Commit(BatchStats {
-            n_events: Some(n_events),
             t_deserialize: Some(t_deserialize),
         })
     }
@@ -68,9 +70,8 @@ impl BatchPostAction {
         BatchPostAction::DoNotCommit(BatchStats::default())
     }
 
-    pub fn do_not_commit(n_events: usize, t_deserialize: Duration) -> Self {
+    pub fn do_not_commit(t_deserialize: Duration) -> Self {
         BatchPostAction::DoNotCommit(BatchStats {
-            n_events: Some(n_events),
             t_deserialize: Some(t_deserialize),
         })
     }
@@ -78,9 +79,8 @@ impl BatchPostAction {
 
 /// Statistics on the processed batch
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BatchStats {
-    /// The number of events handled
-    pub n_events: Option<usize>,
     /// The time it took to deserialize the batch
     pub t_deserialize: Option<Duration>,
 }

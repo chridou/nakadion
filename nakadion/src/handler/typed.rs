@@ -178,22 +178,12 @@ where
             };
             let t_deserialize = t_deserialize.elapsed();
             match de_res {
-                Ok(events) => {
-                    let n_events = events.len();
-
-                    match EventsHandler::handle(self, events, meta).await {
-                        EventsPostAction::Commit => {
-                            BatchPostAction::commit(n_events, t_deserialize)
-                        }
-                        EventsPostAction::DoNotCommit => {
-                            BatchPostAction::do_not_commit(n_events, t_deserialize)
-                        }
-                        EventsPostAction::AbortStream(reason) => {
-                            BatchPostAction::AbortStream(reason)
-                        }
-                        EventsPostAction::ShutDown(reason) => BatchPostAction::ShutDown(reason),
-                    }
-                }
+                Ok(events) => match EventsHandler::handle(self, events, meta).await {
+                    EventsPostAction::Commit => BatchPostAction::commit(t_deserialize),
+                    EventsPostAction::DoNotCommit => BatchPostAction::do_not_commit(t_deserialize),
+                    EventsPostAction::AbortStream(reason) => BatchPostAction::AbortStream(reason),
+                    EventsPostAction::ShutDown(reason) => BatchPostAction::ShutDown(reason),
+                },
                 Err(_) => {
                     let de_res = match self.deserialize_on(events.len()) {
                         SpawnTarget::Executor => try_deserialize_individually::<T::Event>(&events),
@@ -211,15 +201,12 @@ where
                     };
                     match de_res {
                         Ok(results) => {
-                            let n_events = results.len();
                             match self.handle_deserialization_errors(results, meta).await {
                                 EventsPostAction::Commit => BatchPostAction::Commit(BatchStats {
-                                    n_events: Some(n_events),
                                     t_deserialize: None,
                                 }),
                                 EventsPostAction::DoNotCommit => {
                                     BatchPostAction::DoNotCommit(BatchStats {
-                                        n_events: Some(n_events),
                                         t_deserialize: None,
                                     })
                                 }
