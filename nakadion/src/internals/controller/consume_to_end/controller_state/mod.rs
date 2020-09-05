@@ -23,7 +23,6 @@ pub struct ControllerState {
     pub last_frame_received_at: Instant,
     partition_tracker: PartitionTracker,
     stream_state: StreamState,
-    events_received: bool,
 }
 
 impl ControllerState {
@@ -39,7 +38,6 @@ impl ControllerState {
             last_frame_received_at: now,
             partition_tracker: PartitionTracker::new(stream_state.clone()),
             stream_state,
-            events_received: false,
         }
     }
 
@@ -48,16 +46,6 @@ impl ControllerState {
         self.last_frame_received_at = now;
 
         self.partition_tracker.activity(event_type_partition);
-
-        // Only measure if we already have a previous batch
-        if self.events_received {
-            let events_batch_gap = now - self.last_events_received_at;
-            self.stream_state
-                .instrumentation
-                .batch_frame_gap(events_batch_gap);
-        } else {
-            self.events_received = true;
-        }
 
         self.last_events_received_at = now;
     }
@@ -76,8 +64,11 @@ impl ControllerState {
 
         let elapsed = self.last_frame_received_at.elapsed();
         if elapsed >= self.warn_no_frames {
-            self.stream_state
-                .warn(format_args!("No frames for {:?}.", elapsed));
+            self.stream_state.warn(format_args!(
+                "No frames for {:?}. {} batches in flight.",
+                elapsed,
+                self.stream_state.batches_in_flight()
+            ));
             self.stream_state
                 .instrumentation()
                 .no_frames_warning(elapsed);
@@ -85,8 +76,11 @@ impl ControllerState {
 
         let elapsed = self.last_events_received_at.elapsed();
         if elapsed >= self.warn_no_events {
-            self.stream_state
-                .warn(format_args!("No events received for {:?}.", elapsed));
+            self.stream_state.warn(format_args!(
+                "No events received for {:?}. {} batches in flight.",
+                elapsed,
+                self.stream_state.batches_in_flight()
+            ));
             self.stream_state
                 .instrumentation()
                 .no_events_warning(elapsed);

@@ -1,7 +1,7 @@
 //! Internals of the `Consumer`
-use std::fmt::Arguments;
+use std::fmt::{self, Arguments};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Weak,
 };
 
@@ -17,6 +17,9 @@ use crate::{
 pub mod controller;
 pub mod dispatcher;
 pub mod worker;
+
+/// A result which influences the outcome of the consumer
+pub(crate) type ConsumptionResult<T> = Result<T, ConsumerError>;
 
 /// A state that stays valid for the whole lifetime of the consumer.
 ///
@@ -110,6 +113,7 @@ pub(crate) struct StreamState {
     is_globally_cancelled: Weak<AtomicBool>,
     logger: ContextualLogger,
     instrumentation: Instrumentation,
+    stats: Arc<StreamStats>,
 }
 
 impl StreamState {
@@ -127,6 +131,7 @@ impl StreamState {
             is_globally_cancelled,
             logger,
             instrumentation,
+            stats: Default::default(),
         }
     }
 
@@ -179,14 +184,37 @@ impl StreamState {
 
     pub fn dispatched_events_batch(&self, stats: EventStreamBatchStats) {
         self.instrumentation.batches_in_flight_incoming(&stats);
+        self.stats.batches_in_flight.fetch_add(1, Ordering::SeqCst);
+        self.stats
+            .events_in_flight
+            .fetch_add(stats.n_events, Ordering::SeqCst);
+        self.stats
+            .bytes_in_flight
+            .fetch_add(stats.n_bytes, Ordering::SeqCst);
     }
 
     pub fn processed_events_batch(&self, stats: EventStreamBatchStats) {
         self.instrumentation.batches_in_flight_processed(&stats);
+        self.stats.batches_in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.stats
+            .events_in_flight
+            .fetch_sub(stats.n_events, Ordering::SeqCst);
+        self.stats
+            .bytes_in_flight
+            .fetch_sub(stats.n_bytes, Ordering::SeqCst);
     }
 
     pub fn reset_in_flight_stats(&self) {
         self.instrumentation.batches_in_flight_reset();
+        self.stats.reset();
+    }
+
+    pub fn stream_stats(&self) -> &StreamStats {
+        &self.stats
+    }
+
+    pub fn batches_in_flight(&self) -> usize {
+        self.stats.batches_in_flight.load(Ordering::SeqCst)
     }
 }
 
@@ -207,70 +235,17 @@ impl Logger for StreamState {
     }
 }
 
-/// A result which influences the outcome of the consumer
-pub(crate) type ConsumptionResult<T> = Result<T, ConsumerError>;
-
-/*
-/// A result that contains data that is (mostly) present in both the success and the error case
-pub(crate) type EnrichedResult<T> = Result<EnrichedOk<T>, EnrichedErr>;
-
-/// Additional data returned with a success
-pub(crate) struct EnrichedOk<T> {
-    /// The number of batches that have been processed.
-    ///
-    /// This is used to correct the "in-flight" metrics since they are
-    /// "delta based".
-    pub processed_batches: usize,
-    pub payload: T,
+#[derive(Debug, Default)]
+pub struct StreamStats {
+    batches_in_flight: AtomicUsize,
+    events_in_flight: AtomicUsize,
+    bytes_in_flight: AtomicUsize,
 }
 
-impl<T> EnrichedOk<T> {
-    pub fn new(payload: T, processed_batches: usize) -> Self {
-        Self {
-            payload,
-            processed_batches,
-        }
-    }
-
-    pub fn map<F, O>(self, f: F) -> EnrichedOk<O>
-    where
-        F: FnOnce(T) -> O,
-    {
-        EnrichedOk {
-            payload: f(self.payload),
-            processed_batches: self.processed_batches,
-        }
+impl StreamStats {
+    pub fn reset(&self) {
+        self.batches_in_flight.store(0, Ordering::SeqCst);
+        self.events_in_flight.store(0, Ordering::SeqCst);
+        self.bytes_in_flight.store(0, Ordering::SeqCst);
     }
 }
-
-
-/// An Error with additional data
-pub(crate) struct EnrichedErr {
-    /// The number of batches that have been processed.
-    ///
-    /// This is used to correct the "in-flight" metrics since they are
-    /// "delta based".
-    ///
-    /// This can not be added on "hard errors" like spawn failures etc. where
-    /// we loose state.
-    pub processed_batches: Option<usize>,
-    pub err: ConsumerError,
-}
-
-impl EnrichedErr {
-    pub fn new<E: Into<ConsumerError>>(err: E, processed_batches: usize) -> Self {
-        Self {
-            err: err.into(),
-            processed_batches: Some(processed_batches),
-        }
-    }
-
-    /// Convenience ctor for cases where we lost state
-    pub fn no_data<E: Into<ConsumerError>>(err: E) -> Self {
-        Self {
-            err: err.into(),
-            processed_batches: None,
-        }
-    }
-}
-*/

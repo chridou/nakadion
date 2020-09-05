@@ -358,9 +358,13 @@ fn start_batch_drain<
     let (sender, receiver) = unbounded_channel();
 
     let task = async move {
+        let mut last_batch_frame_received_at: Option<Instant> = None;
         while let Some(next_batch_line) = event_stream.next().await {
             if stream_state.cancellation_requested() {
-                break;
+                stream_state.debug(format_args!(
+                    "Batch drain exiting because the stream was cancelled."
+                ));
+                return;
             }
 
             match next_batch_line {
@@ -373,8 +377,9 @@ fn start_batch_drain<
                             .instrumentation
                             .info_frame_received(frame_started_at, frame_completed_at);
                         stream_state.info(format_args!(
-                            "Received info line for with frame #{}: {}",
+                            "Received info line with frame #{} and {} batches in flight: {}",
                             batch_line.frame_id(),
+                            stream_state.batches_in_flight(),
                             info_str
                         ));
                     }
@@ -392,6 +397,18 @@ fn start_batch_drain<
                         frame_completed_at,
                         bytes,
                     );
+
+                    // Only measure if we already have a previous batch
+                    if let Some(last_batch_received) = last_batch_frame_received_at {
+                        let now = Instant::now();
+                        let events_batch_gap = now - last_batch_received;
+                        stream_state
+                            .instrumentation
+                            .batch_frame_gap(events_batch_gap);
+                        last_batch_frame_received_at = Some(now);
+                    } else {
+                        last_batch_frame_received_at = Some(Instant::now());
+                    }
 
                     let frame_id = batch_line.frame_id();
                     let stats = batch_line.stats();
@@ -416,6 +433,11 @@ fn start_batch_drain<
                 }
             }
         }
+
+        stream_state.debug(format_args!(
+            "Batch drain exiting with {} batches in flight.",
+            stream_state.batches_in_flight()
+        ));
     };
 
     tokio::spawn(task);
