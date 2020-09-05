@@ -32,44 +32,44 @@ pub use metrix::{
 /// Implementations of this trait should not be shared with multiple consumers
 /// since they are stateful e.g. in flight batches.
 pub trait Instruments {
-    fn consumer_started(&self);
-    fn consumer_stopped(&self, ran_for: Duration);
-    fn streaming_ended(&self, streamed_for: Duration);
+    fn consumer_started(&self) {}
+    fn consumer_stopped(&self, _ran_for: Duration) {}
+    fn streaming_ended(&self, _streamed_for: Duration) {}
 
     /// Triggered when a single connect attempt for a stream was successful
     ///
     /// `time` is the time for the request
-    fn stream_connect_attempt_success(&self, time: Duration);
+    fn stream_connect_attempt_success(&self, _time: Duration) {}
     /// Triggered when a single connect attempt for a stream failed
     ///
     /// `time` is the time for the request
-    fn stream_connect_attempt_failed(&self, time: Duration);
+    fn stream_connect_attempt_failed(&self, _time: Duration) {}
     /// Triggered when a stream was finally connect after maybe multiple attempts
     ///
     /// `time` is the time for the whole cycle until a connection was made
-    fn stream_connected(&self, time: Duration);
+    fn stream_connected(&self, _time: Duration) {}
     /// Triggered when connecting to a stream finally failed after maybe multiple attempts
     ///
     /// `time` is the time for the whole cycle until a connection attempts finally failed
-    fn stream_not_connected(&self, time: Duration, err: &ConnectError);
+    fn stream_not_connected(&self, _time: Duration, _err: &ConnectError) {}
 
     /// A chunk of data with `n_bytes` was received over the network
-    fn stream_chunk_received(&self, n_bytes: usize);
+    fn stream_chunk_received(&self, _n_bytes: usize) {}
     /// Chunks have been assembled to a complete frame containing all required data
-    fn stream_frame_completed(&self, n_bytes: usize, time: Duration);
+    fn stream_frame_completed(&self, _n_bytes: usize, _time: Duration) {}
     /// An internal tick signal has been emitted
-    fn stream_tick_emitted(&self);
+    fn stream_tick_emitted(&self) {}
 
     /// The controller received a frame which contained info data
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn info_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
+    fn info_frame_received(&self, _frame_started_at: Instant, _frame_completed_at: Instant) {}
     /// The controller received a frame which contained no events
     ///
     /// The time it took from receiving the first chunk until it reached the controller are passed
     /// along with the complete bytes of the frame
-    fn keep_alive_frame_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
+    fn keep_alive_frame_received(&self, _frame_started_at: Instant, _frame_completed_at: Instant) {}
     /// A partition which was formerly not known to be active was sent
     /// data on
 
@@ -79,61 +79,62 @@ pub trait Instruments {
     /// along with the complete bytes of the frame
     fn batch_frame_received(
         &self,
-        frame_started_at: Instant,
-        frame_completed_at: Instant,
-        events_bytes: usize,
-    );
+        _frame_started_at: Instant,
+        _frame_completed_at: Instant,
+        _events_bytes: usize,
+    ) {
+    }
 
     /// The time elapsed between the reception of 2 batches with events
-    fn batch_frame_gap(&self, gap: Duration);
+    fn batch_frame_gap(&self, _gap: Duration) {}
 
     /// No frames have been received for the given time and the warning has already  threshold elapsed
-    fn no_frames_warning(&self, no_frames_for: Duration);
+    fn no_frames_warning(&self, _no_frames_for: Duration) {}
     /// No events have been received for the given time and the warning threshold has already elapsed
-    fn no_events_warning(&self, no_events_for: Duration);
+    fn no_events_warning(&self, _no_events_for: Duration) {}
 
-    fn stream_dead(&self, after: Duration);
+    fn stream_dead(&self, _after: Duration) {}
 
     /// The stream was aborted due to a streaming related error
-    fn stream_error(&self, err: &EventStreamError);
+    fn stream_error(&self, _err: &EventStreamError) {}
 
     /// Tracks the number of unconsumed events.
     ///
     /// Only available if the `Consumer` was created with a clients that
     /// supports the `SubscriptionApi`
-    fn stream_unconsumed_events(&self, n_unconsumed: usize);
+    fn stream_unconsumed_events(&self, _n_unconsumed: usize) {}
 
     /// Triggered when a new batch with events was received
-    fn batches_in_flight_inc(&self);
+    fn batches_in_flight_inc(&self) {}
     /// Triggered when a batch with events was processed
-    fn batches_in_flight_dec(&self);
+    fn batches_in_flight_dec(&self) {}
     /// Usually triggered when there are still batches in flight and the stream aborts.
     ///
     /// This is a correction for the inflight metrics.
-    fn batches_in_flight_reset(&self);
+    fn batches_in_flight_reset(&self) {}
 
-    fn event_type_partition_activated(&self);
+    fn event_type_partition_activated(&self) {}
 
     /// A partition did not receive data for some time is is therefore considered inactive.
-    fn event_type_partition_deactivated(&self, active_for: Duration);
+    fn event_type_partition_deactivated(&self, _active_for: Duration) {}
 
-    fn batch_processing_started(&self, frame_started_at: Instant, frame_completed_at: Instant);
+    fn batch_processing_started(&self, _frame_started_at: Instant, _frame_completed_at: Instant) {}
 
     /// Events were processed.
-    fn batch_processed(&self, n_bytes: usize, time: Duration);
+    fn batch_processed(&self, _n_bytes: usize, _time: Duration) {}
     /// Events were processed.
-    fn batch_processed_n_events(&self, n_events: usize);
+    fn batch_processed_n_events(&self, _n_events: usize) {}
     /// Events have been deserialized.
     ///
     /// The amount of bytes deserialized and the time it took are passed.
-    fn batch_deserialized(&self, n_bytes: usize, time: Duration);
+    fn batch_deserialized(&self, _n_bytes: usize, _time: Duration) {}
 
     /// Cursors to be committed have reached the commit stage.
     ///
     /// The time it took from receiving the first chunk until it reached the commit stage are passed
-    fn cursor_to_commit_received(&self, frame_started_at: Instant, frame_completed_at: Instant);
+    fn cursor_to_commit_received(&self, _frame_started_at: Instant, _frame_completed_at: Instant) {}
     /// Cursors commit was triggered.
-    fn cursors_commit_triggered(&self, trigger: CommitTrigger);
+    fn cursors_commit_triggered(&self, _trigger: CommitTrigger) {}
     /// Ages of the cursors when making a commit attempt to Nakadi
     ///
     /// This ages are measured before making an attempt to make a call to Nakadi.
@@ -144,22 +145,23 @@ pub trait Instruments {
     /// might endanger or even cause the commit to fail.
     fn cursor_ages_on_commit_attempt(
         &self,
-        first_cursor_age: Duration,
-        last_cursor_age: Duration,
-        first_cursor_age_warning: bool,
-    );
+        _first_cursor_age: Duration,
+        _last_cursor_age: Duration,
+        _first_cursor_age_warning: bool,
+    ) {
+    }
     /// Cursors were successfully committed.
     ///
     /// The time request took is passed
-    fn cursors_committed(&self, n_cursors: usize, time: Duration);
+    fn cursors_committed(&self, _n_cursors: usize, _time: Duration) {}
     /// Cursors were not successfully committed.
     ///
     /// The time request took is passed
-    fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError);
+    fn cursors_not_committed(&self, _n_cursors: usize, _time: Duration, _err: &CommitError) {}
     /// An attempt to commit cursors failed. There might still be a retry
     ///
     /// The time request took is passed
-    fn commit_cursors_attempt_failed(&self, n_cursors: usize, time: Duration);
+    fn commit_cursors_attempt_failed(&self, _n_cursors: usize, _time: Duration) {}
 }
 
 impl<T> crate::tools::subscription_stats::Instruments for T

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2020-09-06
+
+### CHANGED
+
+- Drain events from IO stream in seperate task
+- [BREAKING] Instrumentation should not be used by multiple consumers anymore
+- Trait `Instruments` has default implementations which do nothing.
+
 ## [0.27.9] - 2020-09-02
 
 ### CHANGED
