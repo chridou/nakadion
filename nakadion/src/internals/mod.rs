@@ -192,6 +192,12 @@ impl StreamState {
         self.stats
             .bytes_in_flight
             .fetch_add(stats.n_bytes, Ordering::SeqCst);
+        self.stats
+            .uncommitted_batches
+            .fetch_add(1, Ordering::SeqCst);
+        self.stats
+            .uncommitted_events
+            .fetch_add(stats.n_events, Ordering::SeqCst);
     }
 
     pub fn processed_events_batch(&self, stats: EventStreamBatchStats) {
@@ -205,8 +211,18 @@ impl StreamState {
             .fetch_sub(stats.n_bytes, Ordering::SeqCst);
     }
 
+    pub fn batches_committed(&self, n_batches: usize, n_events: usize) {
+        self.instrumentation.batches_committed(n_batches, n_events);
+        self.stats
+            .uncommitted_batches
+            .fetch_sub(n_batches, Ordering::SeqCst);
+        self.stats
+            .uncommitted_events
+            .fetch_sub(n_events, Ordering::SeqCst);
+    }
+
     pub fn reset_in_flight_stats(&self) {
-        self.instrumentation.batches_in_flight_reset();
+        self.instrumentation.in_flight_stats_reset();
         self.stats.reset();
     }
 
@@ -237,6 +253,8 @@ pub struct StreamStats {
     batches_in_flight: AtomicUsize,
     events_in_flight: AtomicUsize,
     bytes_in_flight: AtomicUsize,
+    uncommitted_batches: AtomicUsize,
+    uncommitted_events: AtomicUsize,
 }
 
 impl StreamStats {
@@ -244,5 +262,7 @@ impl StreamStats {
         self.batches_in_flight.store(0, Ordering::SeqCst);
         self.events_in_flight.store(0, Ordering::SeqCst);
         self.bytes_in_flight.store(0, Ordering::SeqCst);
+        self.uncommitted_batches.store(0, Ordering::SeqCst);
+        self.uncommitted_events.store(0, Ordering::SeqCst);
     }
 }

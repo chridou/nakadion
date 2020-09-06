@@ -77,10 +77,17 @@ impl PendingCursors {
                 e.insert(CommitEntry {
                     first_frame_started_at: item.frame_started_at,
                     first_frame_id: item.frame_id,
+                    n_batches: 1,
+                    n_events: item.n_events,
                     item_to_commit: item,
                 });
             }
-            Entry::Occupied(mut e) => e.get_mut().item_to_commit = item,
+            Entry::Occupied(mut e) => {
+                let e = e.get_mut();
+                e.n_batches += 1;
+                e.n_events += item.n_events;
+                e.item_to_commit = item
+            }
         }
     }
 

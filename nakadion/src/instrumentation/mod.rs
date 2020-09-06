@@ -111,8 +111,8 @@ pub trait Instruments {
     fn batches_in_flight_processed(&self, _stats: &EventStreamBatchStats) {}
     /// Usually triggered when there are still batches in flight and the stream aborts.
     ///
-    /// This is a correction for the inflight metrics.
-    fn batches_in_flight_reset(&self) {}
+    /// This is a correction for the inflight metrics and uncommitted events metrics
+    fn in_flight_stats_reset(&self) {}
 
     fn event_type_partition_activated(&self) {}
 
@@ -153,8 +153,13 @@ pub trait Instruments {
     }
     /// Cursors were successfully committed.
     ///
-    /// The time request took is passed
+    /// The time request took is passed. A call to this method must not
+    /// influence the uncommitted batches stats. Use `batches_committed` instead.
     fn cursors_committed(&self, _n_cursors: usize, _time: Duration) {}
+    /// Tracks what has been committed to track uncommitted batches and their events.
+    ///
+    /// Collected values should be reset by `in_flight_stats_reset`
+    fn batches_committed(&self, _n_batches: usize, _n_events: usize) {}
     /// Cursors were not successfully committed.
     ///
     /// The time request took is passed
@@ -512,12 +517,12 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_processed(stats),
         }
     }
-    fn batches_in_flight_reset(&self) {
+    fn in_flight_stats_reset(&self) {
         match self.instr {
             InstrumentationSelection::Off => {}
-            InstrumentationSelection::Custom(ref instr) => instr.batches_in_flight_reset(),
+            InstrumentationSelection::Custom(ref instr) => instr.in_flight_stats_reset(),
             #[cfg(feature = "metrix")]
-            InstrumentationSelection::Metrix(ref instr) => instr.batches_in_flight_reset(),
+            InstrumentationSelection::Metrix(ref instr) => instr.in_flight_stats_reset(),
         }
     }
 
@@ -641,6 +646,20 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => instr.cursors_committed(n_cursors, time),
         }
     }
+
+    fn batches_committed(&self, n_batches: usize, n_events: usize) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => {
+                instr.batches_committed(n_batches, n_events)
+            }
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => {
+                instr.batches_committed(n_batches, n_events)
+            }
+        }
+    }
+
     fn cursors_not_committed(&self, n_cursors: usize, time: Duration, err: &CommitError) {
         match self.instr {
             InstrumentationSelection::Off => {}

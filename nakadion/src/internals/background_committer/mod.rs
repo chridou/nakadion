@@ -272,8 +272,12 @@ where
         }
 
         cursors_to_commit.clear();
+        let mut effective_batches_to_be_committed = 0;
+        let mut effective_events_to_be_committed = 0;
         for commit_entry in collected_items_to_commit.values() {
             let commit_item = &commit_entry.item_to_commit;
+            effective_batches_to_be_committed += commit_entry.n_batches;
+            effective_events_to_be_committed += commit_entry.n_events;
             let cursor = commit_item.cursor.clone();
             let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
             let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
@@ -302,25 +306,37 @@ where
         match committer.commit(&cursors_to_commit).await {
             Ok(_) => {
                 stream_state.debug(format_args!(
-                    "Committed {} cursors.",
-                    cursors_to_commit.len()
+                    "Committed {} cursors for {} batches and {} events.",
+                    cursors_to_commit.len(),
+                    effective_batches_to_be_committed,
+                    effective_events_to_be_committed,
                 ));
+                effective_batches_to_be_committed = 0;
+                effective_events_to_be_committed = 0;
+                stream_state.batches_committed(
+                    effective_batches_to_be_committed,
+                    effective_events_to_be_committed,
+                );
                 collected_items_to_commit.clear();
                 continue;
             }
             Err(err) => {
                 if err.is_recoverable() {
                     stream_state.warn(format_args!(
-                        "Failed to commit {} cursors (recoverable): {}",
+                        "Failed to commit {} cursors for {} batches and {} events (recoverable): {}",
                         cursors_to_commit.len(),
-                        err
+                        effective_batches_to_be_committed,
+                        effective_events_to_be_committed,
+                       err
                     ));
                     delay_for(Duration::from_millis(100)).await;
                 } else {
                     stream_state.error(format_args!(
-                        "Failed to commit {} cursors (unrecoverable): {}",
+                        "Failed to commit {} cursors for {} batches and {} events (unrecoverable): {}",
                         cursors_to_commit.len(),
-                        err
+                        effective_batches_to_be_committed,
+                        effective_events_to_be_committed,
+                    err
                     ));
                     return Err(Error::from_error(err));
                 }
@@ -336,9 +352,13 @@ where
 
     if !collected_items_to_commit.is_empty() {
         // try to commit the rest
+        let mut effective_batches_to_be_committed = 0;
+        let mut effective_events_to_be_committed = 0;
         let cursors: Vec<_> = collected_items_to_commit
             .into_iter()
             .map(|(_, commit_entry)| {
+                effective_batches_to_be_committed += commit_entry.n_batches;
+                effective_events_to_be_committed += commit_entry.n_events;
                 let first_cursor_age = commit_entry.first_frame_started_at.elapsed();
                 let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
                 let warning = first_cursor_age >= first_cursor_warning_threshold;
@@ -368,12 +388,24 @@ where
         committer.set_flow_id(FlowId::random());
         match committer.commit(&cursors).await {
             Ok(_) => {
-                stream_state.debug(format_args!("Committed {} final cursors.", n_to_commit));
+                stream_state.batches_committed(
+                    effective_batches_to_be_committed,
+                    effective_events_to_be_committed,
+                );
+                stream_state.debug(format_args!(
+                    "Committed {} final cursors for {} batches and {} events.",
+                    n_to_commit,
+                    effective_batches_to_be_committed,
+                    effective_events_to_be_committed
+                ));
             }
             Err(err) => {
                 stream_state.warn(format_args!(
-                    "Failed to commit {} final cursors: {}",
-                    n_to_commit, err
+                    "Failed to commit {} final cursors for {} batches and {} events: {}",
+                    n_to_commit,
+                    effective_batches_to_be_committed,
+                    effective_events_to_be_committed,
+                    err
                 ));
                 return Err(Error::from_error(err));
             }
@@ -386,6 +418,8 @@ where
 pub struct CommitEntry {
     pub first_frame_started_at: Instant,
     pub first_frame_id: usize,
+    pub n_batches: usize,
+    pub n_events: usize,
     pub item_to_commit: CommitItem,
 }
 /// Handle to send commit messages to the background task.

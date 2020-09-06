@@ -245,6 +245,11 @@ impl Instruments for Metrix {
             .observed_one_value_now(
                 Metric::BytesInFlightChanged,
                 IncrementBy(stats.n_bytes as u32),
+            )
+            .observed_one_value_now(Metric::UncommittedBatchesChanged, Increment)
+            .observed_one_value_now(
+                Metric::UncommittedEventsChanged,
+                IncrementBy(stats.n_events as u32),
             );
     }
     fn batches_in_flight_processed(&self, stats: &EventStreamBatchStats) {
@@ -260,11 +265,13 @@ impl Instruments for Metrix {
             );
     }
 
-    fn batches_in_flight_reset(&self) {
+    fn in_flight_stats_reset(&self) {
         self.tx
             .observed_one_value_now(Metric::BatchesInFlightChanged, 0)
             .observed_one_value_now(Metric::EventsInFlightChanged, 0)
-            .observed_one_value_now(Metric::BytesInFlightChanged, 0);
+            .observed_one_value_now(Metric::BytesInFlightChanged, 0)
+            .observed_one_value_now(Metric::UncommittedBatchesChanged, 0)
+            .observed_one_value_now(Metric::UncommittedEventsChanged, 0);
     }
 
     fn event_type_partition_activated(&self) {
@@ -372,6 +379,18 @@ impl Instruments for Metrix {
             );
     }
 
+    fn batches_committed(&self, n_batches: usize, n_events: usize) {
+        self.tx
+            .observed_one_value_now(
+                Metric::UncommittedBatchesChanged,
+                DecrementBy(n_batches as u32),
+            )
+            .observed_one_value_now(
+                Metric::UncommittedEventsChanged,
+                DecrementBy(n_events as u32),
+            );
+    }
+
     fn cursors_not_committed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
@@ -419,6 +438,8 @@ pub enum Metric {
     BatchesInFlightChanged,
     EventsInFlightChanged,
     BytesInFlightChanged,
+    UncommittedBatchesChanged,
+    UncommittedEventsChanged,
     EventTypePartitionActivated,
     EventTypePartitionDeactivatedAfter,
     BatchProcessingStartedLag,
