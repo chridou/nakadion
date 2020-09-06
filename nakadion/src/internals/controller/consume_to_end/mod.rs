@@ -55,9 +55,13 @@ where
             Some(Ok(EventStreamMessage::EventStreamEnded)) => {
                 break Ok(());
             }
-            Some(Ok(EventStreamMessage::EventsBatch(batch_line))) => {
-                if let Err(err) =
-                    handle_batch_line(batch_line, &mut controller_state, &mut dispatcher_sink).await
+            Some(Ok(EventStreamMessage::Nakadi(nakadi_message))) => {
+                if let Err(err) = handle_nakadi_message(
+                    nakadi_message,
+                    &mut controller_state,
+                    &mut dispatcher_sink,
+                )
+                .await
                 {
                     stream_state.warn(format_args!("Could not send batch line: {}", err));
                     break Ok(());
@@ -151,25 +155,33 @@ where
     }
 }
 
-async fn handle_batch_line(
-    batch: EventStreamBatch,
+async fn handle_nakadi_message(
+    nakadi_message: NakadiMessage,
     controller_state: &mut ControllerState,
     dispatcher_sink: &mut UnboundedSender<DispatcherMessage>,
 ) -> Result<(), Error> {
-    let event_type_partition = batch.to_event_type_partition();
+    match nakadi_message {
+        NakadiMessage::Events(batch) => {
+            let event_type_partition = batch.to_event_type_partition();
 
-    controller_state.received_frame(&event_type_partition);
+            controller_state.received_frame(&event_type_partition);
 
-    if dispatcher_sink
-        .send(DispatcherMessage::BatchWithEvents(
-            event_type_partition,
-            batch,
-        ))
-        .is_err()
-    {
-        Err(Error::new("Failed to send batch to dispatcher"))
-    } else {
-        Ok(())
+            if dispatcher_sink
+                .send(DispatcherMessage::BatchWithEvents(
+                    event_type_partition,
+                    batch,
+                ))
+                .is_err()
+            {
+                Err(Error::new("Failed to send batch to dispatcher"))
+            } else {
+                Ok(())
+            }
+        }
+        NakadiMessage::KeepAlive => {
+            controller_state.received_keep_alive();
+            Ok(())
+        }
     }
 }
 

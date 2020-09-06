@@ -1,6 +1,6 @@
 //! The controller controls the life cycle of the `Consumer` over multiple streams
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures::{stream, Stream, StreamExt, TryStreamExt};
 use tokio::{
@@ -97,8 +97,7 @@ where
 }
 
 pub(crate) enum EventStreamMessage {
-    /// An evaluated frame from Nakadi. It always contains events
-    EventsBatch(EventStreamBatch),
+    Nakadi(NakadiMessage),
     Tick(Instant),
     /// We need this to notify the controller since the
     /// consumed stream will never end because of the ticks
@@ -223,7 +222,8 @@ where
     S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
 {
     let now = Instant::now();
-    let nothing_received_since = now; // Just pretend we received something now to have a start
+    let no_events_received_since = now; // Just pretend we received something now to have a start
+    let mut no_frame_received_since = now; // Just pretend we received something now to have a start
     let stream_dead_policy = stream_state.config().stream_dead_policy;
     let warn_no_frames = stream_state.config().warn_no_frames.into_duration();
     let warn_no_events = stream_state.config().warn_no_events.into_duration();
@@ -237,17 +237,17 @@ where
                     Ok(EventStreamMessage::EventStreamEnded) => {
                         stream_state.info(format_args!(
                             "Stream ended before receiving a batch after {:?}",
-                            nothing_received_since.elapsed()
+                            no_events_received_since.elapsed()
                         ));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         return Ok(WaitForFirstFrameResult::Aborted {
                             sleeping_dispatcher,
                         });
                     }
-                    Ok(EventStreamMessage::EventsBatch(first_frame)) => {
+                    Ok(EventStreamMessage::Nakadi(NakadiMessage::Events(first_frame))) => {
                         stream_state.info(format_args!(
-                            "Received first frame after {:?}.",
-                            nothing_received_since.elapsed()
+                            "Received first events batch frame after {:?}.",
+                            no_events_received_since.elapsed()
                         ));
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         let (batch_lines_sink, batch_lines_receiver) =
@@ -257,9 +257,13 @@ where
 
                         break (active_dispatcher, batch_lines_sink, first_frame);
                     }
+                    Ok(EventStreamMessage::Nakadi(NakadiMessage::KeepAlive)) => {
+                        no_frame_received_since = Instant::now();
+                        continue;
+                    }
                     Ok(EventStreamMessage::Tick(_timestamp)) => {
                         if let Some(dead_for) = stream_dead_policy
-                            .is_stream_dead(nothing_received_since, nothing_received_since)
+                            .is_stream_dead(no_frame_received_since, no_events_received_since)
                         {
                             stream_state.warn(format_args!(
                                 "The stream is dead boys... for {:?}",
@@ -271,14 +275,20 @@ where
                                 sleeping_dispatcher,
                             });
                         }
-                        let elapsed = nothing_received_since.elapsed();
-                        if elapsed >= warn_no_frames {
-                            stream_state.warn(format_args!("No first frame for {:?}", elapsed));
-                            stream_state.instrumentation().no_frames_warning(elapsed);
+                        let no_frame_elapsed = no_frame_received_since.elapsed();
+                        if no_frame_elapsed >= warn_no_frames {
+                            stream_state.warn(format_args!("No frame for {:?}", no_frame_elapsed));
+                            stream_state
+                                .instrumentation()
+                                .no_frames_warning(no_frame_elapsed);
                         }
-                        if elapsed >= warn_no_events {
-                            stream_state.warn(format_args!("No first event for {:?}", elapsed));
-                            stream_state.instrumentation().no_events_warning(elapsed);
+                        let no_events_elapsed = no_events_received_since.elapsed();
+                        if no_events_elapsed >= warn_no_events {
+                            stream_state
+                                .warn(format_args!("No first event for {:?}", no_events_elapsed));
+                            stream_state
+                                .instrumentation()
+                                .no_events_warning(no_events_elapsed);
                         }
                     }
                     Err(batch_line_error) => match batch_line_error.kind() {
@@ -295,8 +305,8 @@ where
                 }
             } else {
                 stream_state.info(format_args!(
-                    "(Should not happen) Stream ended before receiving a batch after {:?}",
-                    nothing_received_since.elapsed()
+                    "(Should not happen) Stream ended before receiving an events batch after {:?}",
+                    no_events_received_since.elapsed()
                 ));
                 let sleeping_dispatcher = sleep_ticker.join().await?;
                 return Ok(WaitForFirstFrameResult::Aborted {
@@ -307,8 +317,12 @@ where
     };
 
     // Recreate the stream by appending the rest to the already received first batch line
-    let stream =
-        stream::once(async { Ok(EventStreamMessage::EventsBatch(first_frame)) }).chain(stream);
+    let stream = stream::once(async {
+        Ok(EventStreamMessage::Nakadi(NakadiMessage::Events(
+            first_frame,
+        )))
+    })
+    .chain(stream);
 
     Ok(WaitForFirstFrameResult::GotTheFrame {
         active_dispatcher,
@@ -334,7 +348,7 @@ fn make_ticked_batch_line_stream(
     let drained_stream = start_batch_drain(event_stream, stream_state);
 
     let drained_stream = drained_stream
-        .map_ok(EventStreamMessage::EventsBatch)
+        .map_ok(EventStreamMessage::Nakadi)
         .chain(stream::once(async {
             Ok(EventStreamMessage::EventStreamEnded)
         }));
@@ -349,15 +363,21 @@ fn make_ticked_batch_line_stream(
     stream::select(drained_stream, ticker)
 }
 
+pub(crate) enum NakadiMessage {
+    KeepAlive,
+    Events(EventStreamBatch),
+}
+
 fn start_batch_drain<
     S: futures::Stream<Item = Result<EventStreamBatch, EventStreamError>> + Unpin + Send + 'static,
 >(
     mut event_stream: S,
     stream_state: StreamState,
-) -> UnboundedReceiver<Result<EventStreamBatch, EventStreamError>> {
+) -> UnboundedReceiver<Result<NakadiMessage, EventStreamError>> {
     let (sender, receiver) = unbounded_channel();
 
     let task = async move {
+        let mut last_frame_received_at: Option<Instant> = None;
         let mut last_batch_frame_received_at: Option<Instant> = None;
         while let Some(next_batch_line) = event_stream.next().await {
             if stream_state.cancellation_requested() {
@@ -371,6 +391,22 @@ fn start_batch_drain<
                 Ok(batch_line) => {
                     let frame_started_at = batch_line.frame_started_at();
                     let frame_completed_at = batch_line.frame_completed_at();
+                    let now = Instant::now();
+
+                    // Only measure if we already have a previous batch
+                    if let Some(last_received) = last_frame_received_at {
+                        let frame_gap = now - last_received;
+                        if frame_gap >= Duration::from_secs(30) {
+                            stream_state.warn(format_args!(
+                                "Huge frame gap of {:?} to frame #{}",
+                                last_received.elapsed(),
+                                batch_line.frame_id(),
+                            ));
+                        }
+                        last_frame_received_at = Some(now);
+                    } else {
+                        last_frame_received_at = Some(now);
+                    }
 
                     if let Some(info_str) = batch_line.info_str() {
                         stream_state
@@ -388,6 +424,13 @@ fn start_batch_drain<
                         stream_state
                             .instrumentation
                             .keep_alive_frame_received(frame_started_at, frame_completed_at);
+                        if sender.send(Ok(NakadiMessage::KeepAlive)).is_err() {
+                            stream_state.warn(format_args!(
+                                "Could not send keep alive for frame #{} to controller. Streaming stopped",
+                                batch_line.frame_id()
+                            ));
+                            break;
+                        }
                         continue;
                     }
 
@@ -399,22 +442,21 @@ fn start_batch_drain<
                     );
 
                     // Only measure if we already have a previous batch
-                    if let Some(last_batch_received) = last_batch_frame_received_at {
-                        let now = Instant::now();
-                        let events_batch_gap = now - last_batch_received;
+                    if let Some(last_received) = last_batch_frame_received_at {
+                        let events_batch_gap = now - last_received;
                         stream_state
                             .instrumentation
                             .batch_frame_gap(events_batch_gap);
                         last_batch_frame_received_at = Some(now);
                     } else {
-                        last_batch_frame_received_at = Some(Instant::now());
+                        last_batch_frame_received_at = Some(now);
                     }
 
                     let frame_id = batch_line.frame_id();
                     let stats = batch_line.stats();
-                    if sender.send(Ok(batch_line)).is_err() {
+                    if sender.send(Ok(NakadiMessage::Events(batch_line))).is_err() {
                         stream_state.warn(format_args!(
-                            "Could not send frame #{} to controller. Streaming stopped",
+                            "Could not send events frame #{} to controller. Streaming stopped",
                             frame_id
                         ));
                         break;

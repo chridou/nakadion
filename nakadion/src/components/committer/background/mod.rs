@@ -71,12 +71,11 @@ async fn run_dispatch_cursors(
     );
 
     loop {
-        let now = Instant::now();
         let cursor_received = match cursors_to_commit.try_recv() {
             Ok(next) => {
                 instrumentation
                     .cursor_to_commit_received(next.frame_started_at, next.frame_completed_at);
-                pending.add(next, now);
+                pending.add(next);
                 true
             }
             Err(TryRecvError::Empty) => false,
@@ -89,7 +88,7 @@ async fn run_dispatch_cursors(
             }
         };
 
-        let trigger = match pending.commit_required(now) {
+        let trigger = match pending.commit_required(Instant::now()) {
             Some(trigger) => trigger,
             None => {
                 if !cursor_received {
@@ -100,6 +99,7 @@ async fn run_dispatch_cursors(
             }
         };
 
+        logger.debug(format_args!("Commit triggered: {:?}", trigger));
         instrumentation.cursors_commit_triggered(trigger);
 
         let items = pending.drain_reset();
@@ -202,6 +202,10 @@ where
         }
 
         committer.set_flow_id(FlowId::random());
+
+        committer
+            .logger
+            .debug(format_args!("Committing: {:?}", cursors_to_commit));
         match committer.commit(&cursors_to_commit).await {
             Ok(_) => {
                 collected_items_to_commit.clear();
@@ -214,6 +218,7 @@ where
                         cursors_to_commit.len(),
                         err
                     ));
+                    delay_for(Duration::from_millis(100)).await;
                 } else {
                     committer.logger.error(format_args!(
                         "Failed to commit {} cursors (unrecoverable): {}",

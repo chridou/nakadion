@@ -262,7 +262,7 @@ async fn consume_event_type_a(
 ) -> Result<(), Error> {
     let sp1 = StreamParameters::default()
         .batch_limit(100)
-        .stream_limit(18_793)
+        .stream_limit(11_000)
         .batch_flush_timeout_secs(1)
         .max_uncommitted_events(10_000);
 
@@ -311,7 +311,7 @@ async fn consume_event_types_ab(
 ) -> Result<(), Error> {
     let sp1 = StreamParameters::default()
         .batch_limit(100)
-        .stream_limit(22_763)
+        .stream_limit(15_000)
         .batch_flush_timeout_secs(1)
         .max_uncommitted_events(10_000);
 
@@ -409,7 +409,7 @@ async fn wait_for_all_consumed(
             break;
         }
 
-        delay_for(Duration::from_secs(3)).await;
+        delay_for(Duration::from_secs(5)).await;
     }
     Ok(())
 }

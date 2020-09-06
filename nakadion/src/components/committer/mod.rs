@@ -49,24 +49,15 @@ impl CommitItem {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CommitTrigger {
     /// The deadline to commit was reached
-    Deadline {
-        n_cursors: usize,
-        n_events: Option<usize>,
-    },
+    Deadline { n_cursors: usize, n_events: usize },
     /// Enough events were received
-    Events {
-        n_cursors: usize,
-        n_events: Option<usize>,
-    },
+    Events { n_cursors: usize, n_events: usize },
     /// Enough cursors were received
-    Cursors {
-        n_cursors: usize,
-        n_events: Option<usize>,
-    },
+    Cursors { n_cursors: usize, n_events: usize },
 }
 
 impl CommitTrigger {
-    pub fn stats(&self) -> (usize, Option<usize>) {
+    pub fn stats(&self) -> (usize, usize) {
         match *self {
             CommitTrigger::Deadline {
                 n_cursors,
@@ -87,7 +78,7 @@ impl CommitTrigger {
         self.stats().0
     }
 
-    pub fn n_events(&self) -> Option<usize> {
+    pub fn n_events(&self) -> usize {
         self.stats().1
     }
 }

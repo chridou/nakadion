@@ -1,5 +1,5 @@
 //! Internals of the `Consumer`
-use std::fmt::{self, Arguments};
+use std::fmt::Arguments;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Weak,
@@ -207,10 +207,6 @@ impl StreamState {
     pub fn reset_in_flight_stats(&self) {
         self.instrumentation.batches_in_flight_reset();
         self.stats.reset();
-    }
-
-    pub fn stream_stats(&self) -> &StreamStats {
-        &self.stats
     }
 
     pub fn batches_in_flight(&self) -> usize {

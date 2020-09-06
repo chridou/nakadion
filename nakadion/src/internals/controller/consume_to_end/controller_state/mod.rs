@@ -50,6 +50,11 @@ impl ControllerState {
         self.last_events_received_at = now;
     }
 
+    pub fn received_keep_alive(&mut self) {
+        let now = Instant::now();
+        self.last_frame_received_at = now;
+    }
+
     pub fn received_tick(&mut self, _tick_timestamp: Instant) -> Result<(), Error> {
         if let Some(dead_for) = self
             .stream_dead_policy
