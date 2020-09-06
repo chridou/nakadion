@@ -11,37 +11,106 @@ use tokio::{
 };
 
 use crate::api::SubscriptionCommitApi;
-use crate::nakadi_types::{Error, FlowId};
+use crate::{
+    components::committer::Committer,
+    instrumentation::Instruments,
+    logging::Logger,
+    nakadi_types::{Error, FlowId},
+};
 
-use super::*;
-
+use nakadi_types::subscription::{EventTypePartition, EventTypePartitionLike, SubscriptionCursor};
 use pending_cursors::PendingCursors;
+
+use super::StreamState;
 
 mod pending_cursors;
 
 const DELAY_NO_CURSOR: Duration = Duration::from_millis(50);
 
-pub fn start<C>(committer: Committer<C>) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>)
+#[derive(Debug, Clone)]
+pub struct CommitItem {
+    pub cursor: SubscriptionCursor,
+    pub frame_started_at: Instant,
+    pub frame_completed_at: Instant,
+    pub frame_id: usize,
+    pub n_events: usize,
+}
+
+impl CommitItem {
+    fn etp(&self) -> EventTypePartition {
+        EventTypePartition::new(
+            self.cursor.event_type().as_ref(),
+            self.cursor.partition().as_ref(),
+        )
+    }
+}
+
+// The reason why data was committed if working in background mode
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CommitTrigger {
+    /// The deadline to commit was reached
+    Deadline { n_cursors: usize, n_events: usize },
+    /// Enough events were received
+    Events { n_cursors: usize, n_events: usize },
+    /// Enough cursors were received
+    Cursors { n_cursors: usize, n_events: usize },
+}
+
+impl CommitTrigger {
+    pub fn stats(&self) -> (usize, usize) {
+        match *self {
+            CommitTrigger::Deadline {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+            CommitTrigger::Events {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+            CommitTrigger::Cursors {
+                n_cursors,
+                n_events,
+            } => (n_cursors, n_events),
+        }
+    }
+
+    pub fn n_cursors(&self) -> usize {
+        self.stats().0
+    }
+
+    pub fn n_events(&self) -> usize {
+        self.stats().1
+    }
+}
+
+pub(crate) fn start_committer<C>(
+    client: C,
+    stream_state: StreamState,
+) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>)
 where
     C: SubscriptionCommitApi + Send + Sync + 'static,
 {
+    let mut committer = Committer::new(
+        client,
+        stream_state.subscription_id(),
+        stream_state.stream_id(),
+    );
+
+    committer.set_instrumentation(stream_state.instrumentation().clone());
+    committer.set_logger(stream_state.clone());
+    committer.set_config(stream_state.config().commit_config.clone());
+
     let (tx, to_commit) = unbounded_channel();
 
     let (io_sender, io_receiver) = unbounded_channel();
 
-    let logger = Arc::clone(&committer.logger);
-    let instrumentation = committer.instrumentation();
-    let config = committer.config().clone();
-
     let join_handle_dispatch_cursors = spawn(run_dispatch_cursors(
         to_commit,
         io_sender,
-        logger,
-        instrumentation,
-        config,
+        stream_state.clone(),
     ));
 
-    let join_handle_io_loop = spawn(commit_io_loop_task(committer, io_receiver));
+    let join_handle_io_loop = spawn(commit_io_loop_task(committer, io_receiver, stream_state));
 
     let f = async move {
         join_handle_dispatch_cursors.await.map_err(Error::new)?;
@@ -56,11 +125,12 @@ where
 async fn run_dispatch_cursors(
     mut cursors_to_commit: UnboundedReceiver<CommitItem>,
     io_sender: UnboundedSender<Vec<(EventTypePartition, CommitEntry)>>,
-    logger: Arc<dyn Logger>,
-    instrumentation: Instrumentation,
-    config: CommitConfig,
+    stream_state: StreamState,
 ) {
-    logger.debug(format_args!("Committer starting"));
+    stream_state.debug(format_args!("Committer starting"));
+
+    let config = &stream_state.config().commit_config;
+    let instrumentation = stream_state.instrumentation();
 
     let mut pending = PendingCursors::new(
         config.commit_strategy.unwrap_or_default(),
@@ -80,7 +150,7 @@ async fn run_dispatch_cursors(
             }
             Err(TryRecvError::Empty) => false,
             Err(TryRecvError::Closed) => {
-                logger.debug(format_args!(
+                stream_state.debug(format_args!(
                     "Channel closed. Last handle gone. Exiting committer."
                 ));
 
@@ -99,13 +169,13 @@ async fn run_dispatch_cursors(
             }
         };
 
-        logger.debug(format_args!("Commit triggered: {:?}", trigger));
+        stream_state.debug(format_args!("Commit triggered: {:?}", trigger));
         instrumentation.cursors_commit_triggered(trigger);
 
         let items = pending.drain_reset();
 
         if io_sender.send(items).is_err() {
-            logger.error(format_args!(
+            stream_state.error(format_args!(
                 "Failed to send cursors to commmit to io task because \
                     the channel is closed. Exiting."
             ));
@@ -115,13 +185,13 @@ async fn run_dispatch_cursors(
 
     let remaining_to_commit = pending.drain_reset();
     if !remaining_to_commit.is_empty() {
-        logger.warn(format_args!(
+        stream_state.warn(format_args!(
             "There are still {} cursors to commit on shutdown.",
             remaining_to_commit.len()
         ));
 
         if io_sender.send(remaining_to_commit).is_err() {
-            logger.error(format_args!(
+            stream_state.error(format_args!(
                 "Failed to send remaining cursors to the io task"
             ));
         }
@@ -130,12 +200,13 @@ async fn run_dispatch_cursors(
     drop(cursors_to_commit);
     drop(io_sender);
 
-    logger.debug(format_args!("Committer stopped"));
+    stream_state.debug(format_args!("Committer stopped"));
 }
 
 async fn commit_io_loop_task<C>(
     mut committer: Committer<C>,
     mut io_receiver: UnboundedReceiver<Vec<(EventTypePartition, CommitEntry)>>,
+    stream_state: StreamState,
 ) -> Result<(), Error>
 where
     C: SubscriptionCommitApi + Send + Sync + 'static,
@@ -182,7 +253,7 @@ where
             let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
             let warning = first_cursor_age >= first_cursor_warning_threshold;
             if warning {
-                committer.logger.warn(format_args!(
+                stream_state.warn(format_args!(
                     "About to commit a dangerously old cursor ({:?}) for {}. \
                     First frame is #{}, last frame is #{}. \
                     The threshold is {:?}",
@@ -203,9 +274,10 @@ where
 
         committer.set_flow_id(FlowId::random());
 
-        committer
-            .logger
-            .debug(format_args!("Committing: {:?}", cursors_to_commit));
+        committer.logger.debug(format_args!(
+            "Committing {} cursors",
+            cursors_to_commit.len()
+        ));
         match committer.commit(&cursors_to_commit).await {
             Ok(_) => {
                 collected_items_to_commit.clear();
@@ -213,14 +285,14 @@ where
             }
             Err(err) => {
                 if err.is_recoverable() {
-                    committer.logger.warn(format_args!(
+                    stream_state.warn(format_args!(
                         "Failed to commit {} cursors (recoverable): {}",
                         cursors_to_commit.len(),
                         err
                     ));
                     delay_for(Duration::from_millis(100)).await;
                 } else {
-                    committer.logger.error(format_args!(
+                    stream_state.error(format_args!(
                         "Failed to commit {} cursors (unrecoverable): {}",
                         cursors_to_commit.len(),
                         err
@@ -246,7 +318,7 @@ where
                 let last_cursor_age = commit_entry.item_to_commit.frame_started_at.elapsed();
                 let warning = first_cursor_age >= first_cursor_warning_threshold;
                 if warning {
-                    committer.logger.warn(format_args!(
+                    stream_state.warn(format_args!(
                         "About to commit a dangerously old cursor ({:?}) for {}. \
                         First frame is #{}, last frame is #{}. \
                         The threshold is {:?}",
@@ -257,7 +329,7 @@ where
                         first_cursor_warning_threshold,
                     ));
                 }
-                committer.instrumentation.cursor_ages_on_commit_attempt(
+                stream_state.instrumentation.cursor_ages_on_commit_attempt(
                     first_cursor_age,
                     last_cursor_age,
                     warning,
@@ -271,12 +343,10 @@ where
         committer.set_flow_id(FlowId::random());
         match committer.commit(&cursors).await {
             Ok(_) => {
-                committer
-                    .logger
-                    .debug(format_args!("Committed {} final cursors.", n_to_commit));
+                stream_state.debug(format_args!("Committed {} final cursors.", n_to_commit));
             }
             Err(err) => {
-                committer.logger.warn(format_args!(
+                stream_state.warn(format_args!(
                     "Failed to commit {} final cursors: {}",
                     n_to_commit, err
                 ));
@@ -291,4 +361,27 @@ pub struct CommitEntry {
     pub first_frame_started_at: Instant,
     pub first_frame_id: usize,
     pub item_to_commit: CommitItem,
+}
+/// Handle to send commit messages to the background task.
+///
+/// The background task will stop, once the last handle is dropped.
+#[derive(Clone)]
+pub struct CommitHandle {
+    sender: UnboundedSender<CommitItem>,
+}
+
+impl CommitHandle {
+    /// Commit the given cursor with additional information packed in the struct
+    /// `CommitData`.
+    ///
+    /// Fails if the data could not be send which means
+    /// that the backend is gone. The appropriate action is then
+    /// to stop streaming.
+    pub fn commit(&self, to_commit: CommitItem) -> Result<(), CommitItem> {
+        if let Err(err) = self.sender.send(to_commit) {
+            Err(err.0)
+        } else {
+            Ok(())
+        }
+    }
 }

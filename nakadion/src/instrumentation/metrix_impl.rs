@@ -8,10 +8,11 @@ use metrix::{
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    committer::{CommitError, CommitTrigger},
+    committer::CommitError,
     connector::ConnectError,
     streams::{EventStreamBatchStats, EventStreamError, EventStreamErrorKind},
 };
+use crate::internals::background_committer::CommitTrigger;
 
 use super::Instruments;
 
@@ -317,42 +318,25 @@ impl Instruments for Metrix {
                 n_cursors,
                 n_events,
             } => {
-                self.tx.observed_one_value_now(
-                    Metric::CommitterTriggerDeadlineCursorsCount,
-                    n_cursors,
-                );
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerDeadlineEventsCount,
-                        n_events,
-                    );
-                }
+                self.tx
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineCursorsCount, n_cursors)
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineEventsCount, n_events);
             }
             CommitTrigger::Events {
                 n_cursors,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerEventsCursorsCount, n_cursors);
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerEventsEventsCount,
-                        n_events,
-                    );
-                }
+                    .observed_one_value_now(Metric::CommitterTriggerEventsCursorsCount, n_cursors)
+                    .observed_one_value_now(Metric::CommitterTriggerEventsEventsCount, n_events);
             }
             CommitTrigger::Cursors {
                 n_cursors,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerCursorsCursorsCount, n_cursors);
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerCursorsEventsCount,
-                        n_events,
-                    );
-                }
+                    .observed_one_value_now(Metric::CommitterTriggerCursorsCursorsCount, n_cursors)
+                    .observed_one_value_now(Metric::CommitterTriggerCursorsEventsCount, n_events);
             }
         }
     }

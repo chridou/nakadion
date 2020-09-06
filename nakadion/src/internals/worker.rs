@@ -9,12 +9,14 @@ use std::time::Instant;
 use futures::Stream;
 use tokio::{self, task::JoinHandle};
 
-use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
+use crate::components::streams::EventStreamBatch;
 use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
 use crate::internals::{ConsumptionResult, StreamState};
 
 use processor::HandlerSlot;
+
+use super::background_committer::CommitHandle;
 
 #[derive(Debug)]
 pub enum WorkerMessage {
@@ -92,17 +94,17 @@ mod processor {
 
     use crate::nakadi_types::subscription::SubscriptionCursor;
 
-    use crate::components::{
-        committer::{CommitHandle, CommitItem},
-        streams::EventStreamBatch,
-    };
+    use crate::components::streams::EventStreamBatch;
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
         HandlerAssignment,
     };
     use crate::instrumentation::Instruments;
-    use crate::internals::{ConsumptionResult, StreamState};
+    use crate::internals::{
+        background_committer::{CommitHandle, CommitItem},
+        ConsumptionResult, StreamState,
+    };
     use crate::logging::{ContextualLogger, Logger};
 
     use super::WorkerMessage;

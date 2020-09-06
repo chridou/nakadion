@@ -3,10 +3,11 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use std::sync::Arc;
 
 use crate::api::SubscriptionCommitApi;
-use crate::components::committer::Committer;
 use crate::consumer::Config;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{worker::*, ConsumptionResult, StreamState};
+use crate::internals::{
+    background_committer::start_committer, worker::*, ConsumptionResult, StreamState,
+};
 use crate::logging::Logger;
 
 use super::DispatcherMessage;
@@ -47,16 +48,8 @@ where
     {
         let Sleeping { worker, api_client } = self;
 
-        let mut committer = Committer::new(
-            api_client.clone(),
-            stream_state.subscription_id(),
-            stream_state.stream_id(),
-        );
-        committer.set_config(stream_state.config.commit_config.clone());
-        committer.set_logger(stream_state.clone());
-        committer.set_instrumentation(stream_state.instrumentation().clone());
-
-        let (committer, committer_join_handle) = committer.run();
+        let (committer, committer_join_handle) =
+            start_committer(api_client.clone(), stream_state.clone());
 
         let worker_stream = messages.map(move |dm| match dm {
             DispatcherMessage::BatchWithEvents(_, batch) => WorkerMessage::BatchWithEvents(batch),

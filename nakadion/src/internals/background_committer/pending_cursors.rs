@@ -5,12 +5,9 @@ use std::{
 
 use nakadi_types::subscription::{EventTypePartition, StreamCommitTimeoutSecs};
 
-use crate::{
-    components::committer::{CommitItem, CommitTrigger},
-    consumer::CommitStrategy,
-};
+use crate::consumer::CommitStrategy;
 
-use super::CommitEntry;
+use super::{CommitEntry, CommitItem, CommitTrigger};
 
 pub struct PendingCursors {
     stream_commit_timeout: Duration,

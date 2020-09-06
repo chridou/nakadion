@@ -14,6 +14,7 @@ use crate::{
 };
 
 //pub mod committer;
+pub mod background_committer;
 pub mod controller;
 pub mod dispatcher;
 pub mod worker;

@@ -5,14 +5,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
-use futures::future::BoxFuture;
 use http::StatusCode;
-use tokio::{
-    sync::mpsc::UnboundedSender,
-    time::{delay_for, timeout},
-};
-
-use nakadi_types::subscription::{EventTypePartition, EventTypePartitionLike};
+use tokio::time::{delay_for, timeout};
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
@@ -22,90 +16,9 @@ use crate::nakadi_types::{
     Error, FlowId,
 };
 
-mod background;
 mod config;
 
 pub use config::*;
-
-#[derive(Debug, Clone)]
-pub struct CommitItem {
-    pub cursor: SubscriptionCursor,
-    pub frame_started_at: Instant,
-    pub frame_completed_at: Instant,
-    pub frame_id: usize,
-    pub n_events: usize,
-}
-
-impl CommitItem {
-    fn etp(&self) -> EventTypePartition {
-        EventTypePartition::new(
-            self.cursor.event_type().as_ref(),
-            self.cursor.partition().as_ref(),
-        )
-    }
-}
-
-/// The reason why data was committed if working in background mode
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum CommitTrigger {
-    /// The deadline to commit was reached
-    Deadline { n_cursors: usize, n_events: usize },
-    /// Enough events were received
-    Events { n_cursors: usize, n_events: usize },
-    /// Enough cursors were received
-    Cursors { n_cursors: usize, n_events: usize },
-}
-
-impl CommitTrigger {
-    pub fn stats(&self) -> (usize, usize) {
-        match *self {
-            CommitTrigger::Deadline {
-                n_cursors,
-                n_events,
-            } => (n_cursors, n_events),
-            CommitTrigger::Events {
-                n_cursors,
-                n_events,
-            } => (n_cursors, n_events),
-            CommitTrigger::Cursors {
-                n_cursors,
-                n_events,
-            } => (n_cursors, n_events),
-        }
-    }
-
-    pub fn n_cursors(&self) -> usize {
-        self.stats().0
-    }
-
-    pub fn n_events(&self) -> usize {
-        self.stats().1
-    }
-}
-
-/// Handle to send commit messages to the background task.
-///
-/// The background task will stop, once the last handle is dropped.
-#[derive(Clone)]
-pub struct CommitHandle {
-    sender: UnboundedSender<CommitItem>,
-}
-
-impl CommitHandle {
-    /// Commit the given cursor with additional information packed in the struct
-    /// `CommitData`.
-    ///
-    /// Fails if the data could not be send which means
-    /// that the backend is gone. The appropriate action is then
-    /// to stop streaming.
-    pub fn commit(&self, to_commit: CommitItem) -> Result<(), CommitItem> {
-        if let Err(err) = self.sender.send(to_commit) {
-            Err(err.0)
-        } else {
-            Ok(())
-        }
-    }
-}
 
 /// Commits cursors for a stream
 ///
@@ -136,13 +49,6 @@ where
             config: CommitConfig::default(),
             logger: Arc::new(DevNullLoggingAdapter),
         }
-    }
-
-    /// Run the committer in as a background task.
-    ///
-    /// Items can be scheduled for commit via the `CommitHandle`
-    pub fn run(self) -> (CommitHandle, BoxFuture<'static, Result<(), Error>>) {
-        background::start(self)
     }
 
     pub fn set_logger<L: Logger>(&mut self, logger: L) {

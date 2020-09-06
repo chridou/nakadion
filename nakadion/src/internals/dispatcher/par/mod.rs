@@ -1,8 +1,9 @@
 use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
-use crate::components::committer::CommitHandle;
-use crate::internals::{worker::*, ConsumptionResult, StreamState};
+use crate::internals::{
+    background_committer::CommitHandle, worker::*, ConsumptionResult, StreamState,
+};
 
 pub mod et_par;
 pub mod etp_par;

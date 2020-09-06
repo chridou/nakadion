@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trait `Instruments` has default implementations which do nothing.
 - Trait `Instruments` accepts more parameters for in flight metrics.
 
+### Removed
+
+- Background committer
+
 ### ADDED
 
 - Metrics for in flight batches and bytes

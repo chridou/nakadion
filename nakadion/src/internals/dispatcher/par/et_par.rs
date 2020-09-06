@@ -6,10 +6,14 @@ use futures::{future::BoxFuture, pin_mut, FutureExt, Stream, StreamExt};
 use std::future::Future;
 
 use crate::api::SubscriptionCommitApi;
-use crate::components::committer::{CommitHandle, Committer};
 use crate::consumer::ConsumerError;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{dispatcher::DispatcherMessage, worker::*, ConsumptionResult, StreamState};
+use crate::internals::{
+    background_committer::{start_committer, CommitHandle},
+    dispatcher::DispatcherMessage,
+    worker::*,
+    ConsumptionResult, StreamState,
+};
 use crate::logging::Logger;
 
 use crate::nakadi_types::event_type::EventTypeName;
@@ -54,16 +58,8 @@ where
             handler_factory,
         } = self;
 
-        let mut committer = Committer::new(
-            api_client.clone(),
-            stream_state.subscription_id(),
-            stream_state.stream_id(),
-        );
-        committer.set_config(stream_state.config.commit_config.clone());
-        committer.set_logger(stream_state.clone());
-        committer.set_instrumentation(stream_state.instrumentation().clone());
-
-        let (committer, committer_join_handle) = committer.run();
+        let (committer, committer_join_handle) =
+            start_committer(api_client.clone(), stream_state.clone());
 
         let join_workers = run(
             assignments,

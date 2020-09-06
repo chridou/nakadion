@@ -7,10 +7,11 @@ use std::time::{Duration, Instant};
 use crate::nakadi_types::Error;
 
 use crate::components::{
-    committer::{CommitError, CommitTrigger},
+    committer::CommitError,
     connector::ConnectError,
     streams::{EventStreamBatchStats, EventStreamError},
 };
+pub use crate::internals::background_committer::CommitTrigger;
 
 #[cfg(feature = "metrix")]
 mod metrix_impl;
