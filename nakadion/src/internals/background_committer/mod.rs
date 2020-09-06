@@ -3,7 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::future::{BoxFuture, FutureExt};
+use futures::{
+    future::{BoxFuture, FutureExt},
+    TryFutureExt,
+};
 use tokio::{
     spawn,
     sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -110,11 +113,30 @@ where
         stream_state.clone(),
     ));
 
-    let join_handle_io_loop = spawn(commit_io_loop_task(committer, io_receiver, stream_state));
+    let join_handle_io_loop = spawn(commit_io_loop_task(
+        committer,
+        io_receiver,
+        stream_state.clone(),
+    ));
 
     let f = async move {
-        join_handle_dispatch_cursors.await.map_err(Error::new)?;
-        join_handle_io_loop.await.map_err(Error::new)??;
+        join_handle_dispatch_cursors
+            .inspect_err(|_| {
+                stream_state.request_stream_cancellation();
+            })
+            .await
+            .map_err(Error::new)?;
+        join_handle_io_loop
+            .inspect_err(|_| {
+                stream_state.request_stream_cancellation();
+            })
+            .inspect_ok(|r| {
+                if r.is_err() {
+                    stream_state.request_stream_cancellation();
+                }
+            })
+            .await
+            .map_err(Error::new)??;
         Ok(())
     }
     .boxed();
@@ -141,6 +163,10 @@ async fn run_dispatch_cursors(
     );
 
     loop {
+        if stream_state.cancellation_requested() {
+            break;
+        }
+
         let cursor_received = match cursors_to_commit.try_recv() {
             Ok(next) => {
                 instrumentation
@@ -273,13 +299,12 @@ where
         }
 
         committer.set_flow_id(FlowId::random());
-
-        committer.logger.debug(format_args!(
-            "Committing {} cursors",
-            cursors_to_commit.len()
-        ));
         match committer.commit(&cursors_to_commit).await {
             Ok(_) => {
+                stream_state.debug(format_args!(
+                    "Committed {} cursors.",
+                    cursors_to_commit.len()
+                ));
                 collected_items_to_commit.clear();
                 continue;
             }
@@ -303,11 +328,11 @@ where
         };
     }
 
-    drop(io_receiver);
-
     committer
         .logger
         .debug(format_args!("Committer io loop loop exited"));
+
+    drop(io_receiver);
 
     if !collected_items_to_commit.is_empty() {
         // try to commit the rest
@@ -350,6 +375,7 @@ where
                     "Failed to commit {} final cursors: {}",
                     n_to_commit, err
                 ));
+                return Err(Error::from_error(err));
             }
         };
     }
