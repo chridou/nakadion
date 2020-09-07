@@ -132,6 +132,7 @@ mod processor {
             pin_mut!(batches);
             while let Some(msg) = batches.next().await {
                 if stream_state.cancellation_requested() {
+                    stream_state.debug(format_args!("[WORKER] Cancellation requested."));
                     break;
                 }
 

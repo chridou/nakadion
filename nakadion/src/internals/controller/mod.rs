@@ -381,9 +381,7 @@ fn start_batch_drain<
         let mut last_batch_frame_received_at: Option<Instant> = None;
         while let Some(next_batch_line) = event_stream.next().await {
             if stream_state.cancellation_requested() {
-                stream_state.debug(format_args!(
-                    "Batch drain exiting because the stream was cancelled."
-                ));
+                stream_state.debug(format_args!("[BATCH_DRAIN] Cancellation requested."));
                 return;
             }
 

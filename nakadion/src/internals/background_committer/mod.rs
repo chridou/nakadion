@@ -164,6 +164,9 @@ async fn run_dispatch_cursors(
 
     loop {
         if stream_state.cancellation_requested() {
+            stream_state.debug(format_args!(
+                "[DISPATCH_CURSORS_LOOP] Cancellation requested."
+            ));
             break;
         }
 
@@ -338,6 +341,7 @@ where
                         effective_events_to_be_committed,
                     err
                     ));
+                    stream_state.request_stream_cancellation();
                     return Err(Error::from_error(err));
                 }
             }
@@ -407,6 +411,7 @@ where
                     effective_events_to_be_committed,
                     err
                 ));
+                stream_state.request_stream_cancellation();
                 return Err(Error::from_error(err));
             }
         };

@@ -42,9 +42,7 @@ where
 
     let loop_result: Result<(), ConsumerError> = loop {
         if stream_state.cancellation_requested() {
-            stream_state.debug(format_args!(
-                "Stream was cancelled on request - shutting down stream"
-            ));
+            stream_state.debug(format_args!("[CONTROLLER] Cancellation requested."));
             break Ok(());
         }
 
