@@ -76,7 +76,6 @@ impl ConsumerState {
         &self.config
     }
 
-    #[allow(dead_code)]
     pub fn stream_parameters(&self) -> &StreamParameters {
         &self.config().connect_config.stream_parameters
     }

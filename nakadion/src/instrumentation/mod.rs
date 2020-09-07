@@ -12,6 +12,7 @@ use crate::components::{
     streams::{EventStreamBatchStats, EventStreamError},
 };
 pub use crate::internals::background_committer::CommitTrigger;
+use nakadi_types::subscription::StreamParameters;
 
 #[cfg(feature = "metrix")]
 mod metrix_impl;
@@ -168,6 +169,11 @@ pub trait Instruments {
     ///
     /// The time request took is passed
     fn commit_cursors_attempt_failed(&self, _n_cursors: usize, _time: Duration) {}
+
+    /// Can be used to transmit limits and values via metrics
+    ///
+    /// This function s not called at high frequency
+    fn stream_parameters(&self, _params: &StreamParameters) {}
 }
 
 impl<T> crate::tools::subscription_stats::Instruments for T
@@ -683,6 +689,15 @@ impl Instruments for Instrumentation {
             InstrumentationSelection::Metrix(ref instr) => {
                 instr.commit_cursors_attempt_failed(n_cursors, time)
             }
+        }
+    }
+
+    fn stream_parameters(&self, params: &StreamParameters) {
+        match self.instr {
+            InstrumentationSelection::Off => {}
+            InstrumentationSelection::Custom(ref instr) => instr.stream_parameters(params),
+            #[cfg(feature = "metrix")]
+            InstrumentationSelection::Metrix(ref instr) => instr.stream_parameters(params),
         }
     }
 }

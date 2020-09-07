@@ -409,6 +409,8 @@ impl Instruments for Metrix {
                 (time, TimeUnit::Milliseconds),
             );
     }
+
+    fn stream_parameters(&self, _params: &StreamParameters) {}
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]

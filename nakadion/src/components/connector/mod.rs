@@ -519,7 +519,7 @@ pub struct StreamedBatchMeta {
     pub frame_id: usize,
 }
 
-// Sequence of backoffs after failed connect attempts
+/// Sequence of backoffs after failed connect attempts
 const CONNECT_RETRY_BACKOFF_SECS: &[u64] = &[
     0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 10, 10, 10, 10, 10, 20, 20, 20, 20,
     20, 30, 30, 30, 30, 30, 45, 45, 45, 45, 45, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
