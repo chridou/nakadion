@@ -265,4 +265,12 @@ impl StreamStats {
         self.uncommitted_batches.store(0, Ordering::SeqCst);
         self.uncommitted_events.store(0, Ordering::SeqCst);
     }
+
+    pub fn is_a_warning(&self) -> bool {
+        self.batches_in_flight.load(Ordering::SeqCst) != 0
+            || self.events_in_flight.load(Ordering::SeqCst) != 0
+            || self.bytes_in_flight.load(Ordering::SeqCst) != 0
+            || self.uncommitted_batches.load(Ordering::SeqCst) != 0
+            || self.uncommitted_events.load(Ordering::SeqCst) != 0
+    }
 }

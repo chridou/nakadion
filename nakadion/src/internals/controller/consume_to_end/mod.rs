@@ -229,6 +229,10 @@ where
         }
     };
 
+    if stream_state.stats.is_a_warning() {
+        stream_state.warn(format_args!("Unprocessed data: {:?}", stream_state.stats));
+    }
+
     stream_state.reset_in_flight_stats();
 
     result

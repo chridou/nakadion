@@ -883,6 +883,16 @@ mod instr {
                     ),
             )
             .panel(
+                Panel::named(Metric::CommitterCursorsNotCommittedTime, "uncommitted")
+                    .gauge(
+                        create_gauge("batches", config)
+                            .for_label(Metric::UncommittedBatchesChanged),
+                    )
+                    .gauge(
+                        create_gauge("events", config).for_label(Metric::UncommittedEventsChanged),
+                    ),
+            )
+            .panel(
                 Panel::named(
                     (
                         Metric::CommitterAttemptFailedCount,
