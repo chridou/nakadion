@@ -379,6 +379,7 @@ fn start_batch_drain<
     let task = async move {
         let mut last_frame_received_at: Option<Instant> = None;
         let mut last_batch_frame_received_at: Option<Instant> = None;
+        let mut last_received_frame_id = 0;
         while let Some(next_batch_line) = event_stream.next().await {
             if stream_state.cancellation_requested() {
                 stream_state.debug(format_args!("[BATCH_DRAIN] Cancellation requested."));
@@ -396,24 +397,25 @@ fn start_batch_drain<
                         let frame_gap = now - last_received;
                         if frame_gap >= Duration::from_secs(30) {
                             stream_state.warn(format_args!(
-                                "Huge frame gap of {:?} to frame #{}",
+                                "Huge frame gap of {:?} from frame #{} to frame #{}",
                                 last_received.elapsed(),
+                                last_received_frame_id,
                                 batch_line.frame_id(),
                             ));
                         }
-                        last_frame_received_at = Some(now);
-                    } else {
-                        last_frame_received_at = Some(now);
                     }
+
+                    last_frame_received_at = Some(now);
+                    last_received_frame_id = batch_line.frame_id();
 
                     if let Some(info_str) = batch_line.info_str() {
                         stream_state
                             .instrumentation
                             .info_frame_received(frame_started_at, frame_completed_at);
                         stream_state.info(format_args!(
-                            "Received info line with frame #{} and {} batches in flight: {}",
+                            "Received info line with frame #{} and {} uncommitted batch(es): {}",
                             batch_line.frame_id(),
-                            stream_state.batches_in_flight(),
+                            stream_state.uncommitted_batches(),
                             info_str
                         ));
                     }
@@ -475,8 +477,8 @@ fn start_batch_drain<
         }
 
         stream_state.debug(format_args!(
-            "Batch drain exiting with {} batches in flight.",
-            stream_state.batches_in_flight()
+            "Batch drain exiting. {} uncommitted batches.",
+            stream_state.uncommitted_batches()
         ));
     };
 

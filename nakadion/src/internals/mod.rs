@@ -225,8 +225,8 @@ impl StreamState {
         self.stats.reset();
     }
 
-    pub fn batches_in_flight(&self) -> usize {
-        self.stats.batches_in_flight.load(Ordering::SeqCst)
+    pub fn uncommitted_batches(&self) -> usize {
+        self.stats.uncommitted_batches.load(Ordering::SeqCst)
     }
 }
 

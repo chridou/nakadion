@@ -22,7 +22,7 @@ impl Default for ConnectAbortOnAuthError {
 
 new_type! {
     #[doc="If `true` abort the consumer when a conflict (409) occurs while connecting to a stream.\n\n\
-        This can happen when there are no free slots or cursors are being reset.\n\n
+        This can happen when there are no free slots or cursors are being reset.\n\n\
         The default is `false` which means no abort occurs on conflicts.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct ConnectAbortOnConflict(bool, env="CONNECT_ABORT_ON_CONFLICT");

@@ -213,8 +213,8 @@ where
     drop(event_stream);
 
     stream_state.debug(format_args!(
-        "Streaming ending after {:?}. Waiting for stream infrastructure to shut down. {} batches in flight.",
-        controller_state.stream_started_at.elapsed(), stream_state.batches_in_flight()
+        "Streaming ending after {:?}. Waiting for stream infrastructure to shut down. {} uncommitted batches.",
+        controller_state.stream_started_at.elapsed(), stream_state.uncommitted_batches()
     ));
 
     // Wait for the infrastructure to completely shut down before making further connect attempts for

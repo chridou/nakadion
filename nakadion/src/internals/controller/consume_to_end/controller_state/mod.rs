@@ -70,9 +70,9 @@ impl ControllerState {
         let elapsed = self.last_frame_received_at.elapsed();
         if elapsed >= self.warn_no_frames {
             self.stream_state.warn(format_args!(
-                "No frames for {:?}. {} batches in flight.",
+                "No frames for {:?}. {} uncommitted batch(es).",
                 elapsed,
-                self.stream_state.batches_in_flight()
+                self.stream_state.uncommitted_batches()
             ));
             self.stream_state
                 .instrumentation()
@@ -82,9 +82,9 @@ impl ControllerState {
         let elapsed = self.last_events_received_at.elapsed();
         if elapsed >= self.warn_no_events {
             self.stream_state.warn(format_args!(
-                "No events received for {:?}. {} batches in flight.",
+                "No events received for {:?}. {} uncommitted batch(es).",
                 elapsed,
-                self.stream_state.batches_in_flight()
+                self.stream_state.uncommitted_batches()
             ));
             self.stream_state
                 .instrumentation()
