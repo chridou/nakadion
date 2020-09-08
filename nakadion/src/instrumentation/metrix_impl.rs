@@ -411,7 +411,15 @@ impl Instruments for Metrix {
             );
     }
 
-    fn stream_parameters(&self, _params: &StreamParameters) {}
+    fn stream_parameters(&self, params: &StreamParameters) {
+        self.tx.observed_one_value_now(
+            Metric::StreamParametersMaxUncommittedEvents,
+            params
+                .max_uncommitted_events
+                .unwrap_or_default()
+                .into_inner(),
+        );
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -434,6 +442,7 @@ pub enum Metric {
     StreamBatchFrameGap,
     StreamDeadAfter,
     StreamUnconsumedEvents,
+    StreamParametersMaxUncommittedEvents,
     NoFramesForWarning,
     NoEventsForWarning,
     StreamErrorIo,
@@ -600,6 +609,12 @@ mod instr {
             .panel(
                 Panel::named(AcceptAllLabels, "unconsumed_events").gauge(
                     create_gauge("stream", config).for_label(Metric::StreamUnconsumedEvents),
+                ),
+            )
+            .panel(
+                Panel::named(Metric::StreamParametersMaxUncommittedEvents, "parameters").gauge(
+                    Gauge::new_with_defaults("max_uncommitted_events")
+                        .for_label(Metric::StreamParametersMaxUncommittedEvents),
                 ),
             );
 

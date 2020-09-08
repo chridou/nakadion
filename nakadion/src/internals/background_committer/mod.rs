@@ -320,8 +320,6 @@ where
                     effective_batches_to_be_committed,
                     effective_events_to_be_committed,
                 ));
-                effective_batches_to_be_committed = 0;
-                effective_events_to_be_committed = 0;
                 stream_state.batches_committed(
                     effective_batches_to_be_committed,
                     effective_events_to_be_committed,
