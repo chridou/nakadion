@@ -412,13 +412,33 @@ impl Instruments for Metrix {
     }
 
     fn stream_parameters(&self, params: &StreamParameters) {
-        self.tx.observed_one_value_now(
-            Metric::StreamParametersMaxUncommittedEvents,
-            params
-                .max_uncommitted_events
-                .unwrap_or_default()
-                .into_inner(),
-        );
+        self.tx
+            .observed_one_value_now(
+                Metric::StreamParametersMaxUncommittedEvents,
+                params
+                    .max_uncommitted_events
+                    .unwrap_or_default()
+                    .into_inner(),
+            )
+            .observed_one_value_now(
+                Metric::StreamParametersBatchLimit,
+                params.batch_limit.unwrap_or_default().into_inner(),
+            )
+            .observed_one_value_now(
+                Metric::StreamParametersStreamTimeoutSecs,
+                params.stream_timeout_secs.unwrap_or_default().into_inner(),
+            )
+            .observed_one_value_now(
+                Metric::StreamParametersCommitTimeoutSecs,
+                params.commit_timeout_secs.unwrap_or_default().into_inner(),
+            )
+            .observed_one_value_now(
+                Metric::StreamParametersBatchFlushTimeoutSecs,
+                params
+                    .batch_flush_timeout_secs
+                    .unwrap_or_default()
+                    .into_inner(),
+            );
     }
 }
 
@@ -443,6 +463,10 @@ pub enum Metric {
     StreamDeadAfter,
     StreamUnconsumedEvents,
     StreamParametersMaxUncommittedEvents,
+    StreamParametersBatchLimit,
+    StreamParametersStreamTimeoutSecs,
+    StreamParametersCommitTimeoutSecs,
+    StreamParametersBatchFlushTimeoutSecs,
     NoFramesForWarning,
     NoEventsForWarning,
     StreamErrorIo,
@@ -612,9 +636,35 @@ mod instr {
                 ),
             )
             .panel(
-                Panel::named(Metric::StreamParametersMaxUncommittedEvents, "parameters").gauge(
+                Panel::named(
+                    (
+                        Metric::StreamParametersMaxUncommittedEvents,
+                        Metric::StreamParametersBatchLimit,
+                        Metric::StreamParametersStreamTimeoutSecs,
+                        Metric::StreamParametersCommitTimeoutSecs,
+                        Metric::StreamParametersBatchFlushTimeoutSecs,
+                    ),
+                    "parameters",
+                )
+                .gauge(
                     Gauge::new_with_defaults("max_uncommitted_events")
                         .for_label(Metric::StreamParametersMaxUncommittedEvents),
+                )
+                .gauge(
+                    Gauge::new_with_defaults("batch_limit")
+                        .for_label(Metric::StreamParametersBatchLimit),
+                )
+                .gauge(
+                    Gauge::new_with_defaults("stream_timeout_secs")
+                        .for_label(Metric::StreamParametersStreamTimeoutSecs),
+                )
+                .gauge(
+                    Gauge::new_with_defaults("commit_timeout_secs")
+                        .for_label(Metric::StreamParametersCommitTimeoutSecs),
+                )
+                .gauge(
+                    Gauge::new_with_defaults("batch_flush_timeout_secs")
+                        .for_label(Metric::StreamParametersBatchFlushTimeoutSecs),
                 ),
             );
 
@@ -901,14 +951,15 @@ mod instr {
                     ),
             )
             .panel(
-                Panel::named((Metric::UncommittedBatchesChanged, Metric::UncommittedEventsChanged), "uncommitted")
-                    .gauge(
-                        create_gauge("batches", config)
-                            .for_label(Metric::UncommittedBatchesChanged),
-                    )
-                    .gauge(
-                        create_gauge("events", config).for_label(Metric::UncommittedEventsChanged),
+                Panel::named(
+                    (
+                        Metric::UncommittedBatchesChanged,
+                        Metric::UncommittedEventsChanged,
                     ),
+                    "uncommitted",
+                )
+                .gauge(create_gauge("batches", config).for_label(Metric::UncommittedBatchesChanged))
+                .gauge(create_gauge("events", config).for_label(Metric::UncommittedEventsChanged)),
             )
             .panel(
                 Panel::named(
