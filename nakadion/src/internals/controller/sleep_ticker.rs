@@ -47,12 +47,15 @@ where
     where
         C: Send + 'static,
     {
+        consumer_state.info(format_args!("Waiting for connection and incoming frames"));
+
         let delay = consumer_state.config().tick_interval.into_duration();
 
         let started = Instant::now();
 
         let mut last_wait_notification = Instant::now();
-        consumer_state.info(format_args!("Waiting for connection and incoming frames"));
+
+        let mut next_tick_at = started + delay;
         let sleep = async move {
             loop {
                 if wake_up.load(Ordering::SeqCst) || consumer_state.global_cancellation_requested()
@@ -60,8 +63,12 @@ where
                     consumer_state.debug(format_args!("Woke up!"));
                     break;
                 }
-                sleeping_dispatcher.tick();
-                delay_for(delay).await;
+                let now = Instant::now();
+                if now <= next_tick_at {
+                    sleeping_dispatcher.tick();
+                    next_tick_at = now + delay;
+                }
+                delay_for(Duration::from_millis(10)).await;
                 if last_wait_notification.elapsed() > Duration::from_secs(15) {
                     consumer_state.info(format_args!(
                         "Still waiting for connection and incoming frames (waiting for {:?})",

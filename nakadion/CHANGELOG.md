@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2020-09-08
+
+### ADDED
+
+- Track uncommitted batches and events
+- Added metric for `max_uncommitted_events` from `StreamParameters`.
+
+### CHANGED
+
+- Drain events from IO stream in seperate task
+- [BREAKING] Instrumentation should not be used by multiple consumers anymore
+- Trait `Instruments` has default implementations which do nothing.
+- Trait `Instruments` accepts more parameters for in flight metrics.
+- In metrics for `CommitTriger` the word "cursors" has been replaced with "batches" since this is whats actually measured.
+
+### Removed
+
+- Background committer
+
+### ADDED
+
+- Metrics for in flight batches and bytes
+
 ## [0.27.9] - 2020-09-02
 
 ### CHANGED

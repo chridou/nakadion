@@ -9,12 +9,14 @@ use std::time::Instant;
 use futures::Stream;
 use tokio::{self, task::JoinHandle};
 
-use crate::components::{committer::CommitHandle, streams::EventStreamBatch};
+use crate::components::streams::EventStreamBatch;
 use crate::consumer::HandlerInactivityTimeoutSecs;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{EnrichedErr, EnrichedResult, StreamState};
+use crate::internals::{ConsumptionResult, StreamState};
 
 use processor::HandlerSlot;
+
+use super::background_committer::CommitHandle;
 
 #[derive(Debug)]
 pub enum WorkerMessage {
@@ -64,21 +66,21 @@ impl SleepingWorker {
 }
 
 pub(crate) struct ActiveWorker {
-    join_handle: JoinHandle<EnrichedResult<HandlerSlot>>,
+    join_handle: JoinHandle<ConsumptionResult<HandlerSlot>>,
 }
 
 impl ActiveWorker {
-    pub async fn join(self) -> EnrichedResult<SleepingWorker> {
+    pub async fn join(self) -> ConsumptionResult<SleepingWorker> {
         let ActiveWorker { join_handle, .. } = self;
 
-        let mut handler_slot_enriched = match join_handle.await {
+        let mut handler_slot = match join_handle.await {
             Ok(r) => r?,
-            Err(join_err) => return Err(EnrichedErr::no_data(join_err)),
+            Err(join_err) => return Err(join_err.into()),
         };
 
-        handler_slot_enriched.payload.reset();
+        handler_slot.reset();
 
-        Ok(handler_slot_enriched.map(|handler_slot| SleepingWorker { handler_slot }))
+        Ok(SleepingWorker { handler_slot })
     }
 }
 
@@ -92,17 +94,17 @@ mod processor {
 
     use crate::nakadi_types::subscription::SubscriptionCursor;
 
-    use crate::components::{
-        committer::{CommitHandle, CommitItem},
-        streams::EventStreamBatch,
-    };
+    use crate::components::streams::EventStreamBatch;
     use crate::consumer::{ConsumerError, ConsumerErrorKind, HandlerInactivityTimeoutSecs};
     use crate::handler::{
         BatchHandler, BatchHandlerFactory, BatchMeta, BatchPostAction, BatchStats,
         HandlerAssignment,
     };
     use crate::instrumentation::Instruments;
-    use crate::internals::{EnrichedOk, EnrichedResult, StreamState};
+    use crate::internals::{
+        background_committer::{CommitHandle, CommitItem},
+        ConsumptionResult, StreamState,
+    };
     use crate::logging::{ContextualLogger, Logger};
 
     use super::WorkerMessage;
@@ -115,11 +117,10 @@ mod processor {
         mut handler_slot: HandlerSlot,
         stream_state: StreamState,
         committer: CommitHandle,
-    ) -> JoinHandle<EnrichedResult<HandlerSlot>>
+    ) -> JoinHandle<ConsumptionResult<HandlerSlot>>
     where
         S: Stream<Item = WorkerMessage> + Send + 'static,
     {
-        let mut batches_processed: usize = 0;
         handler_slot.set_logger(&stream_state.logger());
         let processor_loop = async move {
             let mut processing_compound = ProcessingCompound {
@@ -131,6 +132,7 @@ mod processor {
             pin_mut!(batches);
             while let Some(msg) = batches.next().await {
                 if stream_state.cancellation_requested() {
+                    stream_state.debug(format_args!("[WORKER] Cancellation requested."));
                     break;
                 }
 
@@ -142,18 +144,17 @@ mod processor {
                     }
                 };
 
+                let stats = batch.stats();
                 match processing_compound.process_batch_line(batch).await {
                     Ok(true) => {
-                        stream_state.instrumentation().batches_in_flight_dec();
-                        batches_processed += 1;
+                        stream_state.processed_events_batch(stats);
                     }
                     Ok(false) => {
-                        stream_state.instrumentation().batches_in_flight_dec();
-                        batches_processed += 1;
+                        stream_state.processed_events_batch(stats);
                         break;
                     }
                     Err(err) => {
-                        return Err(err.enriched(batches_processed));
+                        return Err(err);
                     }
                 }
             }
@@ -162,10 +163,7 @@ mod processor {
 
             stream_state.debug(format_args!("Worker stopped"));
 
-            Ok(EnrichedOk::new(
-                processing_compound.handler_slot,
-                batches_processed,
-            ))
+            Ok(processing_compound.handler_slot)
         };
 
         tokio::spawn(processor_loop)
@@ -196,6 +194,7 @@ mod processor {
             let frame_started_at = batch.frame_started_at();
             let frame_completed_at = batch.frame_completed_at();
             let frame_id = batch.frame_id();
+            let n_events = batch.n_events();
             let cursor = batch.cursor_deserialized::<SubscriptionCursor>()?;
 
             let meta = BatchMeta {
@@ -204,6 +203,7 @@ mod processor {
                 frame_started_at,
                 frame_completed_at,
                 frame_id,
+                n_events,
             };
 
             let n_events_bytes = events.len();
@@ -212,13 +212,10 @@ mod processor {
                 .instrumentation()
                 .batch_processing_started(frame_started_at, frame_completed_at);
             match self.handler_slot.process_batch(events, meta).await? {
-                BatchPostAction::Commit(BatchStats {
-                    n_events,
-                    t_deserialize,
-                }) => {
+                BatchPostAction::Commit(BatchStats { t_deserialize }) => {
                     self.report_processed_stats(
                         n_events_bytes,
-                        n_events,
+                        Some(n_events),
                         batch_processing_started_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {
@@ -240,13 +237,10 @@ mod processor {
                     }
                     Ok(true)
                 }
-                BatchPostAction::DoNotCommit(BatchStats {
-                    n_events,
-                    t_deserialize,
-                }) => {
+                BatchPostAction::DoNotCommit(BatchStats { t_deserialize }) => {
                     self.report_processed_stats(
                         n_events_bytes,
-                        n_events,
+                        Some(n_events),
                         batch_processing_started_at,
                     );
                     if let Some(t_deserialize) = t_deserialize {

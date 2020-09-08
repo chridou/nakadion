@@ -125,6 +125,9 @@ impl Consumer {
 
         let consumer_state = ConsumerState::new(self.inner.config().clone(), logger);
         consumer_state.instrumentation().consumer_started();
+        consumer_state
+            .instrumentation()
+            .stream_parameters(consumer_state.stream_parameters());
 
         consumer_state.info(format_args!(
             "Connecting to subscription with id {}",

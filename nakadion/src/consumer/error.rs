@@ -167,10 +167,6 @@ impl ConsumerError {
     pub fn message(&self) -> Option<&str> {
         self.message.as_deref()
     }
-
-    pub(crate) fn enriched(self, batches_processed: usize) -> crate::internals::EnrichedErr {
-        crate::internals::EnrichedErr::new(self, batches_processed)
-    }
 }
 
 impl StdError for ConsumerError {

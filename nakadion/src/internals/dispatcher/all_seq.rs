@@ -3,10 +3,11 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use std::sync::Arc;
 
 use crate::api::SubscriptionCommitApi;
-use crate::components::committer::Committer;
 use crate::consumer::Config;
 use crate::handler::{BatchHandlerFactory, HandlerAssignment};
-use crate::internals::{worker::*, EnrichedResult, StreamState};
+use crate::internals::{
+    background_committer::start_committer, worker::*, ConsumptionResult, StreamState,
+};
 use crate::logging::Logger;
 
 use super::DispatcherMessage;
@@ -47,16 +48,8 @@ where
     {
         let Sleeping { worker, api_client } = self;
 
-        let mut committer = Committer::new(
-            api_client.clone(),
-            stream_state.subscription_id(),
-            stream_state.stream_id(),
-        );
-        committer.set_config(stream_state.config.commit_config.clone());
-        committer.set_logger(stream_state.clone());
-        committer.set_instrumentation(stream_state.instrumentation().clone());
-
-        let (committer, committer_join_handle) = committer.run();
+        let (committer, committer_join_handle) =
+            start_committer(api_client.clone(), stream_state.clone());
 
         let worker_stream = messages.map(move |dm| match dm {
             DispatcherMessage::BatchWithEvents(_, batch) => WorkerMessage::BatchWithEvents(batch),
@@ -72,10 +65,12 @@ where
                 stream_state.debug(format_args!("Waiting for committer to shut down"));
                 if let Err(err) = committer_join_handle.await {
                     stream_state.warn(format_args!("Committer exited with error: {}", err));
+                } else {
+                    stream_state.debug(format_args!("Committer shut down"));
                 };
-                worker_result.map(|mut w| {
-                    w.payload.tick();
-                    w
+                worker_result.map(|mut worker| {
+                    worker.tick();
+                    worker
                 })
             }
             .boxed()
@@ -97,14 +92,14 @@ impl<C> Sleeping<C> {
 pub(crate) struct Active<'a, C> {
     stream_state: StreamState,
     api_client: C,
-    join: BoxFuture<'a, EnrichedResult<SleepingWorker>>,
+    join: BoxFuture<'a, ConsumptionResult<SleepingWorker>>,
 }
 
 impl<'a, C> Active<'a, C>
 where
     C: SubscriptionCommitApi + Send + Sync + Clone + 'static,
 {
-    pub async fn join(self) -> EnrichedResult<Sleeping<C>> {
+    pub async fn join(self) -> ConsumptionResult<Sleeping<C>> {
         let Active {
             api_client,
             join,
@@ -113,10 +108,10 @@ where
 
         stream_state.debug(format_args!("Waiting for worker to fall asleep"));
 
-        let enriched_worker = join.await?;
+        let worker = join.await?;
 
         stream_state.debug(format_args!("Dispatcher going to sleep"));
 
-        Ok(enriched_worker.map(|worker| Sleeping { worker, api_client }))
+        Ok(Sleeping { worker, api_client })
     }
 }

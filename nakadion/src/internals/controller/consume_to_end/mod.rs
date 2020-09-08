@@ -9,7 +9,7 @@ use crate::consumer::{ConsumerError, ConsumerErrorKind};
 use crate::instrumentation::Instruments;
 use crate::internals::{
     dispatcher::{ActiveDispatcher, DispatcherMessage, SleepingDispatcher},
-    EnrichedErr, EnrichedOk, StreamState,
+    ConsumptionResult, StreamState,
 };
 use crate::logging::Logger;
 use crate::Error;
@@ -42,9 +42,7 @@ where
 
     let loop_result: Result<(), ConsumerError> = loop {
         if stream_state.cancellation_requested() {
-            stream_state.debug(format_args!(
-                "Stream was cancelled on request - shutting down stream"
-            ));
+            stream_state.debug(format_args!("[CONTROLLER] Cancellation requested."));
             break Ok(());
         }
 
@@ -55,10 +53,9 @@ where
             Some(Ok(EventStreamMessage::EventStreamEnded)) => {
                 break Ok(());
             }
-            Some(Ok(EventStreamMessage::Batch(batch_line))) => {
-                if let Err(err) = handle_batch_line(
-                    batch_line,
-                    &stream_state,
+            Some(Ok(EventStreamMessage::Nakadi(nakadi_message))) => {
+                if let Err(err) = handle_nakadi_message(
+                    nakadi_message,
                     &mut controller_state,
                     &mut dispatcher_sink,
                 )
@@ -156,33 +153,33 @@ where
     }
 }
 
-async fn handle_batch_line(
-    batch: EventStreamBatch,
-    stream_state: &StreamState,
+async fn handle_nakadi_message(
+    nakadi_message: NakadiMessage,
     controller_state: &mut ControllerState,
     dispatcher_sink: &mut UnboundedSender<DispatcherMessage>,
 ) -> Result<(), Error> {
-    let event_type_partition = batch.to_event_type_partition();
+    match nakadi_message {
+        NakadiMessage::Events(batch) => {
+            let event_type_partition = batch.to_event_type_partition();
 
-    controller_state.received_frame(&event_type_partition, &batch);
+            controller_state.received_frame(&event_type_partition);
 
-    if batch.has_events() {
-        if dispatcher_sink
-            .send(DispatcherMessage::BatchWithEvents(
-                event_type_partition,
-                batch,
-            ))
-            .is_err()
-        {
-            Err(Error::new("Failed to send batch to dispatcher"))
-        } else {
-            // Only here we know for sure whether we sent events
-            stream_state.instrumentation.batches_in_flight_inc();
-            controller_state.batches_sent_to_dispatcher += 1;
+            if dispatcher_sink
+                .send(DispatcherMessage::BatchWithEvents(
+                    event_type_partition,
+                    batch,
+                ))
+                .is_err()
+            {
+                Err(Error::new("Failed to send batch to dispatcher"))
+            } else {
+                Ok(())
+            }
+        }
+        NakadiMessage::KeepAlive => {
+            controller_state.received_keep_alive();
             Ok(())
         }
-    } else {
-        Ok(())
     }
 }
 
@@ -205,7 +202,7 @@ async fn shutdown<C, S>(
     dispatcher_sink: UnboundedSender<DispatcherMessage>,
     stream_state: StreamState,
     controller_state: &ControllerState,
-) -> Result<SleepingDispatcher<C>, ConsumerError>
+) -> ConsumptionResult<SleepingDispatcher<C>>
 where
     C: SubscriptionCommitApi + Clone + Send + Sync + 'static,
     S: Stream<Item = Result<EventStreamMessage, EventStreamError>> + Send + 'static,
@@ -216,48 +213,25 @@ where
     drop(event_stream);
 
     stream_state.debug(format_args!(
-        "Streaming ending after {:?}. Waiting for stream infrastructure to shut down.",
-        controller_state.stream_started_at.elapsed()
+        "Streaming ending after {:?}. Waiting for stream infrastructure to shut down. {} batches in flight.",
+        controller_state.stream_started_at.elapsed(), stream_state.batches_in_flight()
     ));
 
     // Wait for the infrastructure to completely shut down before making further connect attempts for
     // new streams
-    let (result, unprocessed_batches) = match active_dispatcher.join().await {
-        Ok(EnrichedOk {
-            processed_batches,
-            payload: sleeping_dispatcher,
-        }) => (
-            Ok(sleeping_dispatcher),
-            Some(controller_state.batches_sent_to_dispatcher - processed_batches),
-        ),
-        Err(EnrichedErr {
-            processed_batches,
-            err,
-        }) => {
+    let result = match active_dispatcher.join().await {
+        Ok(sleeping_dispatcher) => Ok(sleeping_dispatcher),
+        Err(err) => {
             stream_state.error(format_args!("Shutdown terminated with error: {}", err));
-            if let Some(processed_batches) = processed_batches {
-                (
-                    Err(err),
-                    Some(controller_state.batches_sent_to_dispatcher - processed_batches),
-                )
-            } else {
-                (Err(err), None)
-            }
+            Err(err)
         }
     };
 
-    // Check whether there were unprocessed batches to fix the in flight metrics
-    if let Some(unprocessed_batches) = unprocessed_batches {
-        if unprocessed_batches > 0 {
-            stream_state.info(format_args!(
-                "There were still {} unprocessed batches in flight",
-                unprocessed_batches,
-            ));
-            stream_state
-                .instrumentation
-                .batches_in_flight_dec_by(unprocessed_batches);
-        }
+    if stream_state.stats.is_a_warning() {
+        stream_state.warn(format_args!("Unprocessed data: {:?}", stream_state.stats));
     }
+
+    stream_state.reset_in_flight_stats();
 
     result
 }

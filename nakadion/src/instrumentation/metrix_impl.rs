@@ -2,16 +2,18 @@ use std::time::{Duration, Instant};
 
 use metrix::{
     processor::ProcessorMount, AggregatesProcessors, Decrement, DecrementBy, Increment,
-    TelemetryTransmitter, TimeUnit, TransmitsTelemetryData,
+    IncrementBy, TelemetryTransmitter, TimeUnit, TransmitsTelemetryData,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    committer::{CommitError, CommitTrigger},
+    committer::CommitError,
     connector::ConnectError,
-    streams::{EventStreamError, EventStreamErrorKind},
+    streams::{EventStreamBatchStats, EventStreamError, EventStreamErrorKind},
 };
+use crate::internals::background_committer::CommitTrigger;
+use crate::nakadi_types::subscription::StreamParameters;
 
 use super::Instruments;
 
@@ -234,17 +236,43 @@ impl Instruments for Metrix {
             .observed_one_value_now(Metric::StreamUnconsumedEvents, n_unconsumed);
     }
 
-    fn batches_in_flight_inc(&self) {
+    fn batches_in_flight_incoming(&self, stats: &EventStreamBatchStats) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, Increment);
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Increment)
+            .observed_one_value_now(
+                Metric::EventsInFlightChanged,
+                IncrementBy(stats.n_events as u32),
+            )
+            .observed_one_value_now(
+                Metric::BytesInFlightChanged,
+                IncrementBy(stats.n_bytes as u32),
+            )
+            .observed_one_value_now(Metric::UncommittedBatchesChanged, Increment)
+            .observed_one_value_now(
+                Metric::UncommittedEventsChanged,
+                IncrementBy(stats.n_events as u32),
+            );
     }
-    fn batches_in_flight_dec(&self) {
+    fn batches_in_flight_processed(&self, stats: &EventStreamBatchStats) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement);
+            .observed_one_value_now(Metric::BatchesInFlightChanged, Decrement)
+            .observed_one_value_now(
+                Metric::EventsInFlightChanged,
+                DecrementBy(stats.n_events as u32),
+            )
+            .observed_one_value_now(
+                Metric::BytesInFlightChanged,
+                DecrementBy(stats.n_bytes as u32),
+            );
     }
-    fn batches_in_flight_dec_by(&self, by: usize) {
+
+    fn in_flight_stats_reset(&self) {
         self.tx
-            .observed_one_value_now(Metric::BatchesInFlightChanged, DecrementBy(by as u32));
+            .observed_one_value_now(Metric::BatchesInFlightChanged, 0)
+            .observed_one_value_now(Metric::EventsInFlightChanged, 0)
+            .observed_one_value_now(Metric::BytesInFlightChanged, 0)
+            .observed_one_value_now(Metric::UncommittedBatchesChanged, 0)
+            .observed_one_value_now(Metric::UncommittedEventsChanged, 0);
     }
 
     fn event_type_partition_activated(&self) {
@@ -295,45 +323,28 @@ impl Instruments for Metrix {
     fn cursors_commit_triggered(&self, trigger: CommitTrigger) {
         match trigger {
             CommitTrigger::Deadline {
-                n_cursors,
+                n_batches,
                 n_events,
             } => {
-                self.tx.observed_one_value_now(
-                    Metric::CommitterTriggerDeadlineCursorsCount,
-                    n_cursors,
-                );
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerDeadlineEventsCount,
-                        n_events,
-                    );
-                }
+                self.tx
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineBatchesCount, n_batches)
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineEventsCount, n_events);
             }
             CommitTrigger::Events {
-                n_cursors,
+                n_batches,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerEventsCursorsCount, n_cursors);
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerEventsEventsCount,
-                        n_events,
-                    );
-                }
+                    .observed_one_value_now(Metric::CommitterTriggerEventsBatchesCount, n_batches)
+                    .observed_one_value_now(Metric::CommitterTriggerEventsEventsCount, n_events);
             }
-            CommitTrigger::Cursors {
-                n_cursors,
+            CommitTrigger::Batches {
+                n_batches,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerCursorsCursorsCount, n_cursors);
-                if let Some(n_events) = n_events {
-                    self.tx.observed_one_value_now(
-                        Metric::CommitterTriggerCursorsEventsCount,
-                        n_events,
-                    );
-                }
+                    .observed_one_value_now(Metric::CommitterTriggerBatchesBatchesCount, n_batches)
+                    .observed_one_value_now(Metric::CommitterTriggerBatchesEventsCount, n_events);
             }
         }
     }
@@ -369,6 +380,18 @@ impl Instruments for Metrix {
             );
     }
 
+    fn batches_committed(&self, n_batches: usize, n_events: usize) {
+        self.tx
+            .observed_one_value_now(
+                Metric::UncommittedBatchesChanged,
+                DecrementBy(n_batches as u32),
+            )
+            .observed_one_value_now(
+                Metric::UncommittedEventsChanged,
+                DecrementBy(n_events as u32),
+            );
+    }
+
     fn cursors_not_committed(&self, n_cursors: usize, time: Duration, _err: &CommitError) {
         self.tx.observed_one_now(Metric::CommitterCommitFailed);
         self.tx
@@ -386,6 +409,16 @@ impl Instruments for Metrix {
                 Metric::CommitterAttemptFailedTime,
                 (time, TimeUnit::Milliseconds),
             );
+    }
+
+    fn stream_parameters(&self, params: &StreamParameters) {
+        self.tx.observed_one_value_now(
+            Metric::StreamParametersMaxUncommittedEvents,
+            params
+                .max_uncommitted_events
+                .unwrap_or_default()
+                .into_inner(),
+        );
     }
 }
 
@@ -409,11 +442,16 @@ pub enum Metric {
     StreamBatchFrameGap,
     StreamDeadAfter,
     StreamUnconsumedEvents,
+    StreamParametersMaxUncommittedEvents,
     NoFramesForWarning,
     NoEventsForWarning,
     StreamErrorIo,
     StreamErrorParse,
     BatchesInFlightChanged,
+    EventsInFlightChanged,
+    BytesInFlightChanged,
+    UncommittedBatchesChanged,
+    UncommittedEventsChanged,
     EventTypePartitionActivated,
     EventTypePartitionDeactivatedAfter,
     BatchProcessingStartedLag,
@@ -430,12 +468,12 @@ pub enum Metric {
     CommitterCursorsNotCommittedCount,
     CommitterAttemptFailedTime,
     CommitterAttemptFailedCount,
-    CommitterTriggerDeadlineCursorsCount,
-    CommitterTriggerEventsCursorsCount,
-    CommitterTriggerCursorsCursorsCount,
+    CommitterTriggerDeadlineBatchesCount,
+    CommitterTriggerEventsBatchesCount,
+    CommitterTriggerBatchesBatchesCount,
     CommitterTriggerDeadlineEventsCount,
     CommitterTriggerEventsEventsCount,
-    CommitterTriggerCursorsEventsCount,
+    CommitterTriggerBatchesEventsCount,
     CommitterFirstCursorAgeOnCommitAttempt,
     CommitterFirstCursorAgeOnCommitAttemptAgeWarning,
     CommitterLastCursorAgeOnCommitAttempt,
@@ -529,6 +567,10 @@ mod instr {
             )
             .panel(
                 Panel::named(AcceptAllLabels, "frames")
+                    .gauge(
+                        create_gauge("in_flight_bytes", config)
+                            .for_label(Metric::BytesInFlightChanged),
+                    )
                     .meter(
                         Meter::new_with_defaults("per_second")
                             .for_label(Metric::StreamFrameCompletedBytes),
@@ -567,6 +609,12 @@ mod instr {
             .panel(
                 Panel::named(AcceptAllLabels, "unconsumed_events").gauge(
                     create_gauge("stream", config).for_label(Metric::StreamUnconsumedEvents),
+                ),
+            )
+            .panel(
+                Panel::named(Metric::StreamParametersMaxUncommittedEvents, "parameters").gauge(
+                    Gauge::new_with_defaults("max_uncommitted_events")
+                        .for_label(Metric::StreamParametersMaxUncommittedEvents),
                 ),
             );
 
@@ -651,7 +699,7 @@ mod instr {
 
     fn create_batch_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "batches")
-            .gauge(create_gauge("in_flight", config).deltas_only(Metric::BatchesInFlightChanged))
+            .gauge(create_gauge("in_flight", config).for_label(Metric::BatchesInFlightChanged))
             .gauge(create_gauge("in_processing", config).inc_dec_on(
                 Metric::BatchProcessingStartedLag,
                 Metric::BatchProcessedBytes,
@@ -677,6 +725,7 @@ mod instr {
 
     fn create_events_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {
         let panel = Panel::named(AcceptAllLabels, "events")
+            .gauge(create_gauge("in_flight", config).for_label(Metric::EventsInFlightChanged))
             .handler(
                 ValueMeter::new_with_defaults("per_second")
                     .for_label(Metric::BatchProcessedNEvents),
@@ -704,22 +753,22 @@ mod instr {
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerDeadlineCursorsCount,
+                                Metric::CommitterTriggerDeadlineBatchesCount,
                                 Metric::CommitterTriggerDeadlineEventsCount,
                             ),
                             "deadline",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")
@@ -733,51 +782,51 @@ mod instr {
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerCursorsCursorsCount,
-                                Metric::CommitterTriggerCursorsEventsCount,
+                                Metric::CommitterTriggerBatchesBatchesCount,
+                                Metric::CommitterTriggerBatchesEventsCount,
                             ),
-                            "cursors",
+                            "batches",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                                .for_label(Metric::CommitterTriggerBatchesEventsCount),
                         )
                         .histogram(
                             create_histogram("events_distribution", config)
-                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                                .for_label(Metric::CommitterTriggerBatchesEventsCount),
                         ),
                     )
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerEventsCursorsCount,
+                                Metric::CommitterTriggerEventsBatchesCount,
                                 Metric::CommitterTriggerEventsEventsCount,
                             ),
                             "events",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")
@@ -849,6 +898,16 @@ mod instr {
                         create_histogram("latency_ms", config)
                             .display_time_unit(TimeUnit::Milliseconds)
                             .for_label(Metric::CommitterCursorsNotCommittedTime),
+                    ),
+            )
+            .panel(
+                Panel::named(Metric::CommitterCursorsNotCommittedTime, "uncommitted")
+                    .gauge(
+                        create_gauge("batches", config)
+                            .for_label(Metric::UncommittedBatchesChanged),
+                    )
+                    .gauge(
+                        create_gauge("events", config).for_label(Metric::UncommittedEventsChanged),
                     ),
             )
             .panel(
