@@ -13,6 +13,7 @@ use crate::components::{
     streams::{EventStreamBatchStats, EventStreamError, EventStreamErrorKind},
 };
 use crate::internals::background_committer::CommitTrigger;
+use crate::nakadi_types::subscription::StreamParameters;
 
 use super::Instruments;
 
@@ -322,28 +323,28 @@ impl Instruments for Metrix {
     fn cursors_commit_triggered(&self, trigger: CommitTrigger) {
         match trigger {
             CommitTrigger::Deadline {
-                n_cursors,
+                n_batches,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerDeadlineCursorsCount, n_cursors)
+                    .observed_one_value_now(Metric::CommitterTriggerDeadlineBatchesCount, n_batches)
                     .observed_one_value_now(Metric::CommitterTriggerDeadlineEventsCount, n_events);
             }
             CommitTrigger::Events {
-                n_cursors,
+                n_batches,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerEventsCursorsCount, n_cursors)
+                    .observed_one_value_now(Metric::CommitterTriggerEventsBatchesCount, n_batches)
                     .observed_one_value_now(Metric::CommitterTriggerEventsEventsCount, n_events);
             }
-            CommitTrigger::Cursors {
-                n_cursors,
+            CommitTrigger::Batches {
+                n_batches,
                 n_events,
             } => {
                 self.tx
-                    .observed_one_value_now(Metric::CommitterTriggerCursorsCursorsCount, n_cursors)
-                    .observed_one_value_now(Metric::CommitterTriggerCursorsEventsCount, n_events);
+                    .observed_one_value_now(Metric::CommitterTriggerBatchesBatchesCount, n_batches)
+                    .observed_one_value_now(Metric::CommitterTriggerBatchesEventsCount, n_events);
             }
         }
     }
@@ -458,12 +459,12 @@ pub enum Metric {
     CommitterCursorsNotCommittedCount,
     CommitterAttemptFailedTime,
     CommitterAttemptFailedCount,
-    CommitterTriggerDeadlineCursorsCount,
-    CommitterTriggerEventsCursorsCount,
-    CommitterTriggerCursorsCursorsCount,
+    CommitterTriggerDeadlineBatchesCount,
+    CommitterTriggerEventsBatchesCount,
+    CommitterTriggerBatchesBatchesCount,
     CommitterTriggerDeadlineEventsCount,
     CommitterTriggerEventsEventsCount,
-    CommitterTriggerCursorsEventsCount,
+    CommitterTriggerBatchesEventsCount,
     CommitterFirstCursorAgeOnCommitAttempt,
     CommitterFirstCursorAgeOnCommitAttemptAgeWarning,
     CommitterLastCursorAgeOnCommitAttempt,
@@ -737,22 +738,22 @@ mod instr {
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerDeadlineCursorsCount,
+                                Metric::CommitterTriggerDeadlineBatchesCount,
                                 Metric::CommitterTriggerDeadlineEventsCount,
                             ),
                             "deadline",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerDeadlineCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerDeadlineBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")
@@ -766,51 +767,51 @@ mod instr {
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerCursorsCursorsCount,
-                                Metric::CommitterTriggerCursorsEventsCount,
+                                Metric::CommitterTriggerBatchesBatchesCount,
+                                Metric::CommitterTriggerBatchesEventsCount,
                             ),
-                            "cursors",
+                            "batches",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerCursorsCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerBatchesBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")
-                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                                .for_label(Metric::CommitterTriggerBatchesEventsCount),
                         )
                         .histogram(
                             create_histogram("events_distribution", config)
-                                .for_label(Metric::CommitterTriggerCursorsEventsCount),
+                                .for_label(Metric::CommitterTriggerBatchesEventsCount),
                         ),
                     )
                     .panel(
                         Panel::named(
                             (
-                                Metric::CommitterTriggerEventsCursorsCount,
+                                Metric::CommitterTriggerEventsBatchesCount,
                                 Metric::CommitterTriggerEventsEventsCount,
                             ),
                             "events",
                         )
                         .meter(
                             Meter::new_with_defaults("occurrences_per_second")
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .handler(
-                            ValueMeter::new_with_defaults("cursors_per_second")
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                            ValueMeter::new_with_defaults("batches_per_second")
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .histogram(
-                            create_histogram("cursors_distribution", config)
-                                .for_label(Metric::CommitterTriggerEventsCursorsCount),
+                            create_histogram("batches_distribution", config)
+                                .for_label(Metric::CommitterTriggerEventsBatchesCount),
                         )
                         .handler(
                             ValueMeter::new_with_defaults("events_per_second")

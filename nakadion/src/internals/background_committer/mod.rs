@@ -52,32 +52,32 @@ impl CommitItem {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CommitTrigger {
     /// The deadline to commit was reached
-    Deadline { n_cursors: usize, n_events: usize },
+    Deadline { n_batches: usize, n_events: usize },
     /// Enough events were received
-    Events { n_cursors: usize, n_events: usize },
+    Events { n_batches: usize, n_events: usize },
     /// Enough cursors were received
-    Cursors { n_cursors: usize, n_events: usize },
+    Batches { n_batches: usize, n_events: usize },
 }
 
 impl CommitTrigger {
     pub fn stats(&self) -> (usize, usize) {
         match *self {
             CommitTrigger::Deadline {
-                n_cursors,
+                n_batches,
                 n_events,
-            } => (n_cursors, n_events),
+            } => (n_batches, n_events),
             CommitTrigger::Events {
-                n_cursors,
+                n_batches,
                 n_events,
-            } => (n_cursors, n_events),
-            CommitTrigger::Cursors {
-                n_cursors,
+            } => (n_batches, n_events),
+            CommitTrigger::Batches {
+                n_batches,
                 n_events,
-            } => (n_cursors, n_events),
+            } => (n_batches, n_events),
         }
     }
 
-    pub fn n_cursors(&self) -> usize {
+    pub fn n_batches(&self) -> usize {
         self.stats().0
     }
 
@@ -121,13 +121,18 @@ where
 
     let f = async move {
         join_handle_dispatch_cursors
-            .inspect_err(|_| {
+            .inspect_err(|err| {
+                stream_state.warn(format_args!(
+                    "Committer dispatch loop exited with error: {}",
+                    err,
+                ));
                 stream_state.request_stream_cancellation();
             })
             .await
             .map_err(Error::new)?;
         join_handle_io_loop
-            .inspect_err(|_| {
+            .inspect_err(|err| {
+                stream_state.warn(format_args!("Committer io loop exited with error: {}", err,));
                 stream_state.request_stream_cancellation();
             })
             .inspect_ok(|r| {
@@ -137,6 +142,7 @@ where
             })
             .await
             .map_err(Error::new)??;
+        stream_state.debug(format_args!("Committer stopped normally"));
         Ok(())
     }
     .boxed();
@@ -229,7 +235,7 @@ async fn run_dispatch_cursors(
     drop(cursors_to_commit);
     drop(io_sender);
 
-    stream_state.debug(format_args!("Committer stopped"));
+    stream_state.debug(format_args!("Committer dispatch loop exiting normally"));
 }
 
 async fn commit_io_loop_task<C>(
@@ -348,10 +354,6 @@ where
         };
     }
 
-    committer
-        .logger
-        .debug(format_args!("Committer io loop loop exited"));
-
     drop(io_receiver);
 
     if !collected_items_to_commit.is_empty() {
@@ -396,7 +398,7 @@ where
                     effective_batches_to_be_committed,
                     effective_events_to_be_committed,
                 );
-                stream_state.debug(format_args!(
+                stream_state.info(format_args!(
                     "Committed {} final cursors for {} batches and {} events.",
                     n_to_commit,
                     effective_batches_to_be_committed,
@@ -416,6 +418,10 @@ where
             }
         };
     }
+
+    committer
+        .logger
+        .debug(format_args!("Committer io loop loop exiting normally"));
 
     Ok(())
 }

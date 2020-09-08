@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::nakadi_types::Error;
+use crate::nakadi_types::{subscription::StreamParameters, Error};
 
 use crate::components::{
     committer::CommitError,
@@ -12,7 +12,6 @@ use crate::components::{
     streams::{EventStreamBatchStats, EventStreamError},
 };
 pub use crate::internals::background_committer::CommitTrigger;
-use nakadi_types::subscription::StreamParameters;
 
 #[cfg(feature = "metrix")]
 mod metrix_impl;

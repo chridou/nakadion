@@ -76,6 +76,8 @@ where
                 stream_state.debug(format_args!("Waiting for committer to shut down"));
                 if let Err(err) = committer_join_handle.await {
                     stream_state.warn(format_args!("Committer exited with error: {}", err));
+                } else {
+                    stream_state.debug(format_args!("Committer shut down"));
                 };
                 workers_result
             }

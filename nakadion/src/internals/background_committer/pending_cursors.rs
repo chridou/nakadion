@@ -99,7 +99,7 @@ impl PendingCursors {
         if let Some(deadline) = self.current_deadline {
             if deadline <= now {
                 return Some(CommitTrigger::Deadline {
-                    n_cursors: self.collected_cursors,
+                    n_batches: self.collected_cursors,
                     n_events: self.collected_events,
                 });
             }
@@ -107,7 +107,7 @@ impl PendingCursors {
 
         match self.commit_strategy {
             CommitStrategy::Immediately => Some(CommitTrigger::Deadline {
-                n_cursors: self.collected_cursors,
+                n_batches: self.collected_cursors,
                 n_events: self.collected_events,
             }),
             CommitStrategy::LatestPossible => None,
@@ -117,15 +117,15 @@ impl PendingCursors {
                 if let Some(events) = events {
                     if self.collected_events >= events as usize {
                         return Some(CommitTrigger::Events {
-                            n_cursors: self.collected_cursors,
+                            n_batches: self.collected_cursors,
                             n_events: self.collected_events,
                         });
                     }
                 }
                 if let Some(cursors) = cursors {
                     if self.collected_cursors >= cursors as usize {
-                        return Some(CommitTrigger::Cursors {
-                            n_cursors: self.collected_cursors,
+                        return Some(CommitTrigger::Batches {
+                            n_batches: self.collected_cursors,
                             n_events: self.collected_events,
                         });
                     }
