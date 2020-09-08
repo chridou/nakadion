@@ -267,6 +267,7 @@ where
             .unwrap_or_default()
             .into();
         let abort_on_auth_error: bool = self.config.abort_on_auth_error.unwrap_or_default().into();
+        let abort_on_auth_conflict: bool = self.config.abort_on_conflict.unwrap_or_default().into();
 
         let mut backoff = Backoff::new(self.config.max_retry_delay_secs.unwrap_or_default().into());
 
@@ -297,7 +298,7 @@ where
                         ConnectErrorKind::NakadiError => true,
                         ConnectErrorKind::Other => false,
                         ConnectErrorKind::Unprocessable => false,
-                        ConnectErrorKind::Conflict => true,
+                        ConnectErrorKind::Conflict => !abort_on_auth_conflict,
                         ConnectErrorKind::SubscriptionNotFound => {
                             !abort_connect_on_subscription_not_found
                         }

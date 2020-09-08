@@ -19,6 +19,20 @@ impl Default for ConnectAbortOnAuthError {
         false.into()
     }
 }
+
+new_type! {
+    #[doc="If `true` abort the consumer when a conflict (409) occurs while connecting to a stream.\n\n\
+        This can happen when there are no free slots or cursors are being reset.\n\n
+        The default is `false` which means no abort occurs on conflicts.\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct ConnectAbortOnConflict(bool, env="CONNECT_ABORT_ON_CONFLICT");
+}
+impl Default for ConnectAbortOnConflict {
+    fn default() -> Self {
+        false.into()
+    }
+}
+
 new_type! {
     #[doc="If `true` abort the consumer when a subscription does not exist when connection to a stream.\n\n\
     The default is `true`\n"]
@@ -30,6 +44,7 @@ impl Default for ConnectAbortOnSubscriptionNotFound {
         true.into()
     }
 }
+
 new_type! {
     #[doc="The maximum time for connecting to a stream.\n\n\
     Default is infinite."]
@@ -173,6 +188,8 @@ impl FromStr for ConnectTimeout {
 
 /// Parameters to configure the `Connector`
 ///
+/// See also [Nakadi Manual](https://nakadi.io/manual.html#/subscriptions/subscription_id/events_get)
+///
 /// # Example
 ///
 /// ```rust
@@ -191,6 +208,8 @@ pub struct ConnectConfig {
     pub stream_parameters: StreamParameters,
     /// If set to `true` auth error will not cause a retry on connect attempts
     pub abort_on_auth_error: Option<ConnectAbortOnAuthError>,
+    /// If set to `true` conflicts (Status 409) will not cause a retry on connect attempts
+    pub abort_on_conflict: Option<ConnectAbortOnConflict>,
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
     ///
     /// It can make sense if the subscription is expected to not already be there
@@ -220,6 +239,10 @@ impl ConnectConfig {
             self.abort_on_auth_error =
                 ConnectAbortOnAuthError::try_from_env_prefixed(prefix.as_ref())?;
         }
+        if self.abort_on_conflict.is_none() {
+            self.abort_on_conflict =
+                ConnectAbortOnConflict::try_from_env_prefixed(prefix.as_ref())?;
+        }
         if self.abort_connect_on_subscription_not_found.is_none() {
             self.abort_connect_on_subscription_not_found =
                 ConnectAbortOnSubscriptionNotFound::try_from_env_prefixed(prefix.as_ref())?;
@@ -247,6 +270,9 @@ impl ConnectConfig {
         if self.abort_on_auth_error.is_none() {
             self.abort_on_auth_error = Some(ConnectAbortOnAuthError::default());
         }
+        if self.abort_on_conflict.is_none() {
+            self.abort_on_conflict = Some(ConnectAbortOnConflict::default());
+        }
         if self.abort_connect_on_subscription_not_found.is_none() {
             self.abort_connect_on_subscription_not_found =
                 Some(ConnectAbortOnSubscriptionNotFound::default());
@@ -270,6 +296,11 @@ impl ConnectConfig {
     /// If set to `true` auth error will not cause a retry on connect attempts
     pub fn abort_on_auth_error<T: Into<ConnectAbortOnAuthError>>(mut self, v: T) -> Self {
         self.abort_on_auth_error = Some(v.into());
+        self
+    }
+    /// If set to `true` conflicts (Status 409) will not cause a retry on connect attempts
+    pub fn abort_on_conflict<T: Into<ConnectAbortOnConflict>>(mut self, v: T) -> Self {
+        self.abort_on_conflict = Some(v.into());
         self
     }
     /// If `true` abort the consumer when a subscription does not exist when connection to a stream.
