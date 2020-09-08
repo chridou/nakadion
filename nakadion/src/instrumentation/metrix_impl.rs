@@ -901,7 +901,7 @@ mod instr {
                     ),
             )
             .panel(
-                Panel::named(Metric::CommitterCursorsNotCommittedTime, "uncommitted")
+                Panel::named((Metric::UncommittedBatchesChanged, Metric::UncommittedEventsChanged), "uncommitted")
                     .gauge(
                         create_gauge("batches", config)
                             .for_label(Metric::UncommittedBatchesChanged),
