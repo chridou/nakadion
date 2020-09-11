@@ -435,10 +435,20 @@ impl StdError for ConnectError {
 
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref context) = self.context {
-            write!(f, "{}", context)?;
+        let source_str = if let Some(ref source) = self.source {
+            format!(" - Caused by: {}", source.to_string())
         } else {
-            write!(f, "could not connect to stream: {}", self.kind)?;
+            String::new()
+        };
+
+        if let Some(ref context) = self.context {
+            write!(f, "{}{}", context, source_str)?;
+        } else {
+            write!(
+                f,
+                "could not connect to stream: {}{}",
+                self.kind, source_str
+            )?;
         }
         Ok(())
     }
