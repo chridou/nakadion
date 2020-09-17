@@ -34,8 +34,34 @@ const EVENT_TYPE_A: &str = "Event_Type_A";
 const EVENT_TYPE_B: &str = "Event_Type_B";
 
 #[cfg(feature = "reqwest")]
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("===============");
+    println!("BASIC SCHEDULER");
+    println!("===============");
+
+    let mut runtime = tokio::runtime::Builder::new()
+        .basic_scheduler()
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(run())?;
+
+    drop(runtime);
+
+    println!("======================================");
+    println!("THREADED SCHEDULER WITH 1 CORE THREAD");
+    println!("======================================");
+
+    let mut runtime = tokio::runtime::Builder::new()
+        .threaded_scheduler()
+        .core_threads(1)
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let nakadi_base_url =
         NakadiBaseUrl::try_from_env()?.unwrap_or_else(|| "http://localhost:8080".parse().unwrap());
 

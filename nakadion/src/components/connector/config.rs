@@ -62,6 +62,72 @@ impl Default for ConnectMaxRetryDelaySecs {
         300.into()
     }
 }
+
+/// The retry delay between failed attempts when the previous one was a conflict.
+///
+/// The defualt is 30 seconds
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectOnConflictRetryDelaySecs {
+    /// Use the same delay as after any other failed connect attempt
+    Default,
+    /// Retry only for the given time.
+    ///
+    /// This not an exact value and the effective timeout
+    /// might be longer than the value given here.
+    Seconds(u64),
+}
+
+impl ConnectOnConflictRetryDelaySecs {
+    env_funs!("CONNECT_ON_CONFLICT_RETRY_SECS");
+
+    pub fn into_duration_opt(self) -> Option<Duration> {
+        match self {
+            ConnectOnConflictRetryDelaySecs::Default => None,
+            ConnectOnConflictRetryDelaySecs::Seconds(secs) => Some(Duration::from_secs(secs)),
+        }
+    }
+}
+
+impl Default for ConnectOnConflictRetryDelaySecs {
+    fn default() -> Self {
+        ConnectOnConflictRetryDelaySecs::Default
+    }
+}
+
+impl fmt::Display for ConnectOnConflictRetryDelaySecs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnectOnConflictRetryDelaySecs::Default => write!(f, "default")?,
+            ConnectOnConflictRetryDelaySecs::Seconds(secs) => write!(f, "{} s", secs)?,
+        }
+
+        Ok(())
+    }
+}
+
+impl FromStr for ConnectOnConflictRetryDelaySecs {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+
+        if s.starts_with('{') || s.starts_with('\"') {
+            return Ok(serde_json::from_str(s)?);
+        }
+
+        match s {
+            "default" => Ok(ConnectOnConflictRetryDelaySecs::Default),
+            x => {
+                let seconds: u64 = x.parse().map_err(|err| {
+                    Error::new(format!("{} is not a on conflict delay timeout: {}", s, err))
+                })?;
+                Ok(ConnectOnConflictRetryDelaySecs::Seconds(seconds))
+            }
+        }
+    }
+}
+
 new_type! {
     #[doc="The timeout for a single request made to Nakadi to connect to a stream.\n\n\
     The default is 10 seconds\n"]
@@ -203,6 +269,7 @@ impl FromStr for ConnectTimeout {
 /// assert_eq!(cfg.timeout_secs, Some(ConnectTimeout::Seconds(25)));
 ///```
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ConnectConfig {
     /// `StreamParameters` used to configure the stream consumed from Nakadi
     pub stream_parameters: StreamParameters,
@@ -225,6 +292,8 @@ pub struct ConnectConfig {
     pub timeout_secs: Option<ConnectTimeout>,
     /// The maximum retry delay between failed attempts to connect to a stream.
     pub max_retry_delay_secs: Option<ConnectMaxRetryDelaySecs>,
+    /// The retry delay between failed attempts when the previous one was a conflict.
+    pub on_conflict_retry_delay_secs: Option<ConnectOnConflictRetryDelaySecs>,
     /// The timeout for a request made to Nakadi to connect to a stream.
     pub attempt_timeout_secs: Option<ConnectAttemptTimeoutSecs>,
 }
@@ -254,6 +323,10 @@ impl ConnectConfig {
             self.max_retry_delay_secs =
                 ConnectMaxRetryDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
         }
+        if self.on_conflict_retry_delay_secs.is_none() {
+            self.on_conflict_retry_delay_secs =
+                ConnectOnConflictRetryDelaySecs::try_from_env_prefixed(prefix.as_ref())?;
+        }
         if self.attempt_timeout_secs.is_none() {
             self.attempt_timeout_secs =
                 ConnectAttemptTimeoutSecs::try_from_env_prefixed(prefix.as_ref())?;
@@ -282,6 +355,9 @@ impl ConnectConfig {
         }
         if self.max_retry_delay_secs.is_none() {
             self.max_retry_delay_secs = Some(ConnectMaxRetryDelaySecs::default());
+        }
+        if self.on_conflict_retry_delay_secs.is_none() {
+            self.on_conflict_retry_delay_secs = Some(ConnectOnConflictRetryDelaySecs::default());
         }
         if self.attempt_timeout_secs.is_none() {
             self.attempt_timeout_secs = Some(ConnectAttemptTimeoutSecs::default());
@@ -326,6 +402,14 @@ impl ConnectConfig {
     /// The timeout for a request made to Nakadi to connect to a stream.
     pub fn attempt_timeout_secs<T: Into<ConnectAttemptTimeoutSecs>>(mut self, v: T) -> Self {
         self.attempt_timeout_secs = Some(v.into());
+        self
+    }
+    /// The retry delay between failed attempts when the previous one was a conflict.
+    pub fn on_conflict_retry_delay_secs<T: Into<ConnectOnConflictRetryDelaySecs>>(
+        mut self,
+        v: T,
+    ) -> Self {
+        self.on_conflict_retry_delay_secs = Some(v.into());
         self
     }
 

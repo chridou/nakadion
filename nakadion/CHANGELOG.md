@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.6] - 2020-09-17
+
+### ADDED
+
+- `ConnectOnConflictRetryDelaySecs` to have an individual retry delay after a conflict occurs
+
+### CHANGED
+
+- integration tests ensures that nakadion runs with basic and threaded scheduler (one thread)
+- `ConnectConfig` is `non-exhaustive`.
+
 ## [0.28.5] - 2020-09-11
 
 ### CHANGED

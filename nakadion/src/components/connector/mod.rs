@@ -268,6 +268,10 @@ where
             .into();
         let abort_on_auth_error: bool = self.config.abort_on_auth_error.unwrap_or_default().into();
         let abort_on_auth_conflict: bool = self.config.abort_on_conflict.unwrap_or_default().into();
+        let on_confict_delay = self
+            .config
+            .on_conflict_retry_delay_secs
+            .and_then(|d| d.into_duration_opt());
 
         let mut backoff = Backoff::new(self.config.max_retry_delay_secs.unwrap_or_default().into());
 
@@ -304,7 +308,17 @@ where
                         }
                     };
                     if retry_allowed {
-                        let delay = backoff.next();
+                        let delay = {
+                            if err.is_conflict() {
+                                if let Some(special_conflict_backoff) = on_confict_delay {
+                                    special_conflict_backoff
+                                } else {
+                                    backoff.next()
+                                }
+                            } else {
+                                backoff.next()
+                            }
+                        };
                         self.logger.warn(format_args!(
                             "connect attempt {} failed after {:?} have already elapsed (retry in {:?}) \
                             with error: {}",
@@ -408,6 +422,10 @@ impl ConnectError {
 
     pub fn conflict() -> Self {
         Self::new(ConnectErrorKind::Conflict)
+    }
+
+    pub fn is_conflict(&self) -> bool {
+        self.kind == ConnectErrorKind::Conflict
     }
 
     pub fn context<T: Into<String>>(mut self, context: T) -> Self {
