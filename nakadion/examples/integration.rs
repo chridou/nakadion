@@ -456,6 +456,10 @@ mod run {
             }
             .boxed()
         }
+
+        fn deserialize_on(&mut self, _n_bytes: usize) -> SpawnTarget {
+            SpawnTarget::Dedicated
+        }
     }
 
     struct HandlerAFactory {
