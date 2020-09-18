@@ -24,6 +24,7 @@ where
         sleeping_dispatcher: SleepingDispatcher<C>,
         consumer_state: ConsumerState,
     ) -> Self {
+        consumer_state.debug(format_args!("Starting sleep ticker."));
         let wake_up = Arc::new(AtomicBool::new(false));
         let join_handle =
             Self::tick_sleeping(Arc::clone(&wake_up), sleeping_dispatcher, consumer_state);

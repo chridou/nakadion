@@ -16,7 +16,6 @@ use std::{
 
 use futures::future::{BoxFuture, FutureExt};
 
-use crate::components::StreamingEssentials;
 use crate::handler::BatchHandlerFactory;
 use crate::instrumentation::Instruments;
 use crate::internals::{
@@ -35,6 +34,7 @@ pub use crate::nakadi_types::{
     },
     Error,
 };
+use crate::{components::StreamingEssentials, logging::LoggingContext};
 
 pub use crate::instrumentation::{Instrumentation, MetricsDetailLevel};
 #[cfg(feature = "metrix")]
@@ -141,8 +141,11 @@ impl Consumer {
         let kept_inner = Arc::clone(&self.inner);
         let join = tokio::spawn({
             let consumer_state = consumer_state.clone();
+
             async move {
-                let stop_reason = self.inner.start(consumer_state).await;
+                consumer_state.info(format_args!("Starting inner consumer"));
+                let stop_reason = self.inner.start(consumer_state.clone()).await;
+                consumer_state.info(format_args!("Waiting for inner consumer to stop."));
 
                 ConsumptionOutcome {
                     stop_reason,
@@ -354,6 +357,9 @@ where
             lifecycle_listeners: self.lifecycle_listeners.clone(),
         };
 
+        controller_params
+            .consumer_state
+            .debug(format_args!("Starting freshly created controller"));
         let controller = Controller::new(controller_params);
         controller.start().boxed()
     }
@@ -367,6 +373,10 @@ where
     }
 
     fn add_lifecycle_listener(&self, listener: Box<dyn LifecycleListener>) {
+        self.logging_adapter.info(
+            &LoggingContext::default(),
+            format_args!("Adding lifecycle listener"),
+        );
         self.lifecycle_listeners.add_listener(listener)
     }
 }

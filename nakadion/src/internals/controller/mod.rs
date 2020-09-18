@@ -77,6 +77,9 @@ where
 
     let mut params = params;
     // Each iteration is the life cycle of a stream
+
+    consumer_state.debug(format_args!("Starting consumer loop"));
+
     loop {
         if consumer_state.global_cancellation_requested() {
             return ConsumerAbort::UserInitiated;
