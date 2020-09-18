@@ -142,6 +142,7 @@ impl Consumer {
         let join = tokio::spawn({
             let consumer_state = consumer_state.clone();
 
+            consumer_state.debug(format_args!("Spawning task for inner consumer"));
             async move {
                 consumer_state.debug(format_args!("Starting inner consumer"));
                 let stop_reason = self.inner.start(consumer_state.clone()).await;
