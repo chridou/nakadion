@@ -143,9 +143,9 @@ impl Consumer {
             let consumer_state = consumer_state.clone();
 
             async move {
-                consumer_state.info(format_args!("Starting inner consumer"));
+                consumer_state.debug(format_args!("Starting inner consumer"));
                 let stop_reason = self.inner.start(consumer_state.clone()).await;
-                consumer_state.info(format_args!("Waiting for inner consumer to stop."));
+                consumer_state.debug(format_args!("Waiting for inner consumer to stop."));
 
                 ConsumptionOutcome {
                     stop_reason,
@@ -373,7 +373,7 @@ where
     }
 
     fn add_lifecycle_listener(&self, listener: Box<dyn LifecycleListener>) {
-        self.logging_adapter.info(
+        self.logging_adapter.debug(
             &LoggingContext::default(),
             format_args!("Adding lifecycle listener"),
         );

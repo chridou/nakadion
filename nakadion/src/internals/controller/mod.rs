@@ -89,10 +89,13 @@ where
             match stream_life_cycle(params, sleeping_dispatcher).await {
                 Ok(returned) => returned,
                 Err(err) => {
+                    consumer_state.debug(format_args!("Stream ended with error. Cancel consumer."));
                     consumer_state.request_global_cancellation();
                     return err;
                 }
             };
+
+        consumer_state.debug(format_args!("Lifecycle of a strem ended"));
 
         sleeping_dispatcher = sleeping_dispatcher_returned;
         params = params_returned;
