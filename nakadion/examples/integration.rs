@@ -4,11 +4,13 @@
 //!
 //! The included `docker-compose.yml` can be used to start a local
 //! Nakadi.
-
-#[cfg(not(feature = "reqwest"))]
-fn main() {
-    panic!("Please enable the `reqwest` feature which is a default feature");
-}
+//!
+//! 1) Start Nakadi with `docker-compose up` in the project directory
+//! 2) Run with `cargo run --release --example integration --features="slog reqwest"`
+//!
+//! To enable debug logging use `export NAKADION_DEBUG_LOGGING_ENABLED=true`
+//!
+//! The feature `slog` can be omitted to simply use std::out as the log target.
 
 #[cfg(feature = "reqwest")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     runtime.block_on(run::run())
+}
+
+#[cfg(not(feature = "reqwest"))]
+fn main() {
+    panic!("Please enable the `reqwest` feature which is a default feature");
 }
 
 #[cfg(feature = "reqwest")]
@@ -55,7 +62,28 @@ mod run {
     use nakadion::handler::*;
     use nakadion::publisher::*;
 
+    #[cfg(feature = "slog")]
+    fn logger() -> impl LoggingAdapter + Clone {
+        use slog::{o, Drain};
+
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::FullFormat::new(decorator).build().fuse();
+        let drain = slog_async::Async::new(drain).build().fuse();
+
+        let logger = slog::Logger::root(drain, o!());
+
+        let config = LogConfig::from_env().unwrap();
+        SlogLoggingAdapter::new_with_config(logger, config)
+    }
+
+    #[cfg(not(feature = "slog"))]
+    fn logger() -> impl LoggingAdapter + Clone {
+        let config = LogConfig::from_env().unwrap();
+        StdOutLoggingAdapter::new(config)
+    }
+
     pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+        let _ = logger();
         let nakadi_base_url = NakadiBaseUrl::try_from_env()?
             .unwrap_or_else(|| "http://localhost:8080".parse().unwrap());
 
@@ -382,8 +410,7 @@ mod run {
 
         let check_value = factory.get();
 
-        let config = LogConfig::from_env()?;
-        let logging_adapter = StdOutLoggingAdapter::new(config);
+        let logging_adapter = logger();
 
         let consumer = Consumer::builder_from_env()?
             .subscription_id(subscription_id)

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.10] - 2020-09-19
+
+### CHANGED
+
+- `LogConfig` got a new field `log_debug_as_info` which causes debug logging to be done at info level for applications which disable debug logging at compile time
+
+### ADDED
+
+- `LogDebugAsInfo` struct for logging config to cause debug logging to be at info level via an environment variable
+- `LogDetailLevel` has new variants `debug` which logs all contextual data and enables debug logging
+- `LogDetailLevel` has new variants `minimal` which only logs only the stream id
+
 ## [0.28.9] - 2020-09-18
 
 ### ADDED

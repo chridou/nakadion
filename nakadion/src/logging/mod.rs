@@ -147,12 +147,16 @@ impl Default for StdOutLoggingAdapter {
 impl LoggingAdapter for StdOutLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         if self.0.debug_enabled {
-            println!(
-                "[{}][DEBUG]{} {}",
-                Utc::now(),
-                context.create_display(&self.0),
-                args
-            );
+            if !self.0.log_debug_as_info {
+                println!(
+                    "[{}][DEBUG]{} {}",
+                    Utc::now(),
+                    context.create_display(&self.0),
+                    args
+                );
+            } else {
+                LoggingAdapter::info(self, context, args);
+            }
         }
     }
 
@@ -204,12 +208,16 @@ impl Default for StdErrLoggingAdapter {
 impl LoggingAdapter for StdErrLoggingAdapter {
     fn debug(&self, context: &LoggingContext, args: Arguments) {
         if self.0.debug_enabled {
-            eprintln!(
-                "[{}][DEBUG]{} {}",
-                Utc::now(),
-                context.create_display(&self.0),
-                args
-            );
+            if !self.0.log_debug_as_info {
+                eprintln!(
+                    "[{}][DEBUG]{} {}",
+                    Utc::now(),
+                    context.create_display(&self.0),
+                    args
+                );
+            } else {
+                LoggingAdapter::info(self, context, args);
+            }
         }
     }
 
@@ -262,14 +270,23 @@ pub struct LoggingContext {
 }
 
 /// Configures which contextual data should be made available with a log message
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LogConfig {
+    /// Add the `SubscriptionId` to the log message
     pub show_subscription_id: bool,
+    /// Add the `StreamId` to the log message
     pub show_stream_id: bool,
+    /// Add the `EventType` to the log message
     pub show_event_type: bool,
+    /// Add the `PartitionId` to the log message
     pub show_partition_id: bool,
+    /// Enable logging ad debug level
     pub debug_enabled: bool,
+    /// If debug logging is enabled, log debug messages as info.
+    ///
+    /// This can be helpful if debug logging is disabled at compile time (e.g. slog)
+    pub log_debug_as_info: bool,
 }
 
 impl LogConfig {
@@ -278,16 +295,34 @@ impl LogConfig {
         let level = LogDetailLevel::try_from_env_prefixed(prefix.as_ref())?.unwrap_or_default();
 
         match level {
+            LogDetailLevel::Minimal => *self = Self::minimal(),
             LogDetailLevel::Low => *self = Self::low(),
             LogDetailLevel::Medium => *self = Self::medium(),
             LogDetailLevel::High => *self = Self::high(),
+            LogDetailLevel::Debug => *self = Self::debug(),
         }
 
-        self.debug_enabled = DebugLoggingEnabled::try_from_env_prefixed(prefix.as_ref())?
-            .unwrap_or_default()
-            .into();
+        if let Some(debug_enabled) = DebugLoggingEnabled::try_from_env_prefixed(prefix.as_ref())? {
+            self.debug_enabled = debug_enabled.into();
+        }
+
+        if let Some(log_debug_as_info) = LogDebugAsInfo::try_from_env_prefixed(prefix.as_ref())? {
+            self.log_debug_as_info = log_debug_as_info.into();
+        }
 
         Ok(())
+    }
+
+    /// Only display the stream id
+    pub fn minimal() -> Self {
+        Self {
+            show_subscription_id: false,
+            show_stream_id: true,
+            show_event_type: false,
+            show_partition_id: false,
+            debug_enabled: false,
+            log_debug_as_info: false,
+        }
     }
 
     /// Only display the stream id and the partition id
@@ -298,6 +333,7 @@ impl LogConfig {
             show_event_type: false,
             show_partition_id: true,
             debug_enabled: false,
+            log_debug_as_info: false,
         }
     }
 
@@ -309,6 +345,7 @@ impl LogConfig {
             show_event_type: true,
             show_partition_id: true,
             debug_enabled: false,
+            log_debug_as_info: false,
         }
     }
 
@@ -320,6 +357,19 @@ impl LogConfig {
             show_event_type: true,
             show_partition_id: true,
             debug_enabled: false,
+            log_debug_as_info: false,
+        }
+    }
+
+    /// Display everything and enable debug logging
+    pub fn debug() -> Self {
+        Self {
+            show_subscription_id: true,
+            show_stream_id: true,
+            show_event_type: true,
+            show_partition_id: true,
+            debug_enabled: true,
+            log_debug_as_info: false,
         }
     }
 }
@@ -342,13 +392,27 @@ impl Default for DebugLoggingEnabled {
     }
 }
 
+new_type! {
+    #[doc="If `true` log debug messages as info messages.\n\n\
+    The default is `false`\n"]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub copy struct LogDebugAsInfo(bool, env="LOG_DEBUG_AS_INFO");
+}
+impl Default for LogDebugAsInfo {
+    fn default() -> Self {
+        false.into()
+    }
+}
+
 /// Defines the level of context being logged
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum LogDetailLevel {
+    Minimal,
     Low,
     Medium,
     High,
+    Debug,
 }
 
 impl LogDetailLevel {
@@ -366,9 +430,11 @@ impl FromStr for LogDetailLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_ref() {
+            "minimal" => Ok(LogDetailLevel::Minimal),
             "low" => Ok(LogDetailLevel::Low),
             "medium" => Ok(LogDetailLevel::Medium),
             "high" => Ok(LogDetailLevel::High),
+            "debug" => Ok(LogDetailLevel::Debug),
             s => Err(Error::new(format!("{} is not a valid LogDetailLevel", s))),
         }
     }
@@ -489,13 +555,17 @@ pub mod slog_adapter {
     impl LoggingAdapter for SlogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             if self.config.debug_enabled {
-                let ctx_display = context.create_display(&self.config);
-                let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+                if !self.config.log_debug_as_info {
+                    let ctx_display = context.create_display(&self.config);
+                    let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
 
-                debug!(&self.logger, "{} {}", ctx_display, args; kvs)
+                    debug!(&self.logger, "{} {}", ctx_display, args; kvs)
+                } else {
+                    LoggingAdapter::info(self, context, args);
+                }
             }
         }
 
@@ -560,7 +630,11 @@ pub mod log_adapter {
     impl LoggingAdapter for LogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             if self.0.debug_enabled {
-                debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
+                if !self.0.log_debug_as_info {
+                    debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
+                } else {
+                    LoggingAdapter::info(self, context, args);
+                }
             }
         }
         fn info(&self, context: &LoggingContext, args: Arguments) {

@@ -7,11 +7,12 @@ jobs:
     name: Build Nakadion
     strategy:
       matrix:
-        features: ["--no-default-features", "--all-features", "--features metrix", ""]
+        features:
+          ["--no-default-features", "--all-features", "--features metrix", ""]
         rust: [
-          1.41.0, # MSRV
-          nightly # it is good practise to test libraries against nightly to catch regressions in the compiler early
-        ]
+            1.41.0, # MSRV
+            nightly, # it is good practise to test libraries against nightly to catch regressions in the compiler early
+          ]
       fail-fast: false # don't want to kill the whole CI if nightly fails
     runs-on: ubuntu-latest
     steps:
@@ -40,5 +41,5 @@ jobs:
           git clone https://github.com/adyach/nakadi-docker
           (cd nakadi-docker && docker-compose up -d)
           while ! METRICS=$(curl -s "localhost:8080/metrics"); do sleep 5; done; echo $METRICS
-          export NAKADION_DEBUG_LOGGING_ENABLED=true
+          export NAKADION_LOG_DETAIL_LEVEL=debug
           cargo run -p nakadion --example integration
