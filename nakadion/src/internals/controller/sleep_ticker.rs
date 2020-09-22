@@ -49,7 +49,6 @@ where
         C: Send + 'static,
     {
         consumer_state.info(format_args!("Waiting for connection and incoming frames"));
-
         let delay = consumer_state.config().tick_interval.into_duration();
 
         let started = Instant::now();
@@ -59,6 +58,7 @@ where
         let mut next_tick_at = started + delay;
         let sleep = async move {
             loop {
+                consumer_state.debug(format_args!("Starting sleep ticker loop"));
                 if wake_up.load(Ordering::SeqCst) || consumer_state.global_cancellation_requested()
                 {
                     consumer_state.debug(format_args!("Woke up!"));

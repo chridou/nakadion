@@ -155,7 +155,12 @@ impl LoggingAdapter for StdOutLoggingAdapter {
                     args
                 );
             } else {
-                LoggingAdapter::info(self, context, args);
+                println!(
+                    "[{}][INFO][DBG]{} {}",
+                    Utc::now(),
+                    context.create_display(&self.0),
+                    args
+                );
             }
         }
     }
@@ -216,7 +221,12 @@ impl LoggingAdapter for StdErrLoggingAdapter {
                     args
                 );
             } else {
-                LoggingAdapter::info(self, context, args);
+                eprintln!(
+                    "[{}][INFO][DBG]{} {}",
+                    Utc::now(),
+                    context.create_display(&self.0),
+                    args
+                );
             }
         }
     }
@@ -555,16 +565,16 @@ pub mod slog_adapter {
     impl LoggingAdapter for SlogLoggingAdapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             if self.config.debug_enabled {
-                if !self.config.log_debug_as_info {
-                    let ctx_display = context.create_display(&self.config);
-                    let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
+                let ctx_display = context.create_display(&self.config);
+                let kvs = o!("subscription" => value(context.subscription_id.as_ref()),
             "stream" => value(context.stream_id.as_ref()),
             "event_type" => value(context.event_type.as_ref()),
             "partition" => value(context.partition_id.as_ref()));
 
+                if !self.config.log_debug_as_info {
                     debug!(&self.logger, "{} {}", ctx_display, args; kvs)
                 } else {
-                    LoggingAdapter::info(self, context, args);
+                    info!(&self.logger, "[DBG]{} {}", ctx_display, args; kvs)
                 }
             }
         }
@@ -631,20 +641,20 @@ pub mod log_adapter {
         fn debug(&self, context: &LoggingContext, args: Arguments) {
             if self.0.debug_enabled {
                 if !self.0.log_debug_as_info {
-                    debug!("[DEBUG]{} {}", context.create_display(&self.0), args);
+                    debug!("{} {}", context.create_display(&self.0), args);
                 } else {
-                    LoggingAdapter::info(self, context, args);
+                    info!("[DBG]{} {}", context.create_display(&self.0), args);
                 }
             }
         }
         fn info(&self, context: &LoggingContext, args: Arguments) {
-            info!("[INFO]{} {}", context.create_display(&self.0), args);
+            info!("{} {}", context.create_display(&self.0), args);
         }
         fn warn(&self, context: &LoggingContext, args: Arguments) {
-            warn!("[WARN]{} {}", context.create_display(&self.0), args);
+            warn!("{} {}", context.create_display(&self.0), args);
         }
         fn error(&self, context: &LoggingContext, args: Arguments) {
-            error!("[ERROR]{} {}", context.create_display(&self.0), args);
+            error!("{} {}", context.create_display(&self.0), args);
         }
     }
 }
