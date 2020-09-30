@@ -340,6 +340,12 @@ impl ApiClient {
     }
 
     /// Get a default builder
+    ///
+    /// There are also methods to get a `Builder` which is initialized from the
+    /// environment:
+    ///
+    /// * `Builder::builder_from_env`
+    /// * `Builder::builder_from_env_prefixed`
     pub fn default_builder() -> Builder {
         Builder::default()
     }
