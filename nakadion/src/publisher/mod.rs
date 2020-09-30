@@ -515,8 +515,9 @@ where
                                 }
                                 Ok(None) => {
                                     self.logger.warn(format_args!(
-                                        "There were no events eligable for a retry because \
-                                        the strategy was set to `SubmissionFailureStrategy::Abort`"
+                                        "There were no events eligable for a retry. \
+                                        The strategy is set to `{}`",
+                                        strategy
                                     ));
                                     self.instrumentation.publish_failed(started.elapsed());
                                     break Err(PublishError::SubmissionFailed(failed_submission));
