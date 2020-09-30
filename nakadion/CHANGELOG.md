@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - API client builder can fill self from the environment when building the API client
 
+### ADDED
+
+- Methods to construct builder for API client from env
+
 ## [0.28.11] - 2020-09-22
 
 ### CHANGED

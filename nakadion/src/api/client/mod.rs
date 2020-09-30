@@ -339,8 +339,25 @@ impl ApiClient {
         Builder::default()
     }
 
+    /// Get a default builder
     pub fn default_builder() -> Builder {
         Builder::default()
+    }
+
+    /// Get a builde filled from the environment
+    ///
+    /// Values are filled from prefixed environment variables
+    pub fn builder_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Builder, Error> {
+        let mut builder = Builder::default();
+        builder.fill_from_env_prefixed_internal(prefix)?;
+        Ok(builder)
+    }
+
+    /// Get a builde filled from the environment
+    ///
+    /// Values must be prefixed with `NAKADION`
+    pub fn builder_from_env() -> Result<Builder, Error> {
+        Self::builder_from_env_prefixed(NAKADION_PREFIX)
     }
 
     pub fn set_on_retry<F: Fn(&NakadiApiError, Duration) + Send + Sync + 'static>(
