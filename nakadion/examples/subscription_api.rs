@@ -6,7 +6,7 @@ use nakadion::api::{ApiClient, SubscriptionApi};
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ApiClient::builder().finish_from_env()?;
+    let client = ApiClient::default_builder().finish_from_env()?;
 
     let subscription_id = SubscriptionId::from_env()?;
 

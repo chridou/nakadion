@@ -12,11 +12,9 @@ use tokio::time::{delay_for, timeout};
 
 pub use crate::api::{NakadiApiError, PublishApi, PublishError, PublishFuture};
 pub use crate::nakadi_types::{
+    event_type::EventTypeName,
+    publishing::{BatchStats, SubmissionFailure},
     Error, FlowId,
-    {
-        event_type::EventTypeName,
-        publishing::{BatchStats, SubmissionFailure},
-    },
 };
 
 use crate::logging::{DevNullLoggingAdapter, Logger};
@@ -499,8 +497,7 @@ where
                                 Ok(Some(to_retry)) => {
                                     self.logger.warn(format_args!(
                                         "Failed submission (retry in {:?}): {}",
-                                        delay,
-                                        failure
+                                        delay, failure
                                     ));
 
                                     if to_retry.is_empty() {
@@ -717,7 +714,9 @@ fn assemble_bytes_to_publish(events: &[Bytes]) -> Bytes {
     }
     size += (events.len() - 1) + 2; // commas plus outer braces
     let mut buffer = Vec::with_capacity(size);
+
     buffer.push(b'[');
+
     let last_idx = events.len() - 1;
     for (i, event) in events.iter().enumerate() {
         buffer.extend_from_slice(event);
@@ -727,5 +726,6 @@ fn assemble_bytes_to_publish(events: &[Bytes]) -> Bytes {
     }
 
     buffer.push(b']');
+
     buffer.into()
 }

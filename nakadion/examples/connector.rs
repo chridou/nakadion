@@ -10,7 +10,7 @@ use tokio::spawn;
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let client = ApiClient::builder().finish_from_env()?;
+    let client = ApiClient::default_builder().finish_from_env()?;
 
     let subscription_id = SubscriptionId::from_env()?;
 

@@ -31,7 +31,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let client = ApiClient::builder().finish_from_env()?;
+//!     let client = ApiClient::default_builder().finish_from_env()?;
 //!
 //!     let consumer = Consumer::builder_from_env()?.build_with(
 //!         client,

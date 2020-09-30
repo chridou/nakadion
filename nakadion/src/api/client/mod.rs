@@ -211,6 +211,9 @@ impl Builder {
 }
 
 impl Builder {
+    /// Build an `ApiClient` from this `Builder`
+    ///
+    /// No environment variables are read
     pub fn build_with<D, P>(
         self,
         dispatch_http_request: D,
@@ -244,6 +247,12 @@ impl Builder {
         })
     }
 
+    /// Build an `ApiClient` from this `Builder`
+    ///
+    /// Unset fields of this `Builder` will be set from the environment
+    /// including the settings for the `ProvidesAccessToken`
+    ///
+    /// Environment variables must be prefixed with `NAKADION`
     pub fn build_from_env_with_dispatcher<D>(
         self,
         dispatch_http_request: D,
@@ -254,6 +263,10 @@ impl Builder {
         self.build_from_env_prefixed_with_dispatcher(NAKADION_PREFIX, dispatch_http_request)
     }
 
+    /// Build an `ApiClient` from this `Builder`
+    ///
+    /// Unset fields of this `Builder` will be set from the environment
+    /// including the settings for the `ProvidesAccessToken`
     pub fn build_from_env_prefixed_with_dispatcher<T, D>(
         mut self,
         prefix: T,
@@ -263,9 +276,8 @@ impl Builder {
         T: AsRef<str>,
         D: DispatchHttpRequest + Send + Sync + 'static,
     {
-        if self.nakadi_base_url.is_none() {
-            self.nakadi_base_url = NakadiBaseUrl::try_from_env_prefixed(prefix.as_ref())?;
-        }
+        self.fill_from_env_prefixed_internal(prefix.as_ref())?;
+
         let access_token_provider = AccessTokenProvider::from_env_prefixed(prefix.as_ref())?;
 
         self.build_with(dispatch_http_request, access_token_provider)
@@ -319,7 +331,15 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
+    #[deprecated(
+        since = "0.28.12",
+        note = "misleading name. builder is just the empty defaulte. use default_builder"
+    )]
     pub fn builder() -> Builder {
+        Builder::default()
+    }
+
+    pub fn default_builder() -> Builder {
         Builder::default()
     }
 

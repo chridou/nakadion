@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.12] - 2020-09-30
+
+### CHANGED
+
+- API client builder can fill self from the environment when building the API client
+
 ## [0.28.11] - 2020-09-22
 
 ### CHANGED
