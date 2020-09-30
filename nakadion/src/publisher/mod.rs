@@ -17,8 +17,11 @@ pub use crate::nakadi_types::{
     Error, FlowId,
 };
 
-use crate::logging::{DevNullLoggingAdapter, Logger};
 use crate::nakadi_types::publishing::PublishingStatus;
+use crate::{
+    helpers::NAKADION_PREFIX,
+    logging::{DevNullLoggingAdapter, Logger},
+};
 
 #[cfg(feature = "partitioner")]
 pub mod partitioner;
@@ -362,8 +365,26 @@ impl<C> Publisher<C>
 where
     C: PublishApi + Send + Sync + 'static,
 {
+    /// Creates a new `Publisher` with the default configuration.
     pub fn new(api_client: C) -> Self {
         Self::with_config(api_client, PublisherConfig::default())
+    }
+
+    /// Creates a new `Publisher` from the environement.
+    ///
+    /// Environment variables must be prefixed with the given `prefix`.
+    /// See `PublisherConfig::from_env_prefixed`
+    pub fn from_env_prefixed<T: AsRef<str>>(api_client: C, prefix: T) -> Result<Self, Error> {
+        let config = PublisherConfig::from_env_prefixed(prefix)?;
+        Ok(Self::with_config(api_client, config))
+    }
+
+    /// Creates a new `Publisher` from the environement.
+    ///
+    /// Environment variables must be prefixed "NAKADION".
+    /// See `PublisherConfig::from_env`
+    pub fn from_env(api_client: C) -> Result<Self, Error> {
+        Self::from_env_prefixed(api_client, NAKADION_PREFIX)
     }
 
     pub fn with_config(api_client: C, config: PublisherConfig) -> Self {

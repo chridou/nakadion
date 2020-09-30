@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ADDED
 
 - Methods to construct builder for API client from env
+- `Publisher` has methods to be created from the environmemt so that no explicit configuration with the config is necessary
 
 ## [0.28.11] - 2020-09-22
 
