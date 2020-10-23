@@ -41,30 +41,9 @@ impl PendingCursors {
         self.collected_events += item.n_events;
 
         let deadline = match self.commit_strategy {
-            CommitStrategy::Immediately => calc_effective_deadline(
+            CommitStrategy::Immediately => Instant::now(),
+            _ => calc_effective_deadline(
                 self.current_deadline,
-                Some(Duration::from_secs(0)),
-                self.stream_commit_timeout,
-                item.frame_started_at,
-            ),
-            CommitStrategy::LatestPossible => calc_effective_deadline(
-                self.current_deadline,
-                None,
-                self.stream_commit_timeout,
-                item.frame_started_at,
-            ),
-            CommitStrategy::After {
-                seconds: Some(seconds),
-                ..
-            } => calc_effective_deadline(
-                self.current_deadline,
-                Some(Duration::from_secs(u64::from(seconds))),
-                self.stream_commit_timeout,
-                item.frame_started_at,
-            ),
-            CommitStrategy::After { seconds: None, .. } => calc_effective_deadline(
-                self.current_deadline,
-                None,
                 self.stream_commit_timeout,
                 item.frame_started_at,
             ),
@@ -160,15 +139,10 @@ impl PendingCursors {
 
 fn calc_effective_deadline(
     current_deadline: Option<Instant>,
-    commit_after: Option<Duration>,
     stream_commit_timeout: Duration,
     frame_started_at: Instant,
 ) -> Instant {
-    let deadline_for_cursor = if let Some(commit_after) = commit_after {
-        frame_started_at + commit_after.min(stream_commit_timeout)
-    } else {
-        frame_started_at + stream_commit_timeout
-    };
+    let deadline_for_cursor = frame_started_at + stream_commit_timeout;
 
     if let Some(current_deadline) = current_deadline {
         deadline_for_cursor.min(current_deadline)

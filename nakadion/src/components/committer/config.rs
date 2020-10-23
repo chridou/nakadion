@@ -152,7 +152,7 @@ pub enum CommitStrategy {
     LatestPossible,
     /// Commit after on of the criteria was met:
     ///
-    /// * `seconds`: After `seconds` seconds
+    /// * `seconds`: After `seconds` seconds. If not set, it will be 10 seconds.
     /// * `cursors`: After `cursors` cursors have been received
     /// * `events`: After `events` have been received. This requires the `BatchHandler` to give
     /// a hint on the amount of events processed.
@@ -225,10 +225,12 @@ impl CommitStrategy {
     /// Returns the seconds after which to always commit.
     ///
     /// If `CommitStrategy::Immediately` is activated, `Some(0)` will be returned.
+    /// If `CommitStrategy::After` is activated with `seconds` = `None`, `Some(10)` will be returned.
     /// If `CommitStrategy::LatestPossible` is activated, `None` will be returned.
     pub fn commit_after_secs_interval(&self) -> Option<u32> {
         match self {
-            CommitStrategy::After { seconds, .. } => *seconds,
+            CommitStrategy::After { seconds: Some(seconds), .. } => Some(*seconds),
+            CommitStrategy::After { seconds: None, .. } => Some(10),
             CommitStrategy::Immediately => Some(0),
             CommitStrategy::LatestPossible => None,
         }

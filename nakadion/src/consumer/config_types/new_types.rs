@@ -34,7 +34,7 @@ impl Default for HandlerInactivityTimeoutSecs {
 }
 
 new_type! {
-    #[doc="The time after which a partition is considered inactive.\n\nDefault is 90 seconds\n"]
+    #[doc="The time after which a partition is considered inactive.\n\nDefault is 90 seconds.\n"]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub secs struct PartitionInactivityTimeoutSecs(u64, env="PARTITION_INACTIVITY_TIMEOUT_SECS");
 }
