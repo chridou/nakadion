@@ -144,6 +144,18 @@ impl PendingCursors {
 
         items
     }
+
+    /// Creates a `CommitTrigger::Deadline` if there are any events to commit.
+    pub fn create_deadline_trigger(&self) -> Option<CommitTrigger> {
+        if self.collected_cursors > 0 || self.collected_events > 0 {
+            Some(CommitTrigger::Deadline {
+                n_batches: self.collected_cursors,
+                n_events: self.collected_events,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 fn calc_effective_deadline(

@@ -57,8 +57,8 @@ where
 
         let mut next_tick_at = started + delay;
         let sleep = async move {
+            consumer_state.debug(format_args!("Starting sleep ticker loop"));
             loop {
-                consumer_state.debug(format_args!("Starting sleep ticker loop"));
                 if wake_up.load(Ordering::SeqCst) || consumer_state.global_cancellation_requested()
                 {
                     consumer_state.debug(format_args!("Woke up!"));

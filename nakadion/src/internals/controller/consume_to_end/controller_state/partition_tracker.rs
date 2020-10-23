@@ -70,8 +70,8 @@ impl PartitionTracker {
                 log_activity(
                     &self.stream_state,
                     format_args!(
-                        "Partition {} became inactive after {:?} of activity. \
-                        Inactivity timeout is {:?}.",
+                        "Partition {} became inactive. It was active for {:?} before \
+                        being inactive for {:?} (inactivity threshold).",
                         partition, was_active_for, inactivity_timeout
                     ),
                     partition,

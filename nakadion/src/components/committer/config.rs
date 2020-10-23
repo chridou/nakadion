@@ -221,6 +221,18 @@ impl CommitStrategy {
             events: Some(after_events),
         }
     }
+
+    /// Returns the seconds after which to always commit.
+    ///
+    /// If `CommitStrategy::Immediately` is activated, `Some(0)` will be returned.
+    /// If `CommitStrategy::LatestPossible` is activated, `None` will be returned.
+    pub fn commit_after_secs_interval(&self) -> Option<u32> {
+        match self {
+            CommitStrategy::After { seconds, .. } => *seconds,
+            CommitStrategy::Immediately => Some(0),
+            CommitStrategy::LatestPossible => None,
+        }
+    }
 }
 
 impl Default for CommitStrategy {

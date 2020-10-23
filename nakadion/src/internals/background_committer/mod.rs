@@ -168,6 +168,16 @@ async fn run_dispatch_cursors(
             .unwrap_or_default(),
     );
 
+    let (mut next_commit_latest_at, commit_latest_after_interval) = if let Some(interval) = config
+        .commit_strategy
+        .unwrap_or_default()
+        .commit_after_secs_interval()
+    {
+        (Some(Instant::now()), Duration::from_secs(interval.into()))
+    } else {
+        (None, Duration::from_secs(0))
+    };
+
     loop {
         if stream_state.cancellation_requested() {
             stream_state.debug(format_args!(
@@ -193,15 +203,30 @@ async fn run_dispatch_cursors(
             }
         };
 
-        let trigger = match pending.commit_required(Instant::now()) {
-            Some(trigger) => trigger,
-            None => {
-                if !cursor_received {
-                    // Wait a bit because the channel was empty
-                    delay_for(DELAY_NO_CURSOR).await;
-                }
-                continue;
+        let deadline_elapsed = if let Some(next_commit_latest_at) = next_commit_latest_at {
+            next_commit_latest_at <= Instant::now()
+        } else {
+            false
+        };
+
+        let trigger = match (pending.commit_required(Instant::now()), deadline_elapsed) {
+            (Some(trigger), _) => Some(trigger),
+            (None, true) => pending.create_deadline_trigger(),
+            (None, false) => None,
+        };
+
+        let trigger = if let Some(trigger) = trigger {
+            if next_commit_latest_at.is_some() {
+                // We are defintely going to commit. So if there is an interval, set a new deadline now.
+                next_commit_latest_at = Some(Instant::now() + commit_latest_after_interval);
             }
+            trigger
+        } else {
+            if !cursor_received {
+                // Wait a bit because the channel was empty
+                delay_for(DELAY_NO_CURSOR).await;
+            }
+            continue;
         };
 
         stream_state.debug(format_args!("Commit triggered: {:?}", trigger));
