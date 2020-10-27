@@ -32,11 +32,7 @@ impl BufferedWorker {
     }
 
     pub fn process(&self, msg: WorkerMessage) -> bool {
-        if let Err(_err) = self.sender.send(msg) {
-            false
-        } else {
-            true
-        }
+        self.sender.send(msg).is_ok()
     }
 
     pub fn join(self) -> BufferedWorkerJoin<'static> {
