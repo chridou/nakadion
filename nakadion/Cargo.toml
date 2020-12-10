@@ -16,7 +16,7 @@ nakadi-types = { path = "../nakadi-types", version="^0.28.15"}
 futures = "0.3"
 pin-utils = "0.1.0"
 tokio = { version = "0.2", features = ["full"] }
-bytes = "0.6"
+bytes = "0.5"
 uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.2", features = ["serde"] }
 reqwest = { version = "0.10", features = ["stream"], optional = true }
