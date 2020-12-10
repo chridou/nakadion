@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.28.14"
+version = "0.28.15"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -12,13 +12,13 @@ keywords = [ "nakadi", "event", "broker", "distributed","messaging"]
 edition = "2018"
 
 [dependencies]
-nakadi-types = { path = "../nakadi-types", version="^0.28.14"}
+nakadi-types = { path = "../nakadi-types", version="^0.28.15"}
 futures = "0.3"
 pin-utils = "0.1.0"
 tokio = { version = "0.2", features = ["full"] }
-bytes = "0.5"
+bytes = "0.6"
 uuid = {version = "0.8", features=["serde", "v4"] }
-url = { version = "2.1", features = ["serde"] }
+url = { version = "2.2", features = ["serde"] }
 reqwest = { version = "0.10", features = ["stream"], optional = true }
 http = "0.2"
 http-api-problem = "0.17"
@@ -30,14 +30,13 @@ metrix = { version = "0.13", optional = true }
 slog = { version = "2", optional = true}
 log = { version="0.4", optional = true}
 crc = { version = "1.8", optional = true }
-nom = "5"
 
 [features]
 default = ["reqwest"]
 partitioner = ["crc"]
 
 [dev-dependencies]
-env_logger = "0.7"
+env_logger = "0.8"
 tokio = { version = "0.2", features = ["macros"] }
 slog = { version = "2", features = ["release_max_level_debug"]}
 slog-term = "2.6.0"
