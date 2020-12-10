@@ -4,8 +4,8 @@
 
 This project consists of 2 projects:
 
-* `nakadi-types` (base library with type definitions used by `nakadion`)
-* `nakadion`
+* [`nakadi-types`](https://crates.io/crates/nakadi-types) - base library with type definitions used by `nakadion`
+* [`nakadion`](https://crates.io/crates/nakadion)
 
 ## License
 
