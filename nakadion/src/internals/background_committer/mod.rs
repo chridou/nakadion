@@ -272,7 +272,6 @@ where
     C: SubscriptionCommitApi + Send + Sync + 'static,
 {
     let mut collected_items_to_commit = HashMap::<EventTypePartition, CommitEntry>::default();
-    let mut cursors_to_commit = Vec::default();
 
     let first_cursor_warning_threshold = pending_cursors::safe_commit_timeout(
         committer
@@ -305,7 +304,7 @@ where
             }
         }
 
-        cursors_to_commit.clear();
+        let mut cursors_to_commit = Vec::default();
         let mut effective_batches_to_be_committed = 0;
         let mut effective_events_to_be_committed = 0;
         for commit_entry in collected_items_to_commit.values() {

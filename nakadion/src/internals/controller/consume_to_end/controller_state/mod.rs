@@ -41,7 +41,7 @@ impl ControllerState {
         }
     }
 
-    pub fn received_frame(&mut self, event_type_partition: &EventTypePartition) {
+    pub fn received_batch_frame(&mut self, event_type_partition: &EventTypePartition) {
         let now = Instant::now();
         self.last_frame_received_at = now;
 
@@ -50,7 +50,7 @@ impl ControllerState {
         self.last_events_received_at = now;
     }
 
-    pub fn received_keep_alive(&mut self) {
+    pub fn received_keep_alive_frame(&mut self) {
         let now = Instant::now();
         self.last_frame_received_at = now;
     }

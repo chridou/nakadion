@@ -162,7 +162,7 @@ async fn handle_nakadi_message(
         NakadiMessage::Events(batch) => {
             let event_type_partition = batch.to_event_type_partition();
 
-            controller_state.received_frame(&event_type_partition);
+            controller_state.received_batch_frame(&event_type_partition);
 
             if dispatcher_sink
                 .send(DispatcherMessage::BatchWithEvents(
@@ -177,7 +177,7 @@ async fn handle_nakadi_message(
             }
         }
         NakadiMessage::KeepAlive => {
-            controller_state.received_keep_alive();
+            controller_state.received_keep_alive_frame();
             Ok(())
         }
     }
