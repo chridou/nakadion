@@ -300,6 +300,7 @@ where
                         ConnectErrorKind::BadRequest => false,
                         ConnectErrorKind::Io => true,
                         ConnectErrorKind::NakadiError => true,
+                        ConnectErrorKind::Unavailable => true,
                         ConnectErrorKind::Other => false,
                         ConnectErrorKind::Unprocessable => false,
                         ConnectErrorKind::Conflict => !abort_on_auth_conflict,
@@ -420,6 +421,10 @@ impl ConnectError {
         Self::new(ConnectErrorKind::Aborted)
     }
 
+    pub fn unavailable() -> Self {
+        Self::new(ConnectErrorKind::Unavailable)
+    }
+
     pub fn conflict() -> Self {
         Self::new(ConnectErrorKind::Conflict)
     }
@@ -499,6 +504,7 @@ impl From<NakadiApiError> for ConnectError {
                     ConnectError::unprocessable().caused_by(api_error)
                 }
                 StatusCode::CONFLICT => ConnectError::conflict().caused_by(api_error),
+                StatusCode::SERVICE_UNAVAILABLE => ConnectError::unavailable().caused_by(api_error),
                 _ => ConnectError::other().caused_by(api_error),
             }
         } else if api_error.is_io_error() {
@@ -520,6 +526,8 @@ pub enum ConnectErrorKind {
     Aborted,
     Conflict,
     NakadiError,
+    /// Nakadi was unavailable (503)
+    Unavailable,
 }
 
 impl fmt::Display for ConnectErrorKind {
@@ -534,6 +542,7 @@ impl fmt::Display for ConnectErrorKind {
             ConnectErrorKind::Aborted => write!(f, "connect aborted")?,
             ConnectErrorKind::Conflict => write!(f, "conflict")?,
             ConnectErrorKind::NakadiError => write!(f, "nakadi error")?,
+            ConnectErrorKind::Unavailable => write!(f, "nakadi unavailable")?,
         }
         Ok(())
     }
