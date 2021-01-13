@@ -18,8 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("= BASIC SCHEDULER =");
     println!("===================");
 
-    let mut runtime = tokio::runtime::Builder::new()
-        .basic_scheduler()
+    let mut runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
 
@@ -45,7 +44,7 @@ mod run {
     };
     use std::time::Duration;
 
-    use tokio::{spawn, time::delay_for};
+    use tokio::{spawn, time::sleep};
 
     use nakadi_types::{
         NakadiBaseUrl, RandomFlowId,
@@ -456,7 +455,7 @@ mod run {
                 break;
             }
 
-            delay_for(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(5)).await;
         }
         Ok(())
     }

@@ -1,5 +1,6 @@
 use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::internals::{
     background_committer::CommitHandle, worker::*, ConsumptionResult, StreamState,
@@ -24,7 +25,8 @@ impl BufferedWorker {
     ) -> BufferedWorker {
         let (tx, rx) = unbounded_channel::<WorkerMessage>();
 
-        let active_worker = sleeping_worker.start(stream_state, committer, rx);
+        let active_worker =
+            sleeping_worker.start(stream_state, committer, UnboundedReceiverStream::new(rx));
 
         let join = async move { active_worker.join().await }.boxed();
 

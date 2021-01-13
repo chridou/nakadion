@@ -4,7 +4,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use tokio::{self, time::delay_for};
+use tokio::{self, time::sleep};
 
 use crate::internals::{dispatcher::SleepingDispatcher, ConsumerState};
 use crate::logging::Logger;
@@ -69,7 +69,7 @@ where
                     sleeping_dispatcher.tick();
                     next_tick_at = now + delay;
                 }
-                delay_for(Duration::from_millis(10)).await;
+                sleep(Duration::from_millis(10)).await;
                 if last_wait_notification.elapsed() > Duration::from_secs(15) {
                     consumer_state.info(format_args!(
                         "Still waiting for connection and incoming frames (waiting for {:?})",

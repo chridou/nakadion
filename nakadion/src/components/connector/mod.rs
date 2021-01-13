@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use futures::stream::{BoxStream, StreamExt};
 use http::StatusCode;
-use tokio::time::{delay_for, timeout};
+use tokio::time::{sleep, timeout};
 
 pub use crate::components::{
     streams::{EventStream, EventStreamBatch, EventStreamError, NakadiFrame},
@@ -325,7 +325,7 @@ where
                             num_attempts, connect_started_at.elapsed(), delay, err
                         ));
 
-                        delay_for(delay).await;
+                        sleep(delay).await;
                         continue;
                     } else {
                         instrumentation.stream_not_connected(connect_started_at.elapsed(), &err);
@@ -478,8 +478,8 @@ impl From<ConnectError> for Error {
     }
 }
 
-impl From<tokio::time::Elapsed> for ConnectError {
-    fn from(err: tokio::time::Elapsed) -> Self {
+impl From<tokio::time::error::Elapsed> for ConnectError {
+    fn from(err: tokio::time::error::Elapsed) -> Self {
         ConnectError::io()
             .context("request to nakadi timed out")
             .caused_by(err)

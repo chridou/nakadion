@@ -10,7 +10,7 @@ use http::{
 };
 use http_api_problem::HttpApiProblem;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::time::{delay_for, timeout};
+use tokio::time::{sleep, timeout};
 use url::Url;
 
 use crate::helpers::NAKADION_PREFIX;
@@ -484,7 +484,7 @@ impl ApiClient {
                             if let Some(delay) = backoff.next_backoff() {
                                 let as_api_error = err.into();
                                 (self.on_retry_callback)(&as_api_error, delay);
-                                delay_for(delay).await;
+                                sleep(delay).await;
                                 continue;
                             } else {
                                 return Err(err.into());
@@ -507,7 +507,7 @@ impl ApiClient {
                     if retry {
                         if let Some(delay) = backoff.next_backoff() {
                             (self.on_retry_callback)(&api_error, delay);
-                            delay_for(delay).await;
+                            sleep(delay).await;
                             continue;
                         } else {
                             return Err(api_error);

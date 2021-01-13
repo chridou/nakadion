@@ -3,15 +3,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use futures::{
     future::{BoxFuture, FutureExt},
     TryFutureExt,
 };
-use tokio::{
-    spawn,
-    sync::mpsc::{error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender},
-    time::delay_for,
-};
+use tokio::{spawn, time::sleep};
 
 use crate::api::SubscriptionCommitApi;
 use crate::{
@@ -103,9 +100,9 @@ where
     committer.set_logger(stream_state.clone());
     committer.set_config(stream_state.config().commit_config.clone());
 
-    let (tx, to_commit) = unbounded_channel();
+    let (tx, to_commit) = unbounded();
 
-    let (io_sender, io_receiver) = unbounded_channel();
+    let (io_sender, io_receiver) = unbounded();
 
     let join_handle_dispatch_cursors = spawn(run_dispatch_cursors(
         to_commit,
@@ -151,8 +148,8 @@ where
 }
 
 async fn run_dispatch_cursors(
-    mut cursors_to_commit: UnboundedReceiver<CommitItem>,
-    io_sender: UnboundedSender<Vec<(EventTypePartition, CommitEntry)>>,
+    cursors_to_commit: Receiver<CommitItem>,
+    io_sender: Sender<Vec<(EventTypePartition, CommitEntry)>>,
     stream_state: StreamState,
 ) {
     stream_state.debug(format_args!("Committer starting"));
@@ -194,7 +191,7 @@ async fn run_dispatch_cursors(
                 true
             }
             Err(TryRecvError::Empty) => false,
-            Err(TryRecvError::Closed) => {
+            Err(TryRecvError::Disconnected) => {
                 stream_state.debug(format_args!(
                     "Channel closed. Last handle gone. Exiting committer."
                 ));
@@ -224,7 +221,7 @@ async fn run_dispatch_cursors(
         } else {
             if !cursor_received {
                 // Wait a bit because the channel was empty
-                delay_for(DELAY_NO_CURSOR).await;
+                sleep(DELAY_NO_CURSOR).await;
             }
             continue;
         };
@@ -265,7 +262,7 @@ async fn run_dispatch_cursors(
 
 async fn commit_io_loop_task<C>(
     mut committer: Committer<C>,
-    mut io_receiver: UnboundedReceiver<Vec<(EventTypePartition, CommitEntry)>>,
+    io_receiver: Receiver<Vec<(EventTypePartition, CommitEntry)>>,
     stream_state: StreamState,
 ) -> Result<(), Error>
 where
@@ -296,10 +293,10 @@ where
                     }
                 }
             }
-            Err(TryRecvError::Closed) => break,
+            Err(TryRecvError::Disconnected) => break,
             Err(TryRecvError::Empty) => {
                 if collected_items_to_commit.is_empty() {
-                    delay_for(DELAY_NO_CURSOR).await;
+                    sleep(DELAY_NO_CURSOR).await;
                     continue;
                 }
             }
@@ -361,7 +358,7 @@ where
                         effective_events_to_be_committed,
                        err
                     ));
-                    delay_for(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(100)).await;
                 } else {
                     stream_state.error(format_args!(
                         "Failed to commit {} cursors for {} batches and {} events (unrecoverable): {}",
@@ -461,7 +458,7 @@ pub struct CommitEntry {
 /// The background task will stop, once the last handle is dropped.
 #[derive(Clone)]
 pub struct CommitHandle {
-    sender: UnboundedSender<CommitItem>,
+    sender: Sender<CommitItem>,
 }
 
 impl CommitHandle {
