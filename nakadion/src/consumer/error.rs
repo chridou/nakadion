@@ -20,17 +20,11 @@ impl ConsumerAbort {
     }
 
     pub fn is_error(&self) -> bool {
-        match self {
-            ConsumerAbort::UserInitiated => false,
-            _ => true,
-        }
+        !matches!(self, ConsumerAbort::UserInitiated)
     }
 
     pub fn is_user_abort(&self) -> bool {
-        match self {
-            ConsumerAbort::UserInitiated => true,
-            _ => false,
-        }
+        matches!(self, ConsumerAbort::UserInitiated)
     }
 
     pub fn try_into_error(self) -> Result<ConsumerError, Self> {
@@ -104,6 +98,9 @@ impl From<ConnectError> for ConsumerAbort {
             ConnectErrorKind::NakadiError => {
                 ConsumerAbort::error(ConsumerError::new(ConsumerErrorKind::Other).with_source(err))
             }
+            ConnectErrorKind::Unavailable => ConsumerAbort::error(
+                ConsumerError::new(ConsumerErrorKind::ConnectStream).with_source(err),
+            ),
         }
     }
 }
