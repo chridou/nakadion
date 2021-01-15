@@ -688,8 +688,7 @@ mod test {
         assert_eq!(frames.len(), 0);
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn frames_are_emitted_immediately_after_new_line() {
+    fn frames_are_emitted_immediately_after_new_line() {
         let (send_bytes, receive_bytes) = tokio::sync::mpsc::unbounded_channel::<&'static [u8]>();
         let (send_frame, receive_frame) = crossbeam::channel::unbounded();
 
@@ -704,41 +703,42 @@ mod test {
             futures::future::ready(())
         });
 
-        tokio::spawn(stream_f);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.spawn(stream_f);
 
-        let _ = send_bytes.send(b"");
+        send_bytes.send(b"").unwrap();
         assert!(receive_frame.try_recv().is_err());
-        let _ = send_bytes.send(b"a");
+        send_bytes.send(b"a").unwrap();
         assert!(receive_frame.try_recv().is_err());
-        let _ = send_bytes.send(b"\n");
+        send_bytes.send(b"\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"a");
 
-        let _ = send_bytes.send(b"abc\n");
+        send_bytes.send(b"abc\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
 
-        let _ = send_bytes.send(b"abc\ndef");
+        send_bytes.send(b"abc\ndef").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
-        let _ = send_bytes.send(b"\n");
+        send_bytes.send(b"\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"def");
 
-        let _ = send_bytes.send(b"abc\ndef\n");
+        send_bytes.send(b"abc\ndef\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"def");
 
-        let _ = send_bytes.send(b"abc\ndef\nghi");
+        send_bytes.send(b"abc\ndef\nghi").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"def");
-        let _ = send_bytes.send(b"\n");
+        send_bytes.send(b"\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"ghi");
 
-        let _ = send_bytes.send(b"abc\ndef\nghi\n");
+        send_bytes.send(b"abc\ndef\nghi\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"def");
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"ghi");
 
-        let _ = send_bytes.send(b"abc\nde");
+        send_bytes.send(b"abc\nde").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"abc");
-        let _ = send_bytes.send(b"f\nghi\n");
+        send_bytes.send(b"f\nghi\n").unwrap();
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"def");
         assert_eq!(receive_frame.recv().unwrap().bytes.as_ref(), b"ghi");
     }
