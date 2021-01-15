@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## CHANGED
 
 - upgrade to tokio 1
+## [0.28.16] - 2021-01-13
+
+## FIXED
+
+- Retry connect on 503 (was not done before)
+- MSRV: 1.42
+
+## [0.28.15] - 2020-12-10
+
 ## [0.28.15] - 2020-12-10
 
 ## CHANGED
