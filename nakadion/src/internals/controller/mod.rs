@@ -8,6 +8,7 @@ use tokio::{
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     time::interval_at,
 };
+use tokio_stream::wrappers::{IntervalStream, UnboundedReceiverStream};
 
 use crate::api::{BytesStream, SubscriptionCommitApi};
 use crate::components::{
@@ -258,6 +259,8 @@ where
                         let sleeping_dispatcher = sleep_ticker.join().await?;
                         let (batch_lines_sink, batch_lines_receiver) =
                             unbounded_channel::<DispatcherMessage>();
+                        let batch_lines_receiver =
+                            UnboundedReceiverStream::new(batch_lines_receiver);
                         let active_dispatcher =
                             sleeping_dispatcher.start(stream_state.clone(), batch_lines_receiver);
 
@@ -352,6 +355,7 @@ fn make_ticked_batch_line_stream(
 
     let event_stream = EventStream::new(frame_stream, instrumentation.clone());
     let drained_stream = start_batch_drain(event_stream, stream_state);
+    let drained_stream = UnboundedReceiverStream::new(drained_stream);
 
     let drained_stream = drained_stream
         .map_ok(EventStreamMessage::Nakadi)
@@ -360,11 +364,14 @@ fn make_ticked_batch_line_stream(
         }));
 
     let tick_interval = tick_interval.into_duration();
-    let ticker =
-        interval_at((Instant::now() + tick_interval).into(), tick_interval).map(move |_| {
-            instrumentation.stream_tick_emitted();
-            Ok(EventStreamMessage::Tick(Instant::now()))
-        });
+    let ticker = IntervalStream::new(interval_at(
+        (Instant::now() + tick_interval).into(),
+        tick_interval,
+    ))
+    .map(move |_| {
+        instrumentation.stream_tick_emitted();
+        Ok(EventStreamMessage::Tick(Instant::now()))
+    });
 
     stream::select(drained_stream, ticker)
 }

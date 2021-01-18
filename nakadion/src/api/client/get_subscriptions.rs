@@ -2,6 +2,7 @@ use futures::StreamExt;
 use http::Method;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::nakadi_types::FlowId;
 use crate::nakadi_types::{event_type::*, misc::OwningApplication, subscription::*};
@@ -29,7 +30,7 @@ pub fn paginate_subscriptions(
 
     tokio::spawn(paginate(api_client, params, flow_id, tx));
 
-    rx.boxed()
+    UnboundedReceiverStream::new(rx).boxed()
 }
 
 #[derive(Serialize)]

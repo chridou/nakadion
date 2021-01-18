@@ -1,10 +1,8 @@
 pub mod subscription_stats {
     use std::time::{Duration, Instant};
 
-    use tokio::{
-        sync::mpsc::{self, error::TryRecvError},
-        time::delay_for,
-    };
+    use crossbeam::channel::{self, Receiver, Sender, TryRecvError};
+    use tokio::time::sleep;
 
     use crate::nakadi_types::subscription::{StreamId, SubscriptionId};
     use crate::{
@@ -19,7 +17,7 @@ pub mod subscription_stats {
     }
 
     pub struct SubscriptionStatsReporter {
-        sender: mpsc::UnboundedSender<Message>,
+        sender: Sender<Message>,
     }
 
     impl SubscriptionStatsReporter {
@@ -29,7 +27,7 @@ pub mod subscription_stats {
             C: SubscriptionApi + Clone + Send + Sync + 'static,
             L: LoggingAdapter + Send + 'static,
         {
-            let (sender, receiver) = mpsc::unbounded_channel();
+            let (sender, receiver) = channel::unbounded();
 
             let looper = Looper::new(client, instrumentation, receiver, logger);
 
@@ -63,7 +61,7 @@ pub mod subscription_stats {
         instrumentation: I,
         stream_id: StreamId,
         subscription_id: SubscriptionId,
-        receiver: mpsc::UnboundedReceiver<Message>,
+        receiver: Receiver<Message>,
         interval: Duration,
         logger: L,
     }
@@ -79,7 +77,7 @@ pub mod subscription_stats {
             loop {
                 let message = match self.receiver.try_recv() {
                     Ok(msg) => msg,
-                    Err(TryRecvError::Closed) => break,
+                    Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => Message::Noop,
                 };
 
@@ -134,7 +132,7 @@ pub mod subscription_stats {
                     }
                 }
 
-                delay_for(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(1)).await;
             }
 
             let context = LoggingContext {
@@ -158,7 +156,7 @@ pub mod subscription_stats {
     struct DisconnectedLooper<C, I, L> {
         client: C,
         instrumentation: I,
-        receiver: mpsc::UnboundedReceiver<Message>,
+        receiver: Receiver<Message>,
         interval: Duration,
         logger: L,
     }
@@ -169,11 +167,11 @@ pub mod subscription_stats {
         C: SubscriptionApi + Clone + Send + Sync + 'static,
         L: LoggingAdapter + Send + 'static,
     {
-        async fn loop_around(mut self) -> Option<ConnectedLooper<C, I, L>> {
+        async fn loop_around(self) -> Option<ConnectedLooper<C, I, L>> {
             loop {
                 let message = match self.receiver.try_recv() {
                     Ok(msg) => msg,
-                    Err(TryRecvError::Closed) => break,
+                    Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => Message::Noop,
                 };
 
@@ -193,7 +191,7 @@ pub mod subscription_stats {
                     Message::Noop => {}
                 }
 
-                delay_for(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(1)).await;
             }
 
             self.logger.info(
@@ -216,12 +214,7 @@ pub mod subscription_stats {
         C: SubscriptionApi + Clone + Send + Sync + 'static,
         L: LoggingAdapter + Send + 'static,
     {
-        pub fn new(
-            client: C,
-            instrumentation: I,
-            receiver: mpsc::UnboundedReceiver<Message>,
-            logger: L,
-        ) -> Self {
+        pub fn new(client: C, instrumentation: I, receiver: Receiver<Message>, logger: L) -> Self {
             logger.info(
                 &LoggingContext::default(),
                 format_args!("Stream stats tracker starting."),

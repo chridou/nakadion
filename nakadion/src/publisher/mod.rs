@@ -8,7 +8,7 @@ use backoff::{backoff::Backoff, ExponentialBackoff};
 pub use bytes::Bytes;
 use futures::future::FutureExt;
 use serde::{Deserialize, Serialize};
-use tokio::time::{delay_for, timeout};
+use tokio::time::{sleep, timeout};
 
 pub use crate::api::{NakadiApiError, PublishApi, PublishError, PublishFuture};
 pub use crate::nakadi_types::{
@@ -493,7 +493,7 @@ where
                                     "publish attempt failed (retry in {:?}): {}",
                                     delay, api_error
                                 ));
-                                delay_for(delay).await;
+                                sleep(delay).await;
                                 continue;
                             } else {
                                 self.instrumentation.publish_failed(started.elapsed());
@@ -531,7 +531,7 @@ where
                                     events = to_retry;
                                     bytes_to_publish = assemble_bytes_to_publish(&events);
 
-                                    delay_for(delay).await;
+                                    sleep(delay).await;
                                     continue;
                                 }
                                 Ok(None) => {
@@ -661,7 +661,7 @@ where
                                     "publish attempt failed (retry in {:?}): {}",
                                     delay, api_error
                                 ));
-                                delay_for(delay).await;
+                                sleep(delay).await;
                                 continue;
                             } else {
                                 break Err(api_error.into());

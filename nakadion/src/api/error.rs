@@ -231,8 +231,8 @@ impl From<http::uri::InvalidUri> for NakadiApiError {
     }
 }
 
-impl From<tokio::time::Elapsed> for NakadiApiError {
-    fn from(err: tokio::time::Elapsed) -> Self {
+impl From<tokio::time::error::Elapsed> for NakadiApiError {
+    fn from(err: tokio::time::error::Elapsed) -> Self {
         NakadiApiError::io()
             .with_context("the operation timed out")
             .caused_by(err)

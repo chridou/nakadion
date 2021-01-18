@@ -120,8 +120,8 @@ impl From<http::uri::InvalidUri> for RemoteCallError {
     }
 }
 
-impl From<tokio::time::Elapsed> for RemoteCallError {
-    fn from(err: tokio::time::Elapsed) -> Self {
+impl From<tokio::time::error::Elapsed> for RemoteCallError {
+    fn from(err: tokio::time::error::Elapsed) -> Self {
         RemoteCallError::new_io()
             .with_message("a timeout occurred")
             .with_cause(err)

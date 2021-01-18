@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use backoff::{backoff::Backoff, ExponentialBackoff};
 use http::StatusCode;
-use tokio::time::{delay_for, timeout};
+use tokio::time::{sleep, timeout};
 
 use crate::api::{NakadiApiError, SubscriptionCommitApi};
 use crate::instrumentation::{Instrumentation, Instruments};
@@ -151,7 +151,7 @@ where
                                 "commit attempt failed (retry in {:?}): {}",
                                 delay, err
                             ));
-                            delay_for(delay).await;
+                            sleep(delay).await;
                             continue;
                         } else {
                             return Err(err);
