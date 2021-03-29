@@ -314,7 +314,7 @@ impl SubscriptionApi for ApiClient {
         struct EntityWrapper {
             #[serde(default)]
             items: Vec<SubscriptionCursor>,
-        };
+        }
 
         let url = self.urls().subscriptions_get_committed_offsets(id);
         self.get::<EntityWrapper>(url, RequestMode::RetryAndTimeout, flow_id.into())
@@ -345,7 +345,8 @@ impl SubscriptionApi for ApiClient {
         #[derive(Serialize)]
         struct EntityWrapper<'b> {
             items: &'b [EventTypeCursor],
-        };
+        }
+
         let data = EntityWrapper { items: cursors };
         let url = self.urls().subscriptions_reset_subscription_cursors(id);
         self.send_payload(
@@ -430,7 +431,7 @@ impl SubscriptionCommitApi for ApiClient {
         #[derive(Serialize)]
         struct ItemsWrapper<'a> {
             items: &'a [SubscriptionCursor],
-        };
+        }
 
         let wrapped = ItemsWrapper { items: cursors };
 
