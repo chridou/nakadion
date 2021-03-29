@@ -34,7 +34,7 @@ pub mod publishing;
 pub mod subscription;
 
 new_type! {
-    #[doc("The base URL to the Nakadi API.")]
+    #[doc="The base URL to the Nakadi API."]
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub copy struct NakadiBaseUrl(Url, env="NAKADI_BASE_URL");
 }
