@@ -1,6 +1,6 @@
 [package]
 name = "nakadion"
-version = "0.29.1"
+version = "0.29.2"
 authors = ["Christian Douven <chridou@users.noreply.github.com>"]
 readme = "README.md"
 license = "Apache-2.0/MIT"
@@ -22,7 +22,7 @@ uuid = {version = "0.8", features=["serde", "v4"] }
 url = { version = "2.2", features = ["serde"] }
 reqwest = { version = "0.11", features = ["stream"], optional = true }
 http = "0.2"
-http-api-problem = "0.22"
+http-api-problem = "0.50"
 backoff = "0.3"
 serde = {version = "1.0", features = ["serde_derive"]}
 serde_json = "1.0"
