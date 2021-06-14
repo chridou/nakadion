@@ -229,7 +229,10 @@ impl CommitStrategy {
     /// If `CommitStrategy::LatestPossible` is activated, `None` will be returned.
     pub fn commit_after_secs_interval(&self) -> Option<u32> {
         match self {
-            CommitStrategy::After { seconds: Some(seconds), .. } => Some(*seconds),
+            CommitStrategy::After {
+                seconds: Some(seconds),
+                ..
+            } => Some(*seconds),
             CommitStrategy::After { seconds: None, .. } => Some(10),
             CommitStrategy::Immediately => Some(0),
             CommitStrategy::LatestPossible => None,

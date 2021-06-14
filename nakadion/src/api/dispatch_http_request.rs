@@ -136,17 +136,11 @@ enum RemoteCallErrorDetail {
 
 impl RemoteCallErrorDetail {
     pub fn is_io(&self) -> bool {
-        match self {
-            RemoteCallErrorDetail::Io => true,
-            _ => false,
-        }
+        matches!(self, RemoteCallErrorDetail::Io)
     }
 
     pub fn is_other(&self) -> bool {
-        match self {
-            RemoteCallErrorDetail::Other => true,
-            _ => false,
-        }
+        matches!(self, RemoteCallErrorDetail::Other)
     }
 }
 

@@ -333,7 +333,7 @@ pub struct ApiClient {
 impl ApiClient {
     #[deprecated(
         since = "0.28.12",
-        note = "misleading name. builder is just the empty defaulte. use default_builder"
+        note = "misleading name. builder is just the empty default. use default_builder"
     )]
     pub fn builder() -> Builder {
         Builder::default()
@@ -350,7 +350,7 @@ impl ApiClient {
         Builder::default()
     }
 
-    /// Get a builde filled from the environment
+    /// Get a builder filled from the environment
     ///
     /// Values are filled from prefixed environment variables
     pub fn builder_from_env_prefixed<T: AsRef<str>>(prefix: T) -> Result<Builder, Error> {
@@ -359,7 +359,7 @@ impl ApiClient {
         Ok(builder)
     }
 
-    /// Get a builde filled from the environment
+    /// Get a builder filled from the environment
     ///
     /// Values must be prefixed with `NAKADION`
     pub fn builder_from_env() -> Result<Builder, Error> {
@@ -458,11 +458,14 @@ impl ApiClient {
     ) -> Result<Response<BytesStream>, NakadiApiError> {
         let attempt_timeout = self.inner.attempt_timeout_millis.into();
         if mode == RequestMode::RetryAndTimeout {
-            let mut backoff = ExponentialBackoff::default();
-            backoff.max_elapsed_time = self.inner.timeout_millis.map(|t| t.into());
-            backoff.max_interval = self.inner.max_retry_interval_millis.into();
-            backoff.multiplier = self.inner.retry_interval_multiplier.into();
-            backoff.initial_interval = self.inner.initial_retry_interval_millis.into();
+            let mut backoff = ExponentialBackoff {
+                max_elapsed_time: self.inner.timeout_millis.map(|t| t.into()),
+                max_interval: self.inner.max_retry_interval_millis.into(),
+                multiplier: self.inner.retry_interval_multiplier.into(),
+                initial_interval: self.inner.initial_retry_interval_millis.into(),
+                ..ExponentialBackoff::default()
+            };
+
             let retry_on_auth_errors: bool = self.inner.retry_on_auth_errors.into();
 
             loop {

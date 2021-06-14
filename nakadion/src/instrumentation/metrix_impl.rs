@@ -672,7 +672,7 @@ mod instr {
     }
 
     fn create_connector_metrics(config: &MetrixConfig) -> Panel<Metric> {
-        let panel = Panel::named(AcceptAllLabels, "connector")
+        Panel::named(AcceptAllLabels, "connector")
             .panel(
                 Panel::named(AcceptAllLabels, "attempts")
                     .meter(
@@ -717,9 +717,7 @@ mod instr {
                             .display_time_unit(TimeUnit::Milliseconds)
                             .accept(Metric::StreamNotConnectedTime),
                     ),
-            );
-
-        panel
+            )
     }
 
     fn create_lag_metrics(cockpit: &mut Cockpit<Metric>, config: &MetrixConfig) {

@@ -85,10 +85,10 @@ where
         };
 
         Active {
-            api_client,
-            join,
             stream_state,
+            api_client,
             handler_factory,
+            join,
         }
     }
 }

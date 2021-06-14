@@ -5,7 +5,7 @@ use nakadion::api::{ApiClient, MonitoringApi, SchemaRegistryApi};
 #[cfg(feature = "reqwest")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ApiClient::builder().finish_from_env()?;
+    let client = ApiClient::default_builder().finish_from_env()?;
 
     let event_type_name = EventTypeName::from_env()?;
 

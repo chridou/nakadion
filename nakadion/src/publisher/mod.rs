@@ -370,7 +370,7 @@ where
         Self::with_config(api_client, PublisherConfig::default())
     }
 
-    /// Creates a new `Publisher` from the environement.
+    /// Creates a new `Publisher` from the environment.
     ///
     /// Environment variables must be prefixed with the given `prefix`.
     /// See `PublisherConfig::from_env_prefixed`
@@ -379,7 +379,7 @@ where
         Ok(Self::with_config(api_client, config))
     }
 
-    /// Creates a new `Publisher` from the environement.
+    /// Creates a new `Publisher` from the environment.
     ///
     /// Environment variables must be prefixed "NAKADION".
     /// See `PublisherConfig::from_env`
@@ -425,32 +425,40 @@ where
         events: &[Bytes],
         flow_id: FlowId,
     ) -> PublishFuture<'a> {
-        let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = self
-            .config
-            .timeout_millis
-            .unwrap_or_default()
-            .into_duration_opt();
-        backoff.max_interval = self
-            .config
-            .max_retry_interval_millis
-            .unwrap_or_default()
-            .into();
-        backoff.multiplier = self
-            .config
-            .retry_interval_multiplier
-            .unwrap_or_default()
-            .into();
-        backoff.initial_interval = self
-            .config
-            .initial_retry_interval_millis
-            .unwrap_or_default()
-            .into();
+        let mut backoff = ExponentialBackoff {
+            max_elapsed_time: self
+                .config
+                .timeout_millis
+                .unwrap_or_default()
+                .into_duration_opt(),
+
+            max_interval: self
+                .config
+                .max_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            multiplier: self
+                .config
+                .retry_interval_multiplier
+                .unwrap_or_default()
+                .into(),
+
+            initial_interval: self
+                .config
+                .initial_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            ..ExponentialBackoff::default()
+        };
+
         let attempt_timeout = self
             .config
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
+
         let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
 
         let strategy = self.config.partial_failure_strategy.unwrap_or_default();
@@ -536,7 +544,7 @@ where
                                 }
                                 Ok(None) => {
                                     self.logger.warn(format_args!(
-                                        "There were no events eligable for a retry. \
+                                        "There were no events eligible for a retry. \
                                         The strategy is set to `{}`",
                                         strategy
                                     ));
@@ -605,32 +613,40 @@ where
         events: B,
         flow_id: T,
     ) -> PublishFuture<'a> {
-        let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = self
-            .config
-            .timeout_millis
-            .unwrap_or_default()
-            .into_duration_opt();
-        backoff.max_interval = self
-            .config
-            .max_retry_interval_millis
-            .unwrap_or_default()
-            .into();
-        backoff.multiplier = self
-            .config
-            .retry_interval_multiplier
-            .unwrap_or_default()
-            .into();
-        backoff.initial_interval = self
-            .config
-            .initial_retry_interval_millis
-            .unwrap_or_default()
-            .into();
+        let mut backoff = ExponentialBackoff {
+            max_elapsed_time: self
+                .config
+                .timeout_millis
+                .unwrap_or_default()
+                .into_duration_opt(),
+
+            max_interval: self
+                .config
+                .max_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            multiplier: self
+                .config
+                .retry_interval_multiplier
+                .unwrap_or_default()
+                .into(),
+
+            initial_interval: self
+                .config
+                .initial_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            ..ExponentialBackoff::default()
+        };
+
         let attempt_timeout = self
             .config
             .attempt_timeout_millis
             .unwrap_or_default()
             .into_duration();
+
         let retry_on_auth_errors = self.config.retry_on_auth_error.unwrap_or_default().into();
         let bytes = events.into();
         let flow_id = flow_id.into();

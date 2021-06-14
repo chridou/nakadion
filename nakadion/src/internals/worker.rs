@@ -228,8 +228,8 @@ mod processor {
                         cursor,
                         frame_started_at,
                         frame_completed_at,
-                        n_events,
                         frame_id,
+                        n_events,
                     }) {
                         self.stream_state
                             .error(format_args!("Failed to enqueue commit data: {:?}", err));

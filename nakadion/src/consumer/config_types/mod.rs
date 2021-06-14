@@ -458,9 +458,9 @@ impl Builder {
     }
 
     /// Create a `Consumer` which tracks stats about the stream and
-    /// exposes them to the instrumetation set with the builder.
+    /// exposes them to the instrumentation set with the builder.
     ///
-    /// Disabled if no instrumetation is set.
+    /// Disabled if no instrumentation is set.
     pub fn build_with_tracker<C, HF, L>(
         &self,
         api_client: C,
@@ -535,8 +535,8 @@ impl Builder {
             warn_no_events,
             dispatch_mode,
             log_partition_events_mode,
-            commit_config,
             connect_config,
+            commit_config,
         };
 
         Ok(config)

@@ -86,7 +86,7 @@ mod run {
         let nakadi_base_url = NakadiBaseUrl::try_from_env()?
             .unwrap_or_else(|| "http://localhost:8080".parse().unwrap());
 
-        let mut api_client = ApiClient::builder()
+        let mut api_client = ApiClient::default_builder()
             .nakadi_base_url(nakadi_base_url)
             .finish(NoAuthAccessTokenProvider)?;
 

@@ -36,11 +36,7 @@ impl fmt::Display for FailedSubmission {
 
 impl FailedSubmission {
     pub fn is_unprocessable(&self) -> bool {
-        if let SubmissionFailure::Unprocessable(_) = self.failure {
-            true
-        } else {
-            false
-        }
+        matches!(self.failure, SubmissionFailure::Unprocessable(_))
     }
 }
 
@@ -175,16 +171,18 @@ pub struct BatchStats {
 
 impl BatchStats {
     pub fn all_submitted(n: usize) -> Self {
-        let mut me = Self::default();
-        me.n_items = n;
-        me.n_submitted = n;
-        me
+        Self {
+            n_items: n,
+            n_submitted: n,
+            ..Self::default()
+        }
     }
     pub fn all_not_submitted(n: usize) -> Self {
-        let mut me = Self::default();
-        me.n_items = n;
-        me.n_not_submitted = n;
-        me
+        Self {
+            n_items: n,
+            n_not_submitted: n,
+            ..Self::default()
+        }
     }
 }
 
