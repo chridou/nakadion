@@ -579,7 +579,7 @@ struct Backoff {
 impl Backoff {
     pub fn new(max: u64) -> Self {
         let iter = Box::new(CONNECT_RETRY_BACKOFF_SECS.iter().copied());
-        Backoff { iter, max }
+        Backoff { max, iter }
     }
 
     pub fn next(&mut self) -> Duration {

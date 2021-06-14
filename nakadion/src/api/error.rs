@@ -128,44 +128,32 @@ impl NakadiApiError {
 
     /// Returns true if there is a `StatusCode` and if it is a client error.
     pub fn is_client_error(&self) -> bool {
-        match self.kind {
-            NakadiApiErrorKind::ClientError(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, NakadiApiErrorKind::ClientError(_))
     }
 
     /// Returns true if there is a `StatusCode`
     /// and if it `StatusCode::FORBIDDEN` or `StatusCode::UNAUTHORIZED`.
     pub fn is_auth_error(&self) -> bool {
-        match self.kind {
+        matches!(
+            self.kind,
             NakadiApiErrorKind::ClientError(StatusCode::FORBIDDEN)
-            | NakadiApiErrorKind::ClientError(StatusCode::UNAUTHORIZED) => true,
-            _ => false,
-        }
+                | NakadiApiErrorKind::ClientError(StatusCode::UNAUTHORIZED)
+        )
     }
 
     /// Returns true if there is a `StatusCode` and if it is a server error.
     pub fn is_server_error(&self) -> bool {
-        match self.kind {
-            NakadiApiErrorKind::ServerError(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, NakadiApiErrorKind::ServerError(_))
     }
 
     /// Returns true if the error was created with `NakadiApiError::other`.
     pub fn is_other_error(&self) -> bool {
-        match self.kind {
-            NakadiApiErrorKind::Other(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, NakadiApiErrorKind::Other(_))
     }
 
     /// Returns true if the error was created with `NakadiApiError::io`.
     pub fn is_io_error(&self) -> bool {
-        match self.kind {
-            NakadiApiErrorKind::Io => true,
-            _ => false,
-        }
+        matches!(self.kind, NakadiApiErrorKind::Io)
     }
 }
 

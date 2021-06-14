@@ -114,23 +114,30 @@ where
         &self,
         cursors: &[SubscriptionCursor],
     ) -> Result<CursorCommitResults, CommitError> {
-        let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(self.config.timeout_millis.unwrap_or_default().into());
-        backoff.max_interval = self
-            .config
-            .max_retry_interval_millis
-            .unwrap_or_default()
-            .into();
-        backoff.multiplier = self
-            .config
-            .retry_interval_multiplier
-            .unwrap_or_default()
-            .into();
-        backoff.initial_interval = self
-            .config
-            .initial_retry_interval_millis
-            .unwrap_or_default()
-            .into();
+        let mut backoff = ExponentialBackoff {
+            max_elapsed_time: Some(self.config.timeout_millis.unwrap_or_default().into()),
+
+            max_interval: self
+                .config
+                .max_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            multiplier: self
+                .config
+                .retry_interval_multiplier
+                .unwrap_or_default()
+                .into(),
+
+            initial_interval: self
+                .config
+                .initial_retry_interval_millis
+                .unwrap_or_default()
+                .into(),
+
+            ..ExponentialBackoff::default()
+        };
+
         let retry_on_auth_errors: bool = self.config.retry_on_auth_error.unwrap_or_default().into();
         loop {
             match self.single_attempt_with_timeout(cursors).await {

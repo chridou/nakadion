@@ -77,9 +77,9 @@ where
         };
 
         Active {
+            stream_state,
             api_client,
             join,
-            stream_state,
         }
     }
 }

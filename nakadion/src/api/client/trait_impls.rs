@@ -406,11 +406,8 @@ impl SubscriptionStreamApi for ApiClient {
                             chunks: response.into_body(),
                         })
                     }
-                    None => {
-                        return Err(NakadiApiError::other().with_context(
-                            "response did not contain the 'x-nakadi-streamid' header",
-                        ))
-                    }
+                    None => Err(NakadiApiError::other()
+                        .with_context("response did not contain the 'x-nakadi-streamid' header")),
                 }
             } else {
                 evaluate_error_for_problem(response).map(Err).await

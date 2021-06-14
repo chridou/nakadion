@@ -346,7 +346,7 @@ fn parse_subscription_batch_line_with_info() {
     assert_eq!(line.partition_str(), "6", "partition");
     assert_eq!(line.event_type_str(), "order.ORDER_RECEIVED");
     assert_eq!(line.events_str(), Some(events_sample.as_ref()));
-    assert_eq!(line.info_str(), Some(&info_sample[..]));
+    assert_eq!(line.info_str(), Some(info_sample));
     assert_eq!(line.is_keep_alive_line(), false);
 }
 
