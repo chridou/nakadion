@@ -688,6 +688,7 @@ mod test {
         assert_eq!(frames.len(), 0);
     }
 
+    #[test]
     fn frames_are_emitted_immediately_after_new_line() {
         let (send_bytes, receive_bytes) = tokio::sync::mpsc::unbounded_channel::<&'static [u8]>();
         let (send_frame, receive_frame) = crossbeam::channel::unbounded();
